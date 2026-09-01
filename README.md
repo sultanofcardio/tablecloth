@@ -8,7 +8,8 @@
 
 **IntelliJ-grade database tools, laid over VS Code.**
 
-![Status](https://img.shields.io/badge/status-phase%201%20built-3574f0)
+![Version](https://img.shields.io/badge/version-0.0.1-3574f0)
+![Phase](https://img.shields.io/badge/phase%201-shipped-4ec9a0)
 ![Price](https://img.shields.io/badge/price-free%2C%20forever-4ec9a0)
 ![Databases](https://img.shields.io/badge/databases-PostgreSQL%20·%20MySQL%2FMariaDB%20·%20SQLite-3574f0)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -17,114 +18,87 @@
 
 ---
 
-Tablecloth is a personal port of the IntelliJ Ultimate **Database Tools** experience to VS Code. One place to connect to your databases, explore their schemas, write SQL with real schema-aware intelligence, edit data in a DataGrip-style grid with reviewable change sets, and manage DDL, all without leaving the editor or relearning ten years of muscle memory.
+Tablecloth is a personal port of the IntelliJ Ultimate **Database Tools** experience to VS Code. One place to connect to your databases, explore their schemas, write SQL in real consoles, and read results in a DataGrip-style grid, without leaving the editor or relearning ten years of muscle memory. Phase 1 is built and released; the [interactive plan](./docs/plan.html) remains the map for what comes next.
 
-**📐 [Read the full plan with interactive mock-ups](./docs/plan.html)**: download and open locally, or view via [githack](https://raw.githack.com/) once the repo is public. Every major surface is mocked up in IntelliJ's New UI design language.
+> Tablecloth is an independent open-source project and is not affiliated with or endorsed by JetBrains or Microsoft. It uses none of JetBrains' code; the running product serves purely as the behavioral spec.
 
-> Tablecloth is an independent open-source project and is not affiliated with or endorsed by JetBrains or Microsoft. It uses none of JetBrains' code; the running product serves purely as the behavioral spec, and internals are built on open components (libpg_query, ANTLR SQL grammars, existing SQL language servers).
+## Installing
 
-## A first look
+Grab `tablecloth-<version>.vsix` from the [latest GitHub release](https://github.com/sultanofcardio/tablecloth/releases/latest), then:
+
+```sh
+code --install-extension tablecloth-0.0.1.vsix
+```
+
+(or Extensions view → `…` → *Install from VSIX…*). Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing to download.
+
+## What it looks like
 
 <div align="center">
-  <img src="./assets/mockup-explorer.png" width="920" alt="The Database tool window inside VS Code: a tree of data sources with introspection badges, tables with primary and foreign key icons, indexes and enum types, next to a SQL console with IntelliJ syntax colors." />
+  <img src="./assets/screenshot-console.png" width="920" alt="Tablecloth in VS Code: the Database explorer tree with an expanded PostgreSQL source showing tables, primary and foreign key columns, an index, views, sequences and enum types; a query console with IntelliJ syntax colors and a green frame around the statement at the caret; and the Tablecloth panel below with a console tree, named result tabs, and a data grid." />
   <br />
-  <sub>The Database tool window: env-colored data sources, deep object tree, and a console bound to a schema.</sub>
+  <sub>The explorer, a console bound to <code>acme.public</code>, and the Tablecloth panel: result tabs named after a comment or the queried table, the grid below.</sub>
 </div>
 
 <br />
 
 <div align="center">
-  <img src="./assets/mockup-console.png" width="920" alt="A query console with an IntelliJ-style completion popup suggesting a JOIN condition inferred from a foreign key, an unresolved column flagged inline, and a Services tool window showing the result grid below." />
+  <img src="./assets/screenshot-grid.png" width="920" alt="The table data editor: a full-window DataGrip-style grid of the orders table with typed column headers, right-aligned numerics, italic nulls, and the floating pager reading 1-500 of 500+, with the exact count one click away." />
   <br />
-  <sub>Schema-aware completion with FK-based JOIN inference, inspections, and the Services tool window with the result grid.</sub>
+  <sub>Table data: 500-row pages, the floating pager (the range is the page-size menu; <code>500+</code> resolves the exact count on click), sorting, row selection, and extractors in the toolbar.</sub>
 </div>
 
 <br />
 
 <div align="center">
-  <img src="./assets/mockup-data-editor.png" width="920" alt="The data editor grid: WHERE and ORDER BY filter fields, row gutter, blue updated cells, a green inserted row, a struck-through deleted row, the 1-500 pager, and a dialog previewing the exact SQL statements before submit." />
+  <img src="./assets/screenshot-data-source.png" width="720" alt="The Data Sources dialog in its own compact floating window: name with auto-derived value, environment color and scope selectors, General/Options/SSH-SSL/Schemas tabs, driver, host and port, authentication, a live URL preview, and Test Connection." />
   <br />
-  <sub>The data editor: batched change set with blue updates, green inserts, struck-through deletes, and a DML preview before anything is submitted.</sub>
+  <sub>The Data Sources dialog opens in its own floating window, IntelliJ-style: env colors, Global/Project scope, SSH/SSL tabs, schema selection, Test Connection.</sub>
 </div>
 
-## Familiar workflow, new editor
+## What's in Phase 1
 
-| IntelliJ Database Tools | Tablecloth in VS Code |
+| Area | Shipped |
 | --- | --- |
-| Database tool window | Full object tree (schemas, tables, columns with PK/FK, indexes, object types) with introspection badges, env colors, and read-only guards |
-| Data Sources and Drivers | Connection dialog with General/Options/SSH-SSL tabs, per-source color, transaction control, keep-alive, auto-sync introspection; opens in its own compact floating window, like the IntelliJ dialog |
-| Query console | Consoles bound to a source and schema: run statement/selection/file, FK-aware JOIN completion, inspections, format, history, output log |
-| Data editor | 500-row pages with count-on-demand, WHERE/ORDER BY fields, header filters, batched change set with DML preview before submit |
-| Tx control | Auto/Manual commit per console, isolation levels, commit/rollback in the status bar |
-| Data extractors | SQL Inserts/Updates, Where Clause, CSV family, JSON, Markdown, HTML, XML, scripted extractors |
-| Import Data | CSV import wizard with column mapping and create-table-from-file |
+| Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, no-auth · read-only sources (enforced server-side) · env color labels · Global (user) and Project (workspace) scopes · passwords only in the OS keychain |
+| Explorer | Webview tree in the IntelliJ design language: vendor marks, introspection badges, schemas, tables with PK/FK keys, indexes, views, sequences, routines, enum types · toolbar row · anchored context menus · schema selection and system-schema toggle · auto-sync per source (off = introspect only on explicit Refresh) |
+| Consoles | Monaco-based console editor under an IntelliJ toolbar · run statement (⌘⏎) with the statement frame · run script · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · object completion with dialect-correct identifier quoting · consoles persist, rename, and reopen from the console dropdown |
+| Results | Tablecloth panel shaped like IntelliJ's Services window: Database → source → console tree, per-console result tabs (comment/table-derived names) and Output logs, a data source Information tab · multi-statement runs, one tab per query |
+| Grid | Read-only DataGrip grid: 500-row pages, two-state floating pager, count on demand, sorting, row selection, select-all corner |
+| Export | SQL Inserts / SQL Updates / Where Clause · CSV, TSV, pipe, semicolon (configurable null text and quoting) · copy or export, selection-aware |
+| Files | Run any `.sql` file against a chosen source from the explorer context menu |
+
+Known Phase 1 limits: the grid is read-only (change sets with DML preview land in Phase 2); MySQL `DELIMITER` blocks are not understood by the statement splitter; SQLite empty results lose column headers; an isolation level is not reapplied after a silent reconnect; paste in the console uses the keyboard (Monaco's context-menu Paste is inert inside webviews).
 
 ## Why not SQLTools or Database Client?
 
 Because the parts of Database Tools that matter day-to-day don't exist in any VS Code extension:
 
-| Capability | SQLTools | Database Client | Tablecloth (target) |
+| Capability | SQLTools | Database Client | Tablecloth |
 | --- | :-: | :-: | :-: |
 | Connections & explorer tree | ✅ | ✅ | ✅ deep tree, env colors, read-only mode |
-| Schema-aware SQL completion | 🟡 basic | 🟡 basic | ✅ live schema, JOIN inference, inspections |
-| Editable data grid | ❌ | 🟡 immediate edits | ✅ batched change set + DML preview |
+| Schema-aware SQL completion | 🟡 basic | 🟡 basic | ✅ live schema, quoted identifiers (JOIN inference in Phase 2) |
 | Transaction control | ❌ | ❌ | ✅ Tx mode + isolation per console |
-| Import / export wizards | 🟡 | 🟡 | ✅ full extractor set + guided import |
-| Explain plan visualization | ❌ | ❌ | ✅ plan tree with cost hotspots |
-| IntelliJ look & feel | ❌ | ❌ | ✅ styled after the New UI |
+| Result tabs per statement | ❌ | ❌ | ✅ IntelliJ-style named tabs |
+| Editable data grid | ❌ | 🟡 immediate edits | 🔜 Phase 2: batched change set + DML preview |
+| Explain plan visualization | ❌ | ❌ | 🔜 Phase 3 |
+| IntelliJ look & feel | ❌ | ❌ | ✅ styled after the New UI, down to the pager |
 
 ## Roadmap
 
 ```mermaid
 flowchart LR
-    P1["Phase 1 · MVP\nConnect, explore, query"] --> P2["Phase 2 · Daily driver\nEdit data, trust the SQL"] --> P3["Phase 3 · Parity\nThe IntelliJ feel, completed"] -.-> L["Later · nice to have\nER diagrams, schema diff"]
+    P1["Phase 1 · MVP ✅\nConnect, explore, query"] --> P2["Phase 2 · Daily driver\nEdit data, trust the SQL"] --> P3["Phase 3 · Parity\nThe IntelliJ feel, completed"] -.-> L["Later · nice to have\nER diagrams, schema diff"]
 ```
 
 | Phase | Scope | Exit test |
 | --- | --- | --- |
-| **1 · MVP** | Connections (PostgreSQL, MySQL/MariaDB, SQLite; SSH/SSL, pgpass), explorer tree, query console with object completion, read-only 500-row grid, core extractors, run `.sql` files | A normal day of database work happens in VS Code; the JetBrains icon stays in the dock, unclicked |
-| **2 · Daily driver** | Editable grid with change sets and DML preview, WHERE/ORDER BY + header filters, FK navigation, deep completion and inspections, Tx modes + isolation, history and output log, import wizard | IntelliJ muscle memory mostly works; nothing used weekly is missing |
+| **1 · MVP** ✅ | Connections, explorer, consoles (with transactions, history, and schema switching pulled forward), read-only grid, extractors, run `.sql` files | A normal day of database work happens in VS Code; the JetBrains icon stays in the dock, unclicked |
+| **2 · Daily driver** | Editable grid with change sets and DML preview, WHERE/ORDER BY + header filters, FK navigation, deep completion and inspections, import wizard | IntelliJ muscle memory mostly works; nothing used weekly is missing |
 | **3 · Parity** | Object editor dialogs, dump/restore, visual explain plan + EXPLAIN ANALYZE, sessions viewer, full-text data search, find usages, rename refactor, CSV file viewer/editor ("Edit as Table…") | Nothing left that makes you reinstall IntelliJ |
 | **Later** | ER diagrams, schema diff + migration scripts, extra drivers | Only if a real need appears; nothing depends on these |
 
-<details>
-<summary><b>Full parity checklist (55+ features)</b></summary>
-
-| Area | Features |
-| --- | --- |
-| **Connections** | Data source manager (Global + Project) · driver auto-download · SSH tunnel · SSL · user/password, pgpass, no-auth · read-only flag · env color labels · schema selection · auto-sync/manual re-introspection · keep-alive & auto-disconnect · startup script · per-source console files · DDL data source |
-| **Explorer & navigation** | Full object tree (tables, columns, PK/FK, indexes, views, sequences, routines, object types) · introspection count badges · tree filter & visibility options · quick documentation · go to object · view DDL · find usages · drop/rename with usage check · favorites |
-| **Console & assistance** | Run statement/selection/file · multiple consoles · object completion · per-dialect highlighting · context-aware completion · FK JOIN completion · inspections & quick fixes · format SQL · query history · output/audit log · parameters dialog · Tx auto/manual + isolation · kill query · live templates · rename refactor · run procedure with params |
-| **Data editor** | 500-row pages + page-size menu · count on demand · virtualized rendering · sort via ORDER BY · change set + DML preview · submit/revert · add/delete/clone rows · WHERE/ORDER BY fields · per-column filters · FK navigation · value editor · transpose + Table/Tree/Text views · hide/reorder columns · view query · aggregate view · compare result sets · full-text search · CSV file viewer/editor ("Edit as Table…") |
-| **Import / export** | SQL Inserts/Updates/Where Clause · CSV/TSV/pipe/semicolon + format config · JSON, Markdown, HTML, XML, Pretty, One-row, Python-DataFrame · copy-as · CSV import wizard · create table from file · Excel via Export Data · custom scripted extractors |
-| **Schema management** | Run `.sql` against a source · generate DDL · Modify Table/Column/Index dialogs · dump & restore · *(later)* schema diff · *(later)* migration scripts |
-| **Insight** | Visual explain plan · EXPLAIN ANALYZE · sessions/activity viewer · *(later)* ER diagrams |
-
-</details>
-
-Deliberately out of scope: Oracle, MongoDB, and other drivers until a real need appears, and IntelliJ's injected-SQL-in-code-strings analysis.
-
-## Identity
-
-| | |
-| --- | --- |
-| <img src="./assets/icon.png" width="64" alt="Marketplace icon" /> | **Marketplace icon**: a bistro table wearing its gingham cloth, standing on a database-column pedestal. |
-| <img src="./assets/activity-icon.png" width="28" alt="Activity bar icon" /> | **Activity-bar icon**: 24×24 single-color outline (`currentColor`), recolored by VS Code themes. |
-
-## Status
-
-**Phase 1 (MVP) is built** and working: the connection manager (PostgreSQL, MySQL/MariaDB, SQLite, with SSH tunnels, SSL, and pgpass), the Database explorer tree with full object depth and env colors, query consoles with run-statement/selection/file and object completion, the read-only grid with 500-row pages, count on demand, sorting, and row selection, the core extractors (SQL Inserts/Updates, Where Clause, CSV family), and running `.sql` files against a source. A few console features were pulled forward from Phase 2 for daily-driver comfort: transaction mode (Auto/Manual) with isolation levels on per-console sessions, commit/roll back, query history, the schema switcher, and the green statement-under-caret frame. Consoles open in a dedicated console editor (a Monaco editor under an IntelliJ-style toolbar: run, run script, history, data source settings, Tx dropdown, schema switcher) with IntelliJ-flavored SQL colors; plain `.sql` files attached to a data source keep the native VS Code editor and get the same commands from the editor title and status bar. Phase 2 (editable grid, deep SQL intelligence) is next. The [interactive plan](./docs/plan.html) remains the source of truth for scope and sequencing.
-
-Phase 1 notes and limits:
-
-- The grid is read-only for now; change sets with DML preview land in Phase 2.
-- Console paging wraps SELECT-ish statements in a subquery (`LIMIT`/`OFFSET`); statements that cannot be wrapped (`SHOW`, `EXPLAIN`, `PRAGMA`, …) run verbatim and page client-side.
-- Read-only mode is enforced server-side per session (`default_transaction_read_only`, `SET SESSION TRANSACTION READ ONLY`, `PRAGMA query_only`) plus a lock badge in the tree.
-- Drivers ship with the extension (pure JS/WASM); there is nothing to download and no native compilation.
-- MySQL `DELIMITER` blocks (a CLI feature, not SQL) are not understood by the statement splitter yet.
-- A SQLite result with zero rows shows no column headers; the WASM driver derives columns from returned rows.
-- A non-default isolation level is set on the live console session when picked; after a silent reconnect the new session starts at the driver default until the level is picked again.
-- In consoles, paste from the Monaco context menu does nothing (webviews cannot read the OS clipboard); keyboard paste works by round-tripping through the VS Code clipboard.
+The [interactive plan](./docs/plan.html) carries the full 55+ item parity checklist and the mock-ups that Phase 1 was built against.
 
 ## Development
 
@@ -135,8 +109,16 @@ npm test                 # unit tests + SQLite end-to-end (no external services)
 npm run test:integration # PostgreSQL/MySQL driver tests; see test/integration for the docker one-liners
 npm run test:vscode      # smoke test inside a real VS Code extension host
 npm run lint
+npm run package          # build the .vsix
 ```
 
-Press F5 in VS Code to launch an Extension Development Host with the extension loaded.
+Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`.
+
+## Identity
+
+| | |
+| --- | --- |
+| <img src="./assets/icon.png" width="64" alt="Marketplace icon" /> | **Icon**: a bistro table wearing its gingham cloth, standing on a database-column pedestal. |
+| <img src="./assets/activity-icon.png" width="28" alt="Activity bar icon" /> | **Activity-bar icon**: 24×24 single-color outline, recolored by VS Code themes. |
 
 Licensed under [MIT](./LICENSE). Bundled third-party assets keep their own licenses; see [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).

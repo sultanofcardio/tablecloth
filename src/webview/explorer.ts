@@ -355,6 +355,20 @@ window.addEventListener('message', (event) => {
         }
       };
       autoExpand(tree);
+      if (msg.expandAll) {
+        // screenshot rig: open containers and groups; '1' opens every relation
+        // too, any other value opens only the relation with that label
+        const only = String(msg.expandAll);
+        const expandDeep = (nodes: ExplorerNode[]) => {
+          for (const node of nodes) {
+            if (!node.children?.length) continue;
+            const relation = node.kind === 'table' || node.kind === 'view' || node.kind === 'enum';
+            if (!relation || only === '1' || node.label === only) expanded.add(node.id);
+            expandDeep(node.children);
+          }
+        };
+        expandDeep(tree);
+      }
       saveState();
       render();
       updateToolbar();

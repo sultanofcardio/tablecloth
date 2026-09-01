@@ -95,7 +95,10 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
     const showSystem = vscode.workspace
       .getConfiguration('tablecloth.explorer')
       .get<boolean>('showSystemSchemas', false);
-    this.post({ type: 'tree', nodes, showSystem });
+    // screenshot rig only: '1' expands everything, any other value expands
+    // containers/groups plus just the relation with that label
+    const expandAll = process.env.TABLECLOTH_DEMO_EXPAND || undefined;
+    this.post({ type: 'tree', nodes, showSystem, expandAll });
   }
 
   private dataSourceFor(ref: ExplorerRef | undefined): StoredDataSource | undefined {

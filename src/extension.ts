@@ -22,6 +22,13 @@ let sessions: SessionManager | undefined;
 export function activate(context: vscode.ExtensionContext): {
   consoleEditorBooted(): boolean;
   explorerResolved(): boolean;
+  /** Present only under TABLECLOTH_CAPTURE=1 (the README screenshot rig). */
+  capture?: {
+    introspect(dsId: string): Promise<void>;
+    newConsole(dsId: string): Promise<string | undefined>;
+    runScript(uriString: string, sql: string): Promise<void>;
+    openTable(dsId: string, tableName: string): Promise<void>;
+  };
 } {
   const store = new DataSourceStore(context);
   sessions = new SessionManager({
@@ -340,6 +347,36 @@ export function activate(context: vscode.ExtensionContext): {
   return {
     consoleEditorBooted: () => consoleEditor.booted,
     explorerResolved: () => explorer.resolved,
+    // capture hooks: only for the README screenshot rig (scripts/capture)
+    capture:
+      process.env.TABLECLOTH_CAPTURE === '1'
+        ? {
+            introspect: async (dsId: string) => {
+              const ds = store.get(dsId);
+              if (ds) await sessions!.introspect(ds.config);
+            },
+            newConsole: async (dsId: string) => {
+              const ds = store.get(dsId);
+              return ds ? (await consoles.newConsole(ds)).toString() : undefined;
+            },
+            runScript: (uriString: string, sql: string) =>
+              runner.runScriptFor(vscode.Uri.parse(uriString), sql, 'console'),
+            openTable: async (dsId: string, tableName: string) => {
+              const ds = store.get(dsId);
+              if (!ds) return;
+              const catalog = await sessions!.introspect(ds.config);
+              for (const db of catalog.databases) {
+                for (const schema of db.schemas) {
+                  const rel = schema.relations.find((r) => r.name === tableName);
+                  if (rel) {
+                    await tablePanels.open(ds, db, schema, rel);
+                    return;
+                  }
+                }
+              }
+            },
+          }
+        : undefined,
   };
 }
 
