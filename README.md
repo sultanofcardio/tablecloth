@@ -122,6 +122,9 @@ Phase 1 notes and limits:
 - Read-only mode is enforced server-side per session (`default_transaction_read_only`, `SET SESSION TRANSACTION READ ONLY`, `PRAGMA query_only`) plus a lock badge in the tree.
 - Drivers ship with the extension (pure JS/WASM); there is nothing to download and no native compilation.
 - MySQL `DELIMITER` blocks (a CLI feature, not SQL) are not understood by the statement splitter yet.
+- A SQLite result with zero rows shows no column headers; the WASM driver derives columns from returned rows.
+- A non-default isolation level is set on the live console session when picked; after a silent reconnect the new session starts at the driver default until the level is picked again.
+- In consoles, paste from the Monaco context menu does nothing (webviews cannot read the OS clipboard); keyboard paste works by round-tripping through the VS Code clipboard.
 
 ## Development
 

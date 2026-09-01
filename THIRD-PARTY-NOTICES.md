@@ -22,6 +22,7 @@ The packaged extension bundles these npm dependencies (see `package.json` for ve
 | [mysql2](https://github.com/sidorares/node-mysql2) | MIT | Andrey Sidorov, Sushant |
 | [node-sqlite3-wasm](https://github.com/tndrle/node-sqlite3-wasm) | MIT | Tobias Enderle (SQLite itself is public domain) |
 | [ssh2](https://github.com/mscdex/ssh2) | MIT | Brian White |
+| [monaco-editor](https://github.com/microsoft/monaco-editor) (console editor webview) | MIT | Microsoft Corporation |
 
 ## IntelliJ Platform icons (planned)
 
