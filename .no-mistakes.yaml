@@ -1,0 +1,4 @@
+# no-mistakes repository configuration.
+# This repository has no CI provider configured, so an empty check list on a
+# PR means "no CI exists", not "checks pending". Remove this when real CI lands.
+no_ci: true
