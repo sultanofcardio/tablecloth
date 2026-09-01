@@ -1,0 +1,9 @@
+# Local reference material — never committed
+intellij-screenshots/
+
+# Lavish working artifacts (docs/plan.html is the committed export)
+.lavish/
+
+node_modules/
+
+.idea/

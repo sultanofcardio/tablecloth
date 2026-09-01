@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tablecloth - Database Tools for VS Code</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, td, th, dd) { overflow-wrap: anywhere; }
+  :where(img, svg, video) { max-width: 100%; height: auto; }
+
+  :root {
+    --page-bg: #121218;
+    --card-bg: #1a1a22;
+    --card-border: #2b2b36;
+    --ink: #d6d6dd;
+    --ink-dim: #8b8b98;
+    --ink-faint: #63636e;
+    --accent: #3574f0;
+    --accent-soft: rgba(53,116,240,.12);
+    --green: #4ec9a0;
+    --amber: #e2b93d;
+    --red: #f26d78;
+    --purple: #b18aff;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  html { color-scheme: dark; }
+  body {
+    margin: 0; background: var(--page-bg); color: var(--ink);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  h1 { font-size: 34px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.02em; }
+  h2 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  .dim { color: var(--ink-dim); }
+  .small { font-size: 13px; }
+
+  section { margin-top: 64px; }
+  .section-kicker { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6f9dff; margin-bottom: 8px; }
+  .section-lede { max-width: 780px; color: var(--ink-dim); margin-bottom: 24px; }
+
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px;
+    border-radius: 999px; border: 1px solid transparent; vertical-align: middle; white-space: nowrap;
+  }
+  .badge.blue   { color: #9dbcff; background: rgba(53,116,240,.13); border-color: rgba(53,116,240,.38); }
+  .badge.green  { color: #8fe6c8; background: rgba(78,201,160,.12); border-color: rgba(78,201,160,.35); }
+  .badge.amber  { color: #f0d38a; background: rgba(226,185,61,.12); border-color: rgba(226,185,61,.35); }
+  .badge.red    { color: #ffb0b7; background: rgba(242,109,120,.12); border-color: rgba(242,109,120,.35); }
+  .badge.purple { color: #d4bcff; background: rgba(177,138,255,.12); border-color: rgba(177,138,255,.35); }
+  .badge.gray   { color: var(--ink-dim); background: rgba(255,255,255,.05); border-color: var(--card-border); }
+
+  /* hero */
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+  .hero-stat { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 18px; min-width: 150px; flex: 1; }
+  .hero-stat .v { font-size: 22px; font-weight: 700; color: #fff; }
+  .hero-stat .k { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+  .decisions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .decision { font-size: 12.5px; background: rgba(78,201,160,.07); border: 1px solid rgba(78,201,160,.3); color: #b9e8d6; border-radius: 999px; padding: 4px 14px; white-space: nowrap; }
+  .decision b { color: #e6fff5; }
+
+  /* comparison table */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--card-border); border-radius: 12px; background: var(--card-bg); }
+  table.cmp { border-collapse: collapse; width: 100%; min-width: 700px; font-size: 13.5px; }
+  table.cmp th, table.cmp td { padding: 10px 14px; text-align: left; border-top: 1px solid var(--card-border); vertical-align: top; }
+  table.cmp thead th { border-top: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-dim); background: rgba(255,255,255,.02); }
+  table.cmp td:first-child { font-weight: 600; color: #e8e8ee; }
+  table.cmp .plan-col { background: rgba(53,116,240,.05); }
+  .mark { font-weight: 700; }
+  .mark.yes { color: var(--green); }
+  .mark.part { color: var(--amber); }
+  .mark.no { color: var(--ink-faint); }
+
+  /* pillars */
+  .pillar { margin-top: 44px; }
+  .pillar-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .pillar-num { font-family: var(--mono); font-size: 13px; font-weight: 700; color: #6f9dff; background: var(--accent-soft); border-radius: 6px; padding: 2px 8px; }
+  .pillar p.desc { max-width: 800px; color: var(--ink-dim); }
+  .chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; }
+  .chip { font-size: 12.5px; color: #c4c4cf; background: rgba(255,255,255,.045); border: 1px solid var(--card-border); border-radius: 999px; padding: 3px 11px; white-space: nowrap; }
+  .chip.p1 { border-color: rgba(53,116,240,.45); color: #aac4ff; }
+  .chip.p2 { border-color: rgba(226,185,61,.4); color: #ecd9a0; }
+  .chip.p3 { border-color: rgba(177,138,255,.4); color: #d8c5ff; }
+  .chip.later { border-color: #3a3a46; border-style: dashed; color: var(--ink-faint); }
+
+  .mockup-scroll { overflow-x: auto; border-radius: 12px; }
+  .mockup-scroll + .mockup-scroll { margin-top: 16px; }
+  .mock-caption { font-size: 12.5px; color: var(--ink-faint); margin-top: 10px; }
+
+  /* ============ IntelliJ New UI dark mockup kit ============ */
+  .ij {
+    min-width: 900px; background: #1e1f22; border: 1px solid #393b40; border-radius: 10px;
+    overflow: hidden; font-family: -apple-system, "Segoe UI", "Inter", sans-serif; font-size: 13px;
+    color: #dfe1e5; box-shadow: 0 18px 50px rgba(0,0,0,.5); line-height: 1.45;
+  }
+  .ij-title { display: flex; align-items: center; height: 36px; background: #2b2d30; border-bottom: 1px solid #1e1f22; padding: 0 12px; gap: 8px; position: relative; }
+  .ij-title .dots { display: flex; gap: 7px; }
+  .ij-title .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .ij-title .dots i:nth-child(1){background:#ff5f57}.ij-title .dots i:nth-child(2){background:#febc2e}.ij-title .dots i:nth-child(3){background:#28c840}
+  .ij-title .t { position: absolute; left: 0; right: 0; text-align: center; color: #9da0a8; font-size: 12px; pointer-events: none; }
+  .ij-cols { display: flex; align-items: stretch; }
+
+  /* slim VS Code activity bar - the one part of the shell that stays VS Code */
+  .vsc-activity { width: 44px; background: #181818; border-right: 1px solid #2a2a2a; display: flex; flex-direction: column; align-items: center; padding-top: 8px; flex: none; }
+  .vsc-activity .ai { width: 44px; height: 40px; display: flex; align-items: center; justify-content: center; color: #6e6e6e; position: relative; }
+  .vsc-activity .ai.on { color: #ffffff; }
+  .vsc-activity .ai.on::before { content:""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: #fff; }
+  .vsc-activity svg { width: 21px; height: 21px; display: block; }
+
+  /* IntelliJ tool window */
+  .ij-tool { width: 288px; background: #2b2d30; border-right: 1px solid #1e1f22; flex: none; display: flex; flex-direction: column; }
+  .ij-tool-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px 7px; }
+  .ij-tool-head .name { font-size: 13.5px; font-weight: 700; color: #dfe1e5; }
+  .ij-tool-head .icons { color: #9da0a8; font-size: 12px; letter-spacing: .18em; }
+  .ij-tool-bar { display: flex; align-items: center; gap: 11px; padding: 0 12px 7px; color: #9da0a8; font-size: 12.5px; border-bottom: 1px solid #393b40; }
+  .ij-tool-bar .ddl { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; border: 1px solid #55575c; border-radius: 3px; padding: 0 3px; }
+  .ij-tool-bar .tbsep { width: 1px; height: 14px; background: #43454a; }
+
+  .ic { width: 15px; height: 15px; flex: none; display: block; }
+  .tw-ic { width: 12px; height: 12px; color: #9da0a8; flex: none; }
+  .hicon { width: 14px; height: 14px; color: #9da0a8; display: inline-block; vertical-align: middle; margin-left: 8px; }
+  .gt-svg { width: 15px; height: 15px; color: #9da0a8; flex: none; display: inline-block; vertical-align: middle; }
+  .hkey { width: 13px; height: 13px; display: inline-block; vertical-align: -2px; }
+  .hic-f { width: 11px; height: 11px; color: #82858c; display: inline-block; vertical-align: -1px; margin-left: 6px; }
+  .tree { font-size: 13px; padding: 6px 0 10px; }
+  .trow { display: flex; align-items: center; gap: 6px; height: 23px; padding-right: 8px; white-space: nowrap; }
+  .trow:hover { background: #393b40; }
+  .trow.sel { background: #2e436e; color: #fff; }
+  .tw { color: #9da0a8; width: 14px; text-align: center; flex: none; font-size: 10px; }
+  .tmeta { color: #82858c; font-size: 11.5px; margin-left: 4px; }
+  .cnt { color: #82858c; font-size: 11px; margin-left: 5px; }
+  .cntchip { font-size: 10.5px; color: #9da0a8; border: 1px solid #43454a; border-radius: 4px; padding: 0 5px; margin-left: 6px; line-height: 15px; }
+  .envdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .emoji-ic { font-size: 13px; width: 17px; text-align: center; flex: none; }
+  .enum-ic { width: 15px; height: 15px; flex:none; border: 1.3px solid #b189f5; border-radius: 50%; color: #b189f5; font: 700 9px/12.5px var(--mono); text-align: center; }
+
+  .ij-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #1e1f22; }
+  .ij-tabs { display: flex; align-items: center; background: #1e1f22; border-bottom: 1px solid #393b40; padding: 5px 8px; gap: 4px; }
+  .ijtab { padding: 4px 12px; font-size: 12.5px; color: #9da0a8; display: flex; gap: 8px; align-items: center; white-space: nowrap; border: 1px solid transparent; border-radius: 6px; }
+  .ijtab.on { color: #ffffff; border-color: #3574f0; background: rgba(53,116,240,.10); }
+  .ijtab .x { color: #6e7076; }
+  .ij-crumbs { font-size: 11.5px; color: #82858c; padding: 5px 16px; border-bottom: 1px solid #2b2d30; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* editor - Darcula / New UI syntax */
+  .code { font-family: var(--mono); font-size: 12.5px; line-height: 1.7; padding: 10px 0 14px; position: relative; background: #1e1f22; }
+  .cl { display: flex; white-space: pre; }
+  .cl .ln { width: 46px; flex: none; text-align: right; padding-right: 16px; color: #4b5059; user-select: none; }
+  .cl.hl { background: rgba(255,255,255,.045); }
+  .k { color: #cf8e6d; } .s { color: #6aab73; } .n { color: #2aacb8; } .f { color: #56a8f5; }
+  .ty { color: #bcbec4; } .c { color: #7a7e85; } .v { color: #bcbec4; } .op { color: #bcbec4; }
+  .colref { color: #9876aa; }
+  .err-squiggle { text-decoration: underline wavy #f75464 1px; text-underline-offset: 3px; }
+
+  .suggest { position: absolute; background: #2b2d30; border: 1px solid #43454a; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.55); font-family: var(--mono); font-size: 12px; z-index: 3; min-width: 340px; overflow: hidden; }
+  .sug { display: flex; align-items: center; gap: 8px; padding: 4px 12px; color: #dfe1e5; white-space: nowrap; }
+  .sug.on { background: #2e436e; color: #fff; }
+  .sug .right { margin-left: auto; color: #82858c; font-size: 11px; padding-left: 24px; }
+  .sug b { color: #f2c55c; font-weight: 600; }
+  .sug-foot { border-top: 1px solid #393b40; padding: 4px 12px; color: #82858c; font-size: 11px; font-family: -apple-system, "Segoe UI", sans-serif; }
+
+  .ij-paneltabs { display: flex; gap: 4px; padding: 5px 12px; border-top: 1px solid #393b40; background: #1e1f22; font-size: 12px; color: #9da0a8; }
+  .ij-paneltabs .ptab { padding: 3px 12px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; user-select: none; }
+  .ij-paneltabs .ptab.on { color: #ffffff; border-color: #3574f0; background: rgba(53,116,240,.10); }
+  .ij-paneltabs .hint { margin-left: auto; align-self: center; font-size: 11px; color: #63636e; }
+  .pane[hidden] { display: none; }
+
+  /* DataGrip-style grid toolbar */
+  .grid-toolbar { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: #2b2d30; border-top: 1px solid #1e1f22; font-size: 12px; color: #bfc2c9; flex-wrap: wrap; }
+  .gt-ic { color: #9da0a8; font-size: 13px; }
+  .gt-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #43454a; background: #2b2d30; border-radius: 6px; padding: 2px 10px; font-size: 11.5px; color: #dfe1e5; white-space: nowrap; }
+  .gt-btn.primary { background: #3574f0; border-color: #3574f0; color: #fff; }
+  .gt-sep { width: 1px; height: 16px; background: #43454a; }
+  .gt-input { border: 1px solid #43454a; background: #1e1f22; color: #bcbec4; border-radius: 6px; padding: 2px 10px; font-family: var(--mono); font-size: 11.5px; flex: 1; min-width: 140px; white-space: nowrap; overflow: hidden; display: flex; gap: 8px; align-items: center; }
+  .gt-input .wm { color: #6e7076; font-size: 10.5px; letter-spacing: .06em; }
+  .pager { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #43454a; border-radius: 8px; padding: 2px 10px; font-size: 12px; color: #bfc2c9; background: #2b2d30; }
+  .pager .pg { color: #82858c; }
+  .pager u { text-decoration-style: dotted; text-underline-offset: 3px; }
+
+  /* DataGrip grid: row gutter, header icons, change-set colors */
+  table.dgrid { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; background: #1e1f22; }
+  .dgrid th, .dgrid td { border: 1px solid #2b2d30; padding: 3px 10px; text-align: left; white-space: nowrap; }
+  .dgrid thead th { background: #2b2d30; color: #dfe1e5; font-weight: 600; }
+  .dgrid thead th .hic { color: #82858c; font-size: 10px; margin-left: 6px; }
+  .dgrid thead th .sort { color: #3574f0; font-size: 10px; margin-left: 4px; }
+  .dgrid td { color: #bcbec4; }
+  .dgrid td.gut, .dgrid th.gut { color: #4b5059; background: #2b2d30; text-align: right; width: 34px; font-size: 11px; }
+  .dgrid td.num { text-align: right; color: #2aacb8; }
+  .dgrid td.null { color: #6e7076; font-style: italic; }
+  .dgrid td.edited { background: rgba(53,116,240,.20); box-shadow: inset 0 0 0 1px rgba(53,116,240,.55); color: #cfe0ff; }
+  .dgrid tr.ins td { background: rgba(87,150,92,.16); }
+  .dgrid tr.ins td.gut { color: #6aab73; background: rgba(87,150,92,.16); }
+  .dgrid tr.del td { background: rgba(247,84,100,.10); color: #8c8f96; text-decoration: line-through; }
+  .dgrid td.fk { color: #56a8f5; text-decoration: underline; text-underline-offset: 2px; }
+
+  .ij-status { display: flex; align-items: center; gap: 16px; background: #2b2d30; color: #9da0a8; font-size: 11.5px; padding: 4px 12px; border-top: 1px solid #393b40; white-space: nowrap; overflow: hidden; }
+  .ij-status .right { margin-left: auto; display: flex; gap: 16px; }
+  .ij-status .warn { color: #1e1f22; background: #d6ae58; margin: -4px 0; padding: 4px 10px; font-weight: 600; }
+
+  /* IntelliJ dialogs & forms */
+  .dlg { background: #2b2d30; border: 1px solid #43454a; border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.55); overflow: hidden; }
+  .dlg-title { padding: 10px 16px 8px; font-size: 13px; font-weight: 600; color: #dfe1e5; border-bottom: 1px solid #393b40; }
+  .dlg-body { padding: 14px 16px; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid #393b40; }
+
+  .dstabs { display: flex; align-items: center; gap: 2px; padding: 10px 0 0; flex-wrap: wrap; }
+  .dstab { padding: 4px 13px; border-radius: 6px; color: #bfc2c9; font-size: 12.5px; }
+  .dstab.on { background: #2e436e; color: #fff; }
+  .dstabs .link { margin-left: auto; color: #56a8f5; font-size: 12.5px; }
+  .frm { display: grid; grid-template-columns: 148px minmax(0,1fr); gap: 12px 14px; align-items: center; margin-top: 16px; font-size: 12.5px; }
+  .frm .lbl { text-align: right; color: #bfc2c9; }
+  .fin { border: 1px solid #43454a; background: #1e1f22; border-radius: 6px; padding: 4px 10px; color: #dfe1e5; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .fin .cend { margin-left: auto; color: #82858c; }
+  .seg { display: inline-flex; border: 1px solid #43454a; border-radius: 6px; overflow: hidden; }
+  .seg span { padding: 3px 13px; color: #bfc2c9; }
+  .seg span.on { background: #43454a; color: #fff; }
+  .ds-foot { display: flex; align-items: center; gap: 14px; margin-top: 20px; padding-top: 12px; border-top: 1px solid #393b40; font-size: 12.5px; }
+  .ds-foot .test { color: #56a8f5; }
+  .ds-foot .ver { color: #82858c; }
+  .btn-ij { border: 1px solid #43454a; border-radius: 6px; padding: 4px 16px; color: #dfe1e5; font-size: 12.5px; }
+  .btn-ij.primary { background: #3574f0; border-color: #3574f0; color: #fff; }
+
+  /* left panel of Data Sources dialog */
+  .ds-left { width: 218px; flex: none; border-right: 1px solid #393b40; padding: 10px 0; }
+  .ds-left .hd { font-weight: 700; padding: 0 14px 8px; }
+  .ds-left .tb { color: #9da0a8; padding: 0 14px 8px; display: flex; gap: 10px; align-items: center; }
+  .ds-left .grp { color: #82858c; font-size: 11.5px; padding: 8px 14px 3px; }
+  .ds-left .it { display: flex; gap: 7px; align-items: center; padding: 3px 14px; }
+  .ds-left .it.sel { background: #2e436e; color: #fff; }
+
+  /* diff */
+  .diffwrap { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); font-family: var(--mono); font-size: 12px; }
+  .diffcol { border-right: 1px solid #393b40; min-width: 0; }
+  .diffcol:last-child { border-right: 0; }
+  .diffhead { padding: 6px 12px; background: #2b2d30; color: #bfc2c9; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 12px; border-bottom: 1px solid #393b40; display:flex; gap:8px; align-items:center; }
+  .dl { padding: 1px 12px; white-space: pre; overflow: hidden; text-overflow: ellipsis; color: #bcbec4; }
+  .dl.add { background: rgba(87,150,92,.18); }
+  .dl.del { background: rgba(247,84,100,.13); }
+  .dl.mod { background: rgba(53,116,240,.15); }
+  .dl.dimline { color: #6e7076; }
+
+  /* parity checklist */
+  .paritywrap { overflow-x: auto; border: 1px solid var(--card-border); border-radius: 12px; background: var(--card-bg); }
+  table.parity { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 13px; }
+  table.parity th, table.parity td { padding: 12px 16px; border-top: 1px solid var(--card-border); text-align: left; vertical-align: top; }
+  table.parity thead th { border-top: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-dim); background: rgba(255,255,255,.02); }
+  table.parity td.area { font-weight: 700; color: #e8e8ee; white-space: nowrap; }
+  .fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 14px; font-size: 12.5px; color: var(--ink-dim); align-items: center; }
+
+  /* roadmap */
+  .phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .phase { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; }
+  .phase.mvp { border-color: rgba(53,116,240,.5); }
+  .phase.laterband { border-style: dashed; margin-top: 16px; }
+  .phase-tag { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
+  .phase ul { margin: 10px 0 0; padding-left: 18px; color: #c4c4cf; font-size: 13.5px; }
+  .phase li { margin: 5px 0; }
+  .phase li::marker { color: var(--ink-faint); }
+  .goalline { font-size: 12.5px; color: var(--ink-dim); border-top: 1px solid var(--card-border); margin-top: 14px; padding-top: 10px; }
+
+  /* naming */
+  .namegrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .namecard { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 18px; }
+  .namecard.rec { border-color: rgba(78,201,160,.55); background: rgba(78,201,160,.05); }
+  .namecard .nm { font-size: 19px; font-weight: 700; color: #fff; font-family: var(--mono); }
+  .namecard p { font-size: 13px; color: var(--ink-dim); margin: 8px 0 0; }
+
+  .riskgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .risk { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px 18px; }
+  .risk h3 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .risk p { font-size: 13.5px; color: var(--ink-dim); margin: 6px 0 0; }
+  .risk .mit { color: #b8d8c8; }
+
+  .qa { display: flex; flex-direction: column; gap: 12px; }
+  .q { background: var(--card-bg); border: 1px solid var(--card-border); border-left: 3px solid var(--purple); border-radius: 10px; padding: 14px 18px; }
+  .q .lean { display: block; margin-top: 6px; font-size: 13px; color: var(--ink-dim); }
+
+  footer { margin-top: 72px; font-size: 12.5px; color: var(--ink-faint); border-top: 1px solid var(--card-border); padding-top: 18px; }
+  @media (max-width: 720px) { .diffwrap { grid-template-columns: 1fr; } h1 { font-size: 27px; } }
+</style>
+</head>
+<body>
+
+<!-- shared tree icons, drawn in the JetBrains icon style -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="t-arrow-back-up" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14l-4 -4l4 -4" />
+  <path d="M5 10h11a4 4 0 1 1 0 8h-1" /></g></symbol>
+  <symbol id="t-arrow-up" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" />
+  <path d="M18 11l-6 -6" />
+  <path d="M6 11l6 -6" /></g></symbol>
+  <symbol id="t-arrows-sort" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l4 -4l4 4m-4 -4v14" />
+  <path d="M21 15l-4 4l-4 -4m4 4v-14" /></g></symbol>
+  <symbol id="t-chevron-down" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6" /></g></symbol>
+  <symbol id="t-chevron-right" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6" /></g></symbol>
+  <symbol id="t-circle-letter-e" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+  <path d="M14 8h-4v8h4" />
+  <path d="M10 12h2.5" /></g></symbol>
+  <symbol id="t-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+  <path d="M12 7v5l3 3" /></g></symbol>
+  <symbol id="t-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z" />
+  <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" /></g></symbol>
+  <symbol id="t-database" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6m-8 0a8 3 0 1 0 16 0a8 3 0 1 0 -16 0" />
+  <path d="M4 6v6a8 3 0 0 0 16 0v-6" />
+  <path d="M4 12v6a8 3 0 0 0 16 0v-6" /></g></symbol>
+  <symbol id="t-dots-vertical" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+  <path d="M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+  <path d="M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></g></symbol>
+  <symbol id="t-download" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+  <path d="M7 11l5 5l5 -5" />
+  <path d="M12 4l0 12" /></g></symbol>
+  <symbol id="t-external-link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6" />
+  <path d="M11 13l9 -9" />
+  <path d="M15 4h5v5" /></g></symbol>
+  <symbol id="t-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+  <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" /></g></symbol>
+  <symbol id="t-filter" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v7l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227z" /></g></symbol>
+  <symbol id="t-focus-2" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r=".5" fill="currentColor" />
+  <path d="M12 12m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+  <path d="M12 3l0 2" />
+  <path d="M3 12l2 0" />
+  <path d="M12 19l0 2" />
+  <path d="M19 12l2 0" /></g></symbol>
+  <symbol id="t-folder" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2" /></g></symbol>
+  <symbol id="t-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.555 3.843l3.602 3.602a2.877 2.877 0 0 1 0 4.069l-2.643 2.643a2.877 2.877 0 0 1 -4.069 0l-.301 -.301l-6.558 6.558a2 2 0 0 1 -1.239 .578l-.175 .008h-1.172a1 1 0 0 1 -.993 -.883l-.007 -.117v-1.172a2 2 0 0 1 .467 -1.284l.119 -.13l.414 -.414h2v-2h2v-2l2.144 -2.144l-.301 -.301a2.877 2.877 0 0 1 0 -4.069l2.643 -2.643a2.877 2.877 0 0 1 4.069 0z" />
+  <path d="M15 9h.01" /></g></symbol>
+  <symbol id="t-math-function" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a2 2 0 0 0 2 2c2 0 2 -4 3 -9s1 -9 3 -9a2 2 0 0 1 2 2" />
+  <path d="M5 12h6" />
+  <path d="M15 12l6 6" />
+  <path d="M15 18l6 -6" /></g></symbol>
+  <symbol id="t-minus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0" /></g></symbol>
+  <symbol id="t-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4" />
+  <path d="M9 15l-4.5 4.5" />
+  <path d="M14.5 4l5.5 5.5" /></g></symbol>
+  <symbol id="t-player-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z" /></g></symbol>
+  <symbol id="t-plus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" />
+  <path d="M5 12l14 0" /></g></symbol>
+  <symbol id="t-refresh" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+  <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" /></g></symbol>
+  <symbol id="t-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+  <path d="M21 21l-6 -6" /></g></symbol>
+  <symbol id="t-settings" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" />
+  <path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></g></symbol>
+  <symbol id="t-sitemap" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z" />
+  <path d="M15 15m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z" />
+  <path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z" />
+  <path d="M6 15v-1a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v1" />
+  <path d="M12 9l0 3" /></g></symbol>
+  <symbol id="t-table-column" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z" />
+  <path d="M10 10h11" />
+  <path d="M10 3v18" />
+  <path d="M9 3l-6 6" />
+  <path d="M10 7l-7 7" />
+  <path d="M10 12l-7 7" />
+  <path d="M10 17l-4 4" /></g></symbol>
+  <symbol id="t-table" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z" />
+  <path d="M3 10h18" />
+  <path d="M10 3v18" /></g></symbol>
+  <symbol id="t-terminal-2" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l3 3l-3 3" />
+  <path d="M13 15l3 0" />
+  <path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" /></g></symbol>
+  <symbol id="t-upload" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+  <path d="M7 9l5 -5l5 5" />
+  <path d="M12 4l0 12" /></g></symbol>
+  <symbol id="t-world" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+  <path d="M3.6 9h16.8" />
+  <path d="M3.6 15h16.8" />
+  <path d="M11.5 3a17 17 0 0 0 0 18" />
+  <path d="M12.5 3a17 17 0 0 1 0 18" /></g></symbol>
+  <symbol id="t-x" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12" />
+  <path d="M6 6l12 12" /></g></symbol>
+</defs></svg>
+
+<main>
+
+  <!-- ================= HERO ================= -->
+  <header>
+    <div class="section-kicker">Personal project · plan v4</div>
+    <h1>Tablecloth <span class="dim" style="font-size:20px; font-weight:500">· database tools for VS Code</span> <span class="badge green">named ✓</span></h1>
+    <p class="dim" style="max-width:800px; font-size:16.5px;">
+      A personal port of IntelliJ Ultimate's <strong style="color:var(--ink)">Database Tools</strong> to VS Code, so the move off
+      IntelliJ stops hurting. It goes on tables. Free on the marketplace for anyone else who cares, built for one user's
+      daily workflow, with the UI matched to IntelliJ's detail for detail.
+    </p>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="v">7</div><div class="k">Feature pillars</div></div>
+      <div class="hero-stat"><div class="v">55+</div><div class="k">Features on the parity checklist</div></div>
+      <div class="hero-stat"><div class="v">3</div><div class="k">Anchor databases</div></div>
+      <div class="hero-stat"><div class="v">$0</div><div class="k">Free, forever</div></div>
+    </div>
+    <div class="decisions">
+      <span class="decision">✓ Name: <b>Tablecloth</b></span>
+      <span class="decision">✓ Databases: <b>PostgreSQL · MySQL/MariaDB · SQLite</b></span>
+      <span class="decision">✓ Pricing: <b>free</b></span>
+      <span class="decision">✓ Oracle &amp; MongoDB: <b>out of scope</b></span>
+      <span class="decision">✓ ER diagrams, schema diff/migration: <b>nice-to-have tier</b></span>
+    </div>
+  </header>
+
+  <!-- ================= WHY ================= -->
+  <section>
+    <div class="section-kicker">Why build it</div>
+    <h2>Why not just use SQLTools or Database Client?</h2>
+    <p class="section-lede">
+      Because the parts of Database Tools that matter day-to-day (reviewable change sets, schema-aware SQL
+      intelligence, transaction control) don't exist in any VS Code extension. This table is the
+      justification for building instead of settling.
+    </p>
+    <div class="tablewrap">
+      <table class="cmp">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>SQLTools</th>
+            <th>Database Client</th>
+            <th class="plan-col">Tablecloth (target)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Connections &amp; explorer tree</td><td><span class="mark yes">✓</span> Good</td><td><span class="mark yes">✓</span> Good</td><td class="plan-col"><span class="mark yes">✓</span> Deep tree incl. keys, indexes, routines, object types; env colors; read-only mode</td></tr>
+          <tr><td>Schema-aware SQL completion</td><td><span class="mark part">◐</span> Basic, per-driver</td><td><span class="mark part">◐</span> Basic</td><td class="plan-col"><span class="mark yes">✓</span> Live-schema completion, JOIN inference, inspections, rename refactor</td></tr>
+          <tr><td>Editable data grid</td><td><span class="mark no">✗</span> Read-only results</td><td><span class="mark part">◐</span> Cell edits, immediate</td><td class="plan-col"><span class="mark yes">✓</span> Batched change set with DML preview before submit, transposed view, FK navigation</td></tr>
+          <tr><td>Transaction control (manual/auto commit)</td><td><span class="mark no">✗</span></td><td><span class="mark no">✗</span></td><td class="plan-col"><span class="mark yes">✓</span> Per-console Tx mode + isolation level, commit/rollback</td></tr>
+          <tr><td>Import / export wizards</td><td><span class="mark part">◐</span> CSV export</td><td><span class="mark part">◐</span> Export formats</td><td class="plan-col"><span class="mark yes">✓</span> Full extractor set (SQL inserts/updates, CSV family, JSON, Markdown, scripted) + guided import</td></tr>
+          <tr><td>Explain plan visualization</td><td><span class="mark no">✗</span></td><td><span class="mark no">✗</span></td><td class="plan-col"><span class="mark yes">✓</span> Visual plan tree with cost hotspots, EXPLAIN ANALYZE</td></tr>
+          <tr><td>ER diagrams</td><td><span class="mark no">✗</span></td><td><span class="mark part">◐</span> Simple</td><td class="plan-col"><span class="mark part">◐</span> Nice-to-have tier, after everything else</td></tr>
+          <tr><td>Schema diff &amp; migration script</td><td><span class="mark no">✗</span></td><td><span class="mark no">✗</span></td><td class="plan-col"><span class="mark part">◐</span> Nice-to-have tier, after everything else</td></tr>
+          <tr><td>IntelliJ look &amp; feel</td><td><span class="mark no">✗</span></td><td><span class="mark no">✗</span></td><td class="plan-col"><span class="mark yes">✓</span> Grids, consoles, dialogs styled after IntelliJ's New UI</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= PILLARS ================= -->
+  <section>
+    <div class="section-kicker">Feature pillars</div>
+    <h2>The product, mocked up in IntelliJ's design language</h2>
+    <p class="section-lede">
+      Mock-ups mirror the real IntelliJ surfaces detail for detail:
+      the Database tool window's toolbar and tree, the Data Sources and Drivers dialog, the grid's WHERE / ORDER BY row,
+      the 500-row pager, and the Tx menu. The slim VS Code activity bar is the one piece of shell that stays.
+      Chips are phase-tagged: <span class="chip p1" style="font-size:11px">Phase 1</span> <span class="chip p2" style="font-size:11px">Phase 2</span> <span class="chip p3" style="font-size:11px">Phase 3</span> <span class="chip later" style="font-size:11px">Nice to have</span>
+    </p>
+
+    <!-- Pillar 1 -->
+    <div class="pillar">
+      <div class="pillar-head"><span class="pillar-num">01</span><h3>Connections &amp; Database Explorer</h3><span class="badge blue">Phase 1</span></div>
+      <p class="desc">The Database tool window, rebuilt: data sources with introspection badges ("1 of 3"), grouped object trees (tables, columns with PK/FK keys, indexes, object types, Database Objects), plus the toolbar you know (new source, sync, jump to console, DDL, visibility filter). The Data Sources and Drivers dialog carries over too: General/Options/SSH-SSL tabs, per-source color, read-only, transaction control, keep-alive, auto-sync introspection.</p>
+      <div class="chiprow">
+        <span class="chip p1">PostgreSQL · MySQL/MariaDB · SQLite</span>
+        <span class="chip p1">SSH tunnel &amp; SSL</span>
+        <span class="chip p1">Auth: user/password · pgpass · no auth</span>
+        <span class="chip p1">Env colors + read-only mode</span>
+        <span class="chip p1">Auto-sync / manual introspection</span>
+        <span class="chip p2">Keep-alive · auto-disconnect · startup script</span>
+        <span class="chip p2">Quick documentation on hover</span>
+        <span class="chip p2">Go to object (⌘⇧O)</span>
+        <span class="chip p2">Per-source console files (scratches)</span>
+        <span class="chip p3">Favorites / pinned objects</span>
+        <span class="chip p3">DDL data source (schema from .sql files)</span>
+      </div>
+
+      <div class="mockup-scroll">
+      <div class="ij">
+        <div class="ij-title"><div class="dots"><i></i><i></i><i></i></div><div class="t">orders_console.sql - acme-api</div></div>
+        <div class="ij-cols">
+          <div class="vsc-activity">
+            <div class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 3H6v18h12V8l-5-5z" /><path d="M13 3v5h5" /></svg></div>
+            <div class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10.5" cy="10.5" r="6" /><path d="M15.5 15.5 20 20" /></svg></div>
+            <div class="ai on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="8.4" rx="8" ry="2.6" /><path d="M4 8.4 v3.2 q2 2.4 4 0 t4 0 t4 0 t4 0 V8.4" /><path d="M8.6 13.4 V17 C8.6 19 7 19.4 7 20.6 q0 .9 .9 .9 h8.2 q.9 0 .9 -.9 C17 19.4 15.4 19 15.4 17 V13.4" /><path d="M8.6 15.2 c0 1.1 1.5 1.9 3.4 1.9 s3.4 -.8 3.4 -1.9 M8.6 17.4 c0 1.1 1.5 1.9 3.4 1.9 s3.4 -.8 3.4 -1.9" /></svg></div>
+          </div>
+          <div class="ij-tool">
+            <div class="ij-tool-head"><span class="name">Database</span><span class="icons"><svg class="hicon"><use href="#t-focus-2" /></svg><svg class="hicon"><use href="#t-arrows-sort" /></svg><svg class="hicon"><use href="#t-x" /></svg><svg class="hicon"><use href="#t-dots-vertical" /></svg><svg class="hicon"><use href="#t-minus" /></svg></span></div>
+            <div class="ij-tool-bar"><svg class="gt-svg"><use href="#t-plus" /></svg><svg class="gt-svg"><use href="#t-settings" /></svg><span class="tbsep"></span><svg class="gt-svg"><use href="#t-refresh" /></svg><span class="tbsep"></span><svg class="gt-svg"><use href="#t-terminal-2" /></svg><svg class="gt-svg"><use href="#t-table" /></svg><span class="ddl">DDL</span><svg class="gt-svg"><use href="#t-external-link" /></svg><span class="tbsep"></span><svg class="gt-svg"><use href="#t-eye" /></svg></div>
+            <div class="tree">
+              <div class="trow"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><span class="envdot" style="background:#57965c"></span><span class="emoji-ic">🐘</span><span>acme-dev</span><span class="cntchip">1 of 2</span></div>
+              <div class="trow" style="padding-left:16px"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><svg class="ic" style="color:#56a8f5"><use href="#t-database" /></svg><span>acme</span><span class="cntchip">1 of 3</span></div>
+              <div class="trow" style="padding-left:32px"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><svg class="ic" style="color:#9da0a8"><use href="#t-sitemap" /></svg><span>public</span></div>
+              <div class="trow" style="padding-left:48px"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><svg class="ic" style="color:#548af7"><use href="#t-folder" /></svg><span>tables</span><span class="cnt">14</span></div>
+              <div class="trow" style="padding-left:64px"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><svg class="ic" style="color:#6a9fe0"><use href="#t-table" /></svg><span>customers</span></div>
+              <div class="trow sel" style="padding-left:64px"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><svg class="ic" style="color:#6a9fe0"><use href="#t-table" /></svg><span>orders</span></div>
+              <div class="trow" style="padding-left:80px"><svg class="ic" style="color:#d5b778"><use href="#t-key" /></svg><span>id</span><span class="tmeta">bigint · PK</span></div>
+              <div class="trow" style="padding-left:80px"><svg class="ic" style="color:#56a8f5"><use href="#t-key" /></svg><span>customer_id</span><span class="tmeta">bigint · FK → customers</span></div>
+              <div class="trow" style="padding-left:80px"><svg class="ic" style="color:#82858c"><use href="#t-table-column" /></svg><span>status</span><span class="tmeta">order_status</span></div>
+              <div class="trow" style="padding-left:80px"><svg class="ic" style="color:#82858c"><use href="#t-table-column" /></svg><span>total</span><span class="tmeta">numeric(10,2)</span></div>
+              <div class="trow" style="padding-left:80px"><svg class="ic" style="color:#b189f5"><use href="#t-arrows-sort" /></svg><span>idx_orders_status</span></div>
+              <div class="trow" style="padding-left:64px"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><svg class="ic" style="color:#6a9fe0"><use href="#t-table" /></svg><span>order_items</span></div>
+              <div class="trow" style="padding-left:48px"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><svg class="ic" style="color:#548af7"><use href="#t-folder" /></svg><span>object types</span><span class="cnt">2</span></div>
+              <div class="trow" style="padding-left:64px"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><svg class="ic" style="color:#b189f5"><use href="#t-circle-letter-e" /></svg><span>order_status</span></div>
+              <div class="trow" style="padding-left:64px"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><svg class="ic" style="color:#b189f5"><use href="#t-circle-letter-e" /></svg><span>sync_type</span></div>
+              <div class="trow" style="padding-left:48px"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><svg class="ic" style="color:#548af7"><use href="#t-folder" /></svg><span>virtual views</span><span class="cnt">1</span></div>
+              <div class="trow" style="padding-left:32px"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><svg class="ic" style="color:#9da0a8"><use href="#t-database" /></svg><span>Database Objects</span></div>
+              <div class="trow"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><span class="envdot" style="background:#d6ae58"></span><span class="emoji-ic">🐘</span><span>acme-staging</span></div>
+              <div class="trow"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><span class="envdot" style="background:#f75464"></span><span class="emoji-ic">🐘</span><span>acme-prod</span><span class="tmeta">read-only 🔒</span></div>
+              <div class="trow"><svg class="tw-ic"><use href="#t-chevron-right" /></svg><span class="emoji-ic">🐬</span><span>analytics</span><span class="tmeta">MySQL</span></div>
+            </div>
+          </div>
+          <div class="ij-main">
+            <div class="ij-tabs">
+              <div class="ijtab on"><span>🐘 console [acme]</span></div>
+              <div class="ijtab"><span>⊞ orders [acme]</span><span class="x">×</span></div>
+            </div>
+            <div class="ij-crumbs">acme-dev ▸ acme ▸ public ▸ <b style="color:#dfe1e5">orders</b> - 14 columns · ~120k rows · owner: api</div>
+            <div class="code">
+              <div class="cl"><span class="ln">1</span><span><span class="c">-- console attached to acme-dev · public</span></span></div>
+              <div class="cl"><span class="ln">2</span><span><span class="k">SELECT</span> <span class="v">o</span>.<span class="colref">id</span>, <span class="v">c</span>.<span class="colref">email</span>, <span class="v">o</span>.<span class="colref">total</span></span></div>
+              <div class="cl"><span class="ln">3</span><span><span class="k">FROM</span> <span class="ty">orders</span> <span class="v">o</span></span></div>
+              <div class="cl hl"><span class="ln">4</span><span><span class="k">JOIN</span> <span class="ty">customers</span> <span class="v">c</span> <span class="k">ON</span> <span class="v">c</span>.<span class="colref">id</span> <span class="op">=</span> <span class="v">o</span>.<span class="colref">customer_id</span></span></div>
+              <div class="cl"><span class="ln">5</span><span><span class="k">WHERE</span> <span class="v">o</span>.<span class="colref">status</span> <span class="op">=</span> <span class="s">'shipped'</span>;</span></div>
+            </div>
+            <div class="ij-status">
+              <span>acme-dev · public</span><span>Tx: Auto</span>
+              <div class="right"><span>5 rows in 42 ms</span><span>PostgreSQL 16.2</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <div class="mockup-scroll">
+      <div class="ij" style="min-width:860px;">
+        <div class="ij-title"><div class="dots"><i></i><i></i><i></i></div><div class="t">Data Sources and Drivers</div></div>
+        <div class="ij-cols">
+          <div class="ds-left">
+            <div class="hd">Data Sources</div>
+            <div class="tb"><svg class="gt-svg"><use href="#t-plus" /></svg><svg class="gt-svg"><use href="#t-minus" /></svg><svg class="gt-svg"><use href="#t-copy" /></svg><svg class="gt-svg"><use href="#t-settings" /></svg><svg class="gt-svg"><use href="#t-external-link" /></svg></div>
+            <div class="grp">Global Data Sources</div>
+            <div class="it"><span class="emoji-ic">🐘</span><span>beast (localhost)</span></div>
+            <div class="grp">Project Data Sources</div>
+            <div class="it sel"><span class="emoji-ic">🐘</span><span>acme-dev</span></div>
+            <div class="it"><span class="emoji-ic">🐘</span><span>acme-staging</span></div>
+            <div class="it"><span class="emoji-ic">🐘</span><span>acme-prod</span></div>
+            <div class="grp" style="margin-top:14px;">Problems <span class="cntchip">1</span></div>
+          </div>
+          <div style="flex:1; min-width:0; padding: 12px 18px 16px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="color:#bfc2c9; font-size:12.5px;">Name:</span>
+              <span class="fin" style="flex:1"><span>acme-dev</span><span class="cend">Color ⌄</span></span>
+              <span style="color:#56a8f5; font-size:12.5px;">Add comment</span>
+            </div>
+            <div class="dstabs">
+              <span class="dstab on">General</span><span class="dstab">Options</span><span class="dstab">SSH/SSL</span><span class="dstab">Schemas</span><span class="dstab">Advanced</span>
+              <span class="link">Save as Template</span>
+            </div>
+            <div class="frm">
+              <span class="lbl">Driver:</span><span class="fin"><span class="emoji-ic">🐘</span> PostgreSQL <span class="cend">⌄</span></span>
+              <span class="lbl">Connection type:</span><span><span class="seg"><span class="on">default</span><span>URL only</span></span></span>
+              <span class="lbl">Host:</span>
+              <span style="display:flex; gap:12px; align-items:center;"><span class="fin" style="flex:1">localhost</span><span style="color:#bfc2c9">Port:</span><span class="fin" style="width:90px">5432</span></span>
+              <span class="lbl">Authentication:</span><span class="fin">User &amp; Password <span class="cend">⌄</span></span>
+              <span class="lbl">User:</span><span class="fin">api</span>
+              <span class="lbl">Password:</span>
+              <span style="display:flex; gap:12px; align-items:center;"><span class="fin" style="flex:1; color:#82858c">&lt;hidden&gt;</span><span style="color:#bfc2c9">Save:</span><span class="fin" style="width:120px">Forever <span class="cend">⌄</span></span></span>
+              <span class="lbl">Database:</span><span class="fin">acme <span class="cend">⌄</span></span>
+              <span class="lbl">URL:</span><span class="fin" style="font-family:var(--mono); font-size:11.5px;">postgresql://localhost:5432/acme</span>
+            </div>
+            <div class="ds-foot">
+              <span class="test">Test Connection</span><span class="ver">PostgreSQL 16.2</span>
+              <span style="margin-left:auto; display:flex; gap:8px;"><span class="btn-ij">Cancel</span><span class="btn-ij">Apply</span><span class="btn-ij primary">OK</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <p class="mock-caption">Mock-ups 1a/1b: the Database tool window (toolbar with DDL and visibility filter, introspection count chips, grouped tree with vendor icons, gold PK / blue FK keys, purple enums) and the Data Sources and Drivers dialog, both matched to the real thing. The Options tab carries read-only, transaction control, keep-alive, session control, and auto-sync introspection.
+      On icons: JetBrains' platform icon set ships in intellij-community under Apache 2.0, so the genuine IntelliJ icons are reusable for most tree nodes; DatabaseTools-plugin-specific icons are Ultimate-only, and an MIT pack fills those gaps. These mock-ups use Tabler (MIT).</p>
+    </div>
+
+    <!-- Pillar 2 -->
+    <div class="pillar">
+      <div class="pillar-head"><span class="pillar-num">02</span><h3>Query Console with SQL intelligence</h3><span class="badge blue">Phase 1</span><span class="badge amber">Deep assistance in Phase 2</span></div>
+      <p class="desc">Consoles bound to a data source and schema, with completion driven by the live schema: table/column completion, JOIN conditions inferred from foreign keys, inspections that flag unresolved identifiers, and rename refactoring across scripts. The bottom tool window is interactive below: <b style="color:var(--ink)">click Services, History, and Output</b> to see each view.</p>
+      <div class="chiprow">
+        <span class="chip p1">Execute statement / selection / file</span>
+        <span class="chip p1">Multiple consoles per source</span>
+        <span class="chip p1">Object completion</span>
+        <span class="chip p2">FK-based JOIN completion</span>
+        <span class="chip p2">Inspections &amp; quick fixes</span>
+        <span class="chip p2">Format SQL</span>
+        <span class="chip p2">Query history</span>
+        <span class="chip p2">Output log of every statement</span>
+        <span class="chip p2">Parameters (:name) with values dialog</span>
+        <span class="chip p2">Tx mode + isolation (Read Committed…)</span>
+        <span class="chip p2">Kill running query</span>
+        <span class="chip p2">Live templates / snippets</span>
+        <span class="chip p3">Rename refactor across scripts</span>
+        <span class="chip p3">Run stored procedure with param dialog</span>
+      </div>
+
+      <div class="mockup-scroll">
+      <div class="ij">
+        <div class="ij-title"><div class="dots"><i></i><i></i><i></i></div><div class="t">console_2.sql - acme-api</div></div>
+        <div class="ij-cols">
+          <div class="ij-main">
+            <div class="ij-tabs">
+              <div class="ijtab"><span>🐘 console [acme]</span></div>
+              <div class="ijtab on"><span>🐘 console_2 [acme]</span><span class="x">×</span></div>
+            </div>
+            <div class="ij-crumbs">acme-dev ▸ public - Tx: <b style="color:#d6ae58">Manual</b> · Read Committed · 1 statement pending commit</div>
+            <div class="code" style="min-height:236px">
+              <div class="cl"><span class="ln">1</span><span><span class="k">SELECT</span> <span class="v">c</span>.<span class="colref">email</span>, <span class="f">count</span>(<span class="op">*</span>) <span class="k">AS</span> <span class="v">order_count</span></span></div>
+              <div class="cl"><span class="ln">2</span><span><span class="k">FROM</span> <span class="ty">customers</span> <span class="v">c</span></span></div>
+              <div class="cl hl"><span class="ln">3</span><span><span class="k">JOIN</span> <span class="ty">orders</span> <span class="v">o</span> <span class="k">ON</span> o.cus</span></div>
+              <div class="cl"><span class="ln">4</span><span><span class="k">GROUP BY</span> <span class="v">c</span>.<span class="colref">email</span></span></div>
+              <div class="cl"><span class="ln">5</span><span><span class="k">ORDER BY</span> <span class="v err-squiggle">order_cnt</span> <span class="k">DESC</span>; <span class="c">-- ⚠ unresolved column 'order_cnt'</span></span></div>
+              <div class="suggest" style="left:250px; top:78px;">
+                <div class="sug on"><svg class="ic" style="color:#56a8f5"><use href="#t-key" /></svg><span><b>cus</b>tomer_id = c.id</span><span class="right">FK join · bigint</span></div>
+                <div class="sug"><svg class="ic" style="color:#82858c"><use href="#t-table-column" /></svg><span><b>cus</b>tomer_id</span><span class="right">bigint</span></div>
+                <div class="sug"><svg class="ic" style="color:#6a9fe0"><use href="#t-table" /></svg><span><b>cus</b>tomers</span><span class="right">public</span></div>
+                <div class="sug-foot">⇥ complete JOIN condition from foreign key</div>
+              </div>
+            </div>
+            <div class="ij-paneltabs">
+              <span class="ptab on" data-pane="services">Services</span>
+              <span class="ptab" data-pane="history">History</span>
+              <span class="ptab" data-pane="output">Output</span>
+              <span class="hint">← click the tabs</span>
+            </div>
+
+            <div class="pane" id="pane-services">
+              <div style="display:flex; align-items:stretch; min-height:170px;">
+                <div style="width:212px; flex:none; background:#2b2d30; border-right:1px solid #393b40;">
+                  <div style="padding:7px 12px 4px; font-weight:700;">Services</div>
+                  <div class="tree" style="padding-top:0">
+                    <div class="trow"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><svg class="ic" style="color:#548af7"><use href="#t-folder" /></svg><span>Database</span></div>
+                    <div class="trow" style="padding-left:16px"><svg class="tw-ic"><use href="#t-chevron-down" /></svg><span class="emoji-ic">🐘</span><span>acme-dev</span></div>
+                    <div class="trow sel" style="padding-left:32px"><svg class="gt-svg" style="width:13px;height:13px"><use href="#t-terminal-2" /></svg><span>console_2</span><span class="tmeta">42 ms</span></div>
+                    <div class="trow" style="padding-left:32px"><svg class="gt-svg" style="width:13px;height:13px"><use href="#t-terminal-2" /></svg><span>console</span><span class="tmeta">idle</span></div>
+                  </div>
+                </div>
+                <div style="flex:1; min-width:0;">
+                  <div class="ij-tabs" style="border-bottom:1px solid #393b40;">
+                    <div class="ijtab"><svg class="gt-svg" style="width:13px;height:13px"><use href="#t-terminal-2" /></svg><span>Output</span></div>
+                    <div class="ijtab on"><svg class="gt-svg" style="width:13px;height:13px;color:#6a9fe0"><use href="#t-table" /></svg><span>acme.public · result</span><span class="x">×</span></div>
+                    <span style="margin-left:8px; color:#9da0a8; font-size:11.5px;">Tx: Manual</span>
+                  </div>
+                  <table class="dgrid">
+                    <thead><tr><th class="gut"></th><th>email <svg class="hic-f"><use href="#t-filter" /></svg></th><th>order_count <svg class="hic-f"><use href="#t-filter" /></svg><span class="sort">▼ 1</span></th></tr></thead>
+                    <tbody>
+                      <tr><td class="gut">1</td><td>ada@example.com</td><td class="num">14</td></tr>
+                      <tr><td class="gut">2</td><td>grace@example.com</td><td class="num">11</td></tr>
+                      <tr><td class="gut">3</td><td>edsger@example.com</td><td class="num">9</td></tr>
+                      <tr><td class="gut">4</td><td>barbara@example.com</td><td class="num">7</td></tr>
+                      <tr><td class="gut">5</td><td>alan@example.com</td><td class="num">3</td></tr>
+                    </tbody>
+                  </table>
+                  <div style="padding:6px 12px;"><span class="pager">⇤ ‹ <span>1-5 ⌄</span> <span class="pg">of 5</span> › ⇥</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="pane" id="pane-history" hidden>
+              <div class="grid-toolbar" style="border-top:0">
+                <span class="dim small">Query history</span><span class="gt-sep"></span>
+                <span class="gt-input"><svg class="gt-svg" style="width:12px;height:12px"><use href="#t-search" /></svg> orders</span>
+              </div>
+              <table class="dgrid">
+                <tbody>
+                  <tr><td class="gut">10:42</td><td>SELECT o.id, c.email, o.total FROM orders o JOIN customers c …</td><td class="num">5 rows</td><td class="num">42 ms</td></tr>
+                  <tr><td class="gut">10:38</td><td>UPDATE orders SET status = 'shipped' WHERE id = 1042</td><td class="num">1 row</td><td class="num">8 ms</td></tr>
+                  <tr><td class="gut">10:31</td><td>SELECT * FROM order_items WHERE order_id = 1042</td><td class="num">3 rows</td><td class="num">12 ms</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="pane" id="pane-output" hidden>
+              <div class="code" style="padding:8px 16px 12px; font-size:12px;">
+                <div class="cl"><span><span style="color:#56a8f5">acme.public&gt;</span> <span class="k">SELECT</span> c.email, <span class="f">count</span>(*) <span class="k">AS</span> order_count <span class="k">FROM</span> customers c <span class="k">JOIN</span> orders o …</span></div>
+                <div class="cl"><span><span class="c">[2026-08-31 10:42:18] 5 rows retrieved starting from 1 in 42 ms (execution: 12 ms, fetching: 30 ms)</span></span></div>
+                <div class="cl"><span> </span></div>
+                <div class="cl"><span><span style="color:#56a8f5">acme.public&gt;</span> <span class="k">UPDATE</span> orders <span class="k">SET</span> status = <span class="s">'shipped'</span> <span class="k">WHERE</span> id = <span class="n">1042</span></span></div>
+                <div class="cl"><span><span class="c">[2026-08-31 10:38:02] 1 row affected in 8 ms - pending commit (Tx: Manual)</span></span></div>
+                <div class="cl"><span> </span></div>
+                <div class="cl"><span><span style="color:#56a8f5">acme.public&gt;</span> <span class="k">SELECT</span> * <span class="k">FROM</span> order_items <span class="k">WHERE</span> order_id = <span class="n">1042</span></span></div>
+                <div class="cl"><span><span class="c">[2026-08-31 10:31:47] 3 rows retrieved starting from 1 in 12 ms (execution: 4 ms, fetching: 8 ms)</span></span></div>
+              </div>
+            </div>
+
+            <div class="ij-status">
+              <span>acme-dev · public</span>
+              <span class="warn">Tx: Manual - Commit ⌘⏎ · Rollback</span>
+              <div class="right"><span>Ln 3, Col 34</span><span>SQL · Postgres dialect</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <p class="mock-caption">Mock-up 2: IntelliJ-style completion (matched prefix in gold, FK JOIN condition first) and a working bottom tool window. <b>Services</b> shows the service tree on the left and the Output and result tabs on the right, with the query's result grid and pager; <b>History</b> is the searchable query log; <b>Output</b> is the per-statement audit log in IntelliJ's exact format.</p>
+    </div>
+
+    <!-- Pillar 3 -->
+    <div class="pillar">
+      <div class="pillar-head"><span class="pillar-num">03</span><h3>Data Editor - the DataGrip grid</h3><span class="badge blue">Phase 1 (read-only)</span><span class="badge amber">Editing in Phase 2</span></div>
+      <p class="desc">The grid, faithfully: row-number gutter, WHERE and ORDER BY fields above the data, header funnels for per-column filtering, and the 500-row pager (⟨ 1-500 of 501+ ⟩; the total runs COUNT(*) only when clicked). Edits accumulate as a local change set (updated cells blue, inserted rows green, deleted rows struck through), submitted as reviewed DML. Transpose, Tree and Text views, the value editor, and the aggregate view come along too.</p>
+      <div class="chiprow">
+        <span class="chip p1">500-row pages by default, page-size menu (10 → All)</span>
+        <span class="chip p1">Count on demand (COUNT(*) when clicked)</span>
+        <span class="chip p2">Change set + DML preview + submit/revert</span>
+        <span class="chip p2">WHERE / ORDER BY fields</span>
+        <span class="chip p2">Header funnels (per-column filter)</span>
+        <span class="chip p2">FK navigation &amp; related rows</span>
+        <span class="chip p2">Add / delete / clone rows</span>
+        <span class="chip p2">Transpose · Table / Tree / Text views</span>
+        <span class="chip p2">Value editor (⇧⏎)</span>
+        <span class="chip p2">View query · copy query to console</span>
+        <span class="chip p3">Aggregate view (sum · avg · count of selection)</span>
+        <span class="chip p3">Compare two result sets</span>
+        <span class="chip p3">Full-text search in table data</span>
+      </div>
+
+      <div class="mockup-scroll">
+      <div class="ij">
+        <div class="ij-title"><div class="dots"><i></i><i></i><i></i></div><div class="t">orders [acme] - data editor</div></div>
+        <div class="ij-cols">
+          <div class="ij-main">
+            <div class="ij-tabs"><div class="ijtab"><span>🐘 console [acme]</span></div><div class="ijtab on"><span>⊞ orders [acme]</span><span class="x">×</span></div></div>
+            <div class="grid-toolbar">
+              <svg class="gt-svg"><use href="#t-refresh" /></svg><svg class="gt-svg"><use href="#t-clock" /></svg><svg class="gt-svg"><use href="#t-player-stop" /></svg>
+              <span class="gt-sep"></span>
+              <svg class="gt-svg"><use href="#t-plus" /></svg><svg class="gt-svg"><use href="#t-minus" /></svg><svg class="gt-svg"><use href="#t-arrow-back-up" /></svg>
+              <span class="gt-btn primary"><svg class="gt-svg" style="width:13px;height:13px;color:#fff"><use href="#t-arrow-up" /></svg> Submit 4</span>
+              <span class="gt-sep"></span>
+              <span class="gt-btn">Tx: Auto ⌄</span><span class="ddl" style="font-size:10.5px; font-weight:700; border:1px solid #55575c; border-radius:3px; padding:0 3px; color:#9da0a8;">DDL</span>
+              <span style="margin-left:auto; display:inline-flex; gap:10px; align-items:center;">
+                <span class="gt-btn">JSON ⌄</span><svg class="gt-svg"><use href="#t-download" /></svg><svg class="gt-svg"><use href="#t-upload" /></svg><svg class="gt-svg"><use href="#t-eye" /></svg><svg class="gt-svg"><use href="#t-settings" /></svg>
+              </span>
+            </div>
+            <div class="grid-toolbar" style="border-top:1px solid #1e1f22; background:#1e1f22;">
+              <span class="gt-input"><svg class="ic" style="width:12px;height:12px;color:#82858c"><use href="#t-filter" /></svg><span class="wm">WHERE</span><span>status = 'shipped'</span></span>
+              <span class="gt-input" style="max-width:260px"><span class="gt-ic" style="font-size:11px">⇅</span><span class="wm">ORDER BY</span><span>created_at DESC</span></span>
+            </div>
+            <table class="dgrid">
+              <thead><tr>
+                <th class="gut"></th>
+                <th><svg class="hkey" style="color:#d5b778"><use href="#t-key" /></svg> id <svg class="hic-f"><use href="#t-filter" /></svg><span class="sort">▲ 1</span></th>
+                <th><svg class="hkey" style="color:#56a8f5"><use href="#t-key" /></svg> customer_id <svg class="hic-f"><use href="#t-filter" /></svg></th>
+                <th>status <svg class="hic-f"><use href="#t-filter" /></svg></th>
+                <th>total <svg class="hic-f"><use href="#t-filter" /></svg></th>
+                <th>note <svg class="hic-f"><use href="#t-filter" /></svg></th>
+                <th>created_at <svg class="hic-f"><use href="#t-filter" /></svg></th>
+              </tr></thead>
+              <tbody>
+                <tr><td class="gut">1</td><td class="num">1042</td><td class="fk">88 ↗</td><td class="edited">delivered</td><td class="num">129.90</td><td class="null">&lt;null&gt;</td><td>2026-08-28 14:02</td></tr>
+                <tr><td class="gut">2</td><td class="num">1041</td><td class="fk">12 ↗</td><td>shipped</td><td class="num edited">84.00</td><td>gift wrap</td><td>2026-08-28 11:47</td></tr>
+                <tr class="del"><td class="gut">3</td><td class="num">1040</td><td>57</td><td>shipped</td><td class="num">312.45</td><td class="null">&lt;null&gt;</td><td>2026-08-27 19:20</td></tr>
+                <tr><td class="gut">4</td><td class="num">1039</td><td class="fk">31 ↗</td><td>shipped</td><td class="num">58.20</td><td class="null">&lt;null&gt;</td><td>2026-08-27 16:05</td></tr>
+                <tr class="ins"><td class="gut">＋</td><td class="num dim">auto</td><td>88</td><td>pending</td><td class="num">0.00</td><td class="null">&lt;null&gt;</td><td class="dim">default</td></tr>
+              </tbody>
+            </table>
+            <div style="display:flex; align-items:flex-start; gap:16px; padding:12px 16px; flex-wrap:wrap;">
+              <span class="pager">⇤ ‹ <span>1-500 ⌄</span> <span class="pg">of <u>501+</u></span> › ⇥ <span class="pg">⋮</span></span>
+              <div class="dlg" style="max-width:560px; flex:1; min-width:320px;">
+                <div class="dlg-title">Submit Changes - 4 statements will run on acme-dev</div>
+                <div class="dlg-body code" style="padding:4px 14px 8px;">
+                  <div class="cl"><span><span class="k">UPDATE</span> <span class="ty">orders</span> <span class="k">SET</span> <span class="colref">status</span> <span class="op">=</span> <span class="s">'delivered'</span> <span class="k">WHERE</span> <span class="colref">id</span> <span class="op">=</span> <span class="n">1042</span>;</span></div>
+                  <div class="cl"><span><span class="k">UPDATE</span> <span class="ty">orders</span> <span class="k">SET</span> <span class="colref">total</span> <span class="op">=</span> <span class="n">84.00</span> <span class="k">WHERE</span> <span class="colref">id</span> <span class="op">=</span> <span class="n">1041</span>;</span></div>
+                  <div class="cl"><span><span class="k">DELETE FROM</span> <span class="ty">orders</span> <span class="k">WHERE</span> <span class="colref">id</span> <span class="op">=</span> <span class="n">1040</span>;</span></div>
+                  <div class="cl"><span><span class="k">INSERT INTO</span> <span class="ty">orders</span> (<span class="colref">customer_id</span>, <span class="colref">status</span>, <span class="colref">total</span>) <span class="k">VALUES</span> (<span class="n">88</span>, <span class="s">'pending'</span>, <span class="n">0.00</span>);</span></div>
+                </div>
+                <div class="dlg-actions"><span class="gt-btn">Copy SQL</span><span class="gt-btn">Cancel</span><span class="gt-btn primary">Submit</span></div>
+              </div>
+            </div>
+            <div class="ij-status"><span>acme-dev · acme · public · orders</span><div class="right"><span>4 pending changes</span><span>500 rows fetched</span></div></div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <p class="mock-caption">Mock-up 3, matched to the real grid: toolbar with Tx/DDL/extractor controls, WHERE + ORDER BY fields with watermark labels, key icons and funnels in headers, the ⟨ 1-500 of 501+ ⟩ pager (page-size menu: 10 / 100 / 250 / 500 default / 1,000 / All / Custom), and the Submit dialog previewing exact DML.</p>
+    </div>
+
+    <!-- Pillar 4 -->
+    <div class="pillar">
+      <div class="pillar-head"><span class="pillar-num">04</span><h3>Import &amp; Export</h3><span class="badge amber">Phase 2</span></div>
+      <p class="desc">The full Data Extractors menu: built-in SQL Inserts / SQL Updates / Where Clause (with skip-computed/generated-columns toggles), the CSV family (CSV, TSV, pipe- and semicolon-separated, configurable formats), scripted extractors (JSON, Markdown, HTML, XML, Pretty, One-row, Python-DataFrame), and a scripts directory for custom ones. Import mirrors the Import Data dialog: map file columns onto a table or create the table from the file.</p>
+      <div class="chiprow">
+        <span class="chip p1">SQL Inserts · SQL Updates · Where Clause</span>
+        <span class="chip p1">CSV · TSV · pipe · semicolon (+ format config)</span>
+        <span class="chip p2">JSON · Markdown · HTML · XML · Python-DataFrame</span>
+        <span class="chip p2">Copy-as with active extractor</span>
+        <span class="chip p2">CSV import wizard with mapping</span>
+        <span class="chip p2">Create table from file</span>
+        <span class="chip p2">Excel via Export Data</span>
+        <span class="chip p3">Custom scripted extractors (scripts directory)</span>
+      </div>
+      <div class="mockup-scroll">
+      <div class="ij" style="min-width:640px; max-width:740px;">
+        <div class="ij-title"><div class="dots"><i></i><i></i><i></i></div><div class="t">Import Data</div></div>
+        <div class="dlg" style="border:0; border-radius:0; box-shadow:none;">
+          <div class="dlg-title">Import "new_customers.csv" into acme-dev ▸ public ▸ customers</div>
+          <div class="dlg-body">
+            <table class="dgrid" style="min-width:0">
+              <thead><tr><th>CSV column</th><th>→</th><th>Table column</th><th>Type</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Email Address</td><td>→</td><td class="edited">email</td><td class="dim">varchar</td><td class="dim">ada@example.com</td></tr>
+                <tr><td>Full Name</td><td>→</td><td class="edited">name</td><td class="dim">varchar</td><td class="dim">Ada Lovelace</td></tr>
+                <tr><td>Signup Date</td><td>→</td><td class="edited">created_at</td><td class="dim">timestamptz</td><td class="dim">2026-08-01</td></tr>
+                <tr><td class="dim">Referral Code</td><td>→</td><td class="null">skip</td><td class="dim">-</td><td class="dim">FRIEND10</td></tr>
+              </tbody>
+            </table>
+            <p class="small dim" style="margin:10px 0 0">First row is header · 2,340 data rows · on error: stop and report ⌄</p>
+          </div>
+          <div class="dlg-actions"><span class="btn-ij">Preview 10 rows</span><span class="btn-ij">Cancel</span><span class="btn-ij primary">Import 2,340 rows</span></div>
+        </div>
+      </div>
+      </div>
+      <p class="mock-caption">Mock-up 4, the Import Data dialog: column mapping, per-column skip, dry-run preview.</p>
+    </div>
+
+    <!-- Pillar 5 -->
+    <div class="pillar">
+      <div class="pillar-head"><span class="pillar-num">05</span><h3>Schema management - DDL &amp; object editors</h3><span class="badge purple">Phase 3</span><span class="badge gray">diff/migration: nice to have</span></div>
+      <p class="desc">Generate DDL for any object, run .sql files against a chosen source, Modify Table / Column / Index dialogs for guided DDL, drop/rename with usage checks, and pg_dump/mysqldump integration. Schema diff and migration-script generation are demoted to the nice-to-have tier; nothing else depends on them.</p>
+      <div class="chiprow">
+        <span class="chip p2">Generate DDL for any object</span>
+        <span class="chip p1">Run .sql files against a chosen source</span>
+        <span class="chip p3">Modify Table / Column / Index dialogs</span>
+        <span class="chip p3">Drop / rename with usage check</span>
+        <span class="chip p3">pg_dump / mysqldump integration</span>
+        <span class="chip later">Schema diff (live ⇄ live, live ⇄ DDL)</span>
+        <span class="chip later">Migration script generation</span>
+      </div>
+      <div class="mockup-scroll">
+      <div class="ij">
+        <div class="ij-title"><div class="dots"><i></i><i></i><i></i></div><div class="t">Schema diff: acme-dev ⇄ acme-prod (nice-to-have preview)</div></div>
+        <div class="ij-cols">
+          <div class="ij-main">
+            <div class="ij-tabs"><div class="ijtab on"><span>⇄ dev → prod [diff]</span><span class="x">×</span></div><div class="ijtab"><span>migration_001.sql</span><span class="x">×</span></div></div>
+            <div class="diffwrap">
+              <div class="diffcol">
+                <div class="diffhead"><span class="envdot" style="background:#57965c"></span><b>acme-dev</b> · public <span class="dim">(source)</span></div>
+                <div class="dl dimline">table customers        · identical</div>
+                <div class="dl mod">table orders           · modified</div>
+                <div class="dl add">table shipments        · only in dev</div>
+                <div class="dl mod">  + column tracking_no  varchar(64)</div>
+                <div class="dl add">  + index idx_orders_created_at</div>
+              </div>
+              <div class="diffcol">
+                <div class="diffhead"><span class="envdot" style="background:#f75464"></span><b>acme-prod</b> · public <span class="dim">(target · read-only)</span></div>
+                <div class="dl dimline">table customers        · identical</div>
+                <div class="dl mod">table orders           · behind by 2 changes</div>
+                <div class="dl del">table shipments        · missing</div>
+                <div class="dl del">  − tracking_no</div>
+                <div class="dl del">  − idx_orders_created_at</div>
+              </div>
+            </div>
+            <div class="grid-toolbar"><span class="gt-btn primary">Generate migration script →</span><span class="gt-btn">Swap sides</span><span class="gt-sep"></span><span class="dim">1 modified · 1 added · 0 removed</span></div>
+            <div class="ij-status"><span>⇄ comparing 2 schemas</span><div class="right"><span>nice-to-have tier - built last, if at all</span></div></div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <p class="mock-caption">Mock-up 5: schema diff kept as a compact preview of the nice-to-have tier; it ships only after everything above it.</p>
+    </div>
+
+    <!-- Pillar 6 -->
+    <div class="pillar">
+      <div class="pillar-head"><span class="pillar-num">06</span><h3>Explain plan, search &amp; the long tail</h3><span class="badge purple">Phase 3</span></div>
+      <p class="desc">The finishing layer of IntelliJ feel:</p>
+      <div class="chiprow">
+        <span class="chip p3">Visual explain plan: tree with row estimates, cost hotspots, EXPLAIN ANALYZE</span>
+        <span class="chip p2">Go to database object: fuzzy search across all sources</span>
+        <span class="chip p3">Full-text search across table data</span>
+        <span class="chip p2">View DDL of any object</span>
+        <span class="chip p1">Run .sql files from the file explorer</span>
+        <span class="chip p3">Sessions / activity viewer with kill</span>
+        <span class="chip p3">Find usages of a table or column across scripts</span>
+        <span class="chip p2">Jump: grid row → console → definition and back</span>
+      </div>
+    </div>
+
+    <!-- Pillar 7 -->
+    <div class="pillar">
+      <div class="pillar-head"><span class="pillar-num">07</span><h3>ER Diagrams</h3><span class="badge gray">Nice to have - after everything else</span></div>
+      <p class="desc">Deprioritized: diagrams from live schema with PK/FK markers and SVG/PNG export. Nothing else in the plan depends on this, so it sits at the very end of the queue and only gets built if it still feels worth it then.</p>
+      <div class="chiprow">
+        <span class="chip later">ER diagram from schema / table selection</span>
+        <span class="chip later">PK / FK markers, crow's-foot edges</span>
+        <span class="chip later">Export SVG / PNG</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PARITY CHECKLIST ================= -->
+  <section>
+    <div class="section-kicker">Parity checklist</div>
+    <h2>The full feature inventory</h2>
+    <p class="section-lede">Everything Database Tools does that this port intends to cover, grouped by area and tagged with its phase. Annotate anything missing that you use in IntelliJ and it gets added.</p>
+    <div class="legend">
+      <span><span class="chip p1" style="font-size:11px">Phase 1 · MVP</span></span>
+      <span><span class="chip p2" style="font-size:11px">Phase 2 · Daily driver</span></span>
+      <span><span class="chip p3" style="font-size:11px">Phase 3 · Parity</span></span>
+      <span><span class="chip later" style="font-size:11px">Nice to have</span></span>
+    </div>
+    <div class="paritywrap">
+      <table class="parity">
+        <thead><tr><th>Area</th><th>Features</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="area">Connections</td>
+            <td><div class="fchips">
+              <span class="chip p1">Data source manager (Global + Project)</span><span class="chip p1">Driver auto-download</span><span class="chip p1">SSH tunnel</span><span class="chip p1">SSL</span><span class="chip p1">Auth: user/password · pgpass · no auth</span><span class="chip p1">Read-only flag</span><span class="chip p1">Env color labels</span><span class="chip p1">Schema selection for introspection</span><span class="chip p1">Auto-sync / manual re-introspect</span><span class="chip p2">Keep-alive &amp; auto-disconnect</span><span class="chip p2">Startup script</span><span class="chip p2">Per-source console files</span><span class="chip p3">DDL data source</span>
+            </div></td>
+          </tr>
+          <tr>
+            <td class="area">Explorer &amp; navigation</td>
+            <td><div class="fchips">
+              <span class="chip p1">Full object tree (tables · columns · PK/FK · indexes · views · sequences · routines · object types)</span><span class="chip p1">Introspection count badges</span><span class="chip p1">Tree filter &amp; visibility options</span><span class="chip p2">Quick documentation</span><span class="chip p2">Go to object (⌘⇧O)</span><span class="chip p2">View DDL</span><span class="chip p3">Find usages</span><span class="chip p3">Drop / rename with usage check</span><span class="chip p3">Favorites / pins</span>
+            </div></td>
+          </tr>
+          <tr>
+            <td class="area">Console &amp; assistance</td>
+            <td><div class="fchips">
+              <span class="chip p1">Run statement / selection / file</span><span class="chip p1">Multiple consoles</span><span class="chip p1">Object completion</span><span class="chip p1">Syntax highlighting per dialect</span><span class="chip p2">Context-aware completion</span><span class="chip p2">FK JOIN completion</span><span class="chip p2">Inspections &amp; quick fixes</span><span class="chip p2">Format SQL</span><span class="chip p2">Query history</span><span class="chip p2">Output / audit log</span><span class="chip p2">Parameters with values dialog</span><span class="chip p2">Tx auto/manual + isolation levels</span><span class="chip p2">Kill running query</span><span class="chip p2">Live templates</span><span class="chip p3">Rename refactor</span><span class="chip p3">Run procedure with params</span>
+            </div></td>
+          </tr>
+          <tr>
+            <td class="area">Data editor</td>
+            <td><div class="fchips">
+              <span class="chip p1">500-row pages + page-size menu</span><span class="chip p1">Count on demand</span><span class="chip p1">Virtualized rendering</span><span class="chip p1">Sort via ORDER BY</span><span class="chip p2">Change set + DML preview</span><span class="chip p2">Submit / revert</span><span class="chip p2">Add / delete / clone rows</span><span class="chip p2">WHERE / ORDER BY fields</span><span class="chip p2">Per-column header filters</span><span class="chip p2">FK navigation + related rows</span><span class="chip p2">Value editor (⇧⏎)</span><span class="chip p2">Transpose · Table / Tree / Text views</span><span class="chip p2">Hide / reorder columns (⌘F12 list)</span><span class="chip p2">View query · copy to console</span><span class="chip p3">Aggregate view</span><span class="chip p3">Compare result sets</span><span class="chip p3">Full-text search in data</span>
+            </div></td>
+          </tr>
+          <tr>
+            <td class="area">Import / export</td>
+            <td><div class="fchips">
+              <span class="chip p1">SQL Inserts / Updates / Where Clause extractors</span><span class="chip p1">CSV · TSV · pipe · semicolon + format config</span><span class="chip p2">JSON · Markdown · HTML · XML · Pretty · One-row · Python-DataFrame</span><span class="chip p2">Copy-as with active extractor</span><span class="chip p2">CSV import wizard</span><span class="chip p2">Create table from file</span><span class="chip p2">Excel via Export Data</span><span class="chip p3">Custom scripted extractors</span>
+            </div></td>
+          </tr>
+          <tr>
+            <td class="area">Schema management</td>
+            <td><div class="fchips">
+              <span class="chip p1">Run .sql against a source</span><span class="chip p2">Generate DDL</span><span class="chip p3">Modify Table / Column / Index dialogs</span><span class="chip p3">Dump &amp; restore integration</span><span class="chip later">Schema diff</span><span class="chip later">Migration script generation</span>
+            </div></td>
+          </tr>
+          <tr>
+            <td class="area">Insight</td>
+            <td><div class="fchips">
+              <span class="chip p3">Visual explain plan</span><span class="chip p3">EXPLAIN ANALYZE</span><span class="chip p3">Sessions / activity viewer</span><span class="chip later">ER diagrams + export</span>
+            </div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mock-caption">Deliberately excluded: Oracle, MongoDB and other drivers (until actually needed), and IntelliJ's SQL-injected-in-code-strings analysis.</p>
+  </section>
+
+  <!-- ================= ROADMAP ================= -->
+  <section>
+    <div class="section-kicker">Roadmap</div>
+    <h2>Three phases plus a nice-to-have shelf</h2>
+    <p class="section-lede">Each phase ends somewhere worth living in; important for a solo project, where "80% of everything" means shipping nothing.</p>
+    <div class="phases">
+      <div class="phase mvp">
+        <div class="phase-tag" style="color:#6f9dff">Phase 1 · MVP</div>
+        <h3>Connect, explore, query</h3>
+        <ul>
+          <li>Connection manager: PostgreSQL, MySQL/MariaDB, SQLite; SSH tunnel &amp; SSL; pgpass</li>
+          <li>Database Explorer tree, full object depth, env colors + read-only mode</li>
+          <li>Query console: run statement/selection/file, object completion</li>
+          <li>Read-only grid: 500-row pages, count on demand, sorting</li>
+          <li>Core extractors (SQL inserts/updates, CSV family); run .sql files</li>
+        </ul>
+        <div class="goalline">Exit test: a normal day of database work happens in VS Code; the JetBrains icon stays in the dock, unclicked.</div>
+      </div>
+      <div class="phase">
+        <div class="phase-tag" style="color:var(--amber)">Phase 2 · Daily driver</div>
+        <h3>Edit data, trust the SQL</h3>
+        <ul>
+          <li>Editable grid: change set, DML preview, submit/revert, add/delete/clone rows</li>
+          <li>WHERE/ORDER BY fields, header filters, FK navigation, value editor, transpose</li>
+          <li>Deep completion, FK JOIN inference, inspections, format, live templates</li>
+          <li>Tx modes + isolation, query history, output log, parameters, kill query</li>
+          <li>Import wizard; scripted extractors; go-to-object; view DDL</li>
+        </ul>
+        <div class="goalline">Exit test: IntelliJ muscle memory mostly works; nothing used weekly is missing.</div>
+      </div>
+      <div class="phase">
+        <div class="phase-tag" style="color:var(--purple)">Phase 3 · Parity</div>
+        <h3>The IntelliJ feel, completed</h3>
+        <ul>
+          <li>Object editor dialogs (Modify Table / Column / Index); dump &amp; restore</li>
+          <li>Visual explain plan + EXPLAIN ANALYZE; sessions viewer</li>
+          <li>Full-text search in data; find usages; rename refactor; favorites</li>
+          <li>Aggregate view; compare result sets; custom extractors</li>
+        </ul>
+        <div class="goalline">Exit test: nothing left that makes you reinstall IntelliJ.</div>
+      </div>
+    </div>
+    <div class="phase laterband">
+      <div class="phase-tag" style="color:var(--ink-faint)">Later · Nice to have: after everything else, nothing depends on these</div>
+      <ul style="margin-top:4px">
+        <li>ER diagrams with SVG/PNG export</li>
+        <li>Schema diff (live ⇄ live, live ⇄ DDL) + migration script generation</li>
+        <li>Additional drivers, only if a real need appears</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= NAMING ================= -->
+  <section>
+    <div class="section-kicker">Naming · settled</div>
+    <h2>Tablecloth <span class="badge green">chosen</span></h2>
+    <p class="section-lede" style="margin-bottom:10px">It goes on tables: a domestic object with a deadpan double meaning. Runner-ups (Ledger, Rolodex, Catalog) retire with honor.</p>
+    <p class="mock-caption">Marketplace line, for later: "Tablecloth: IntelliJ-grade database tools, laid over VS Code."</p>
+  </section>
+
+  <!-- ================= RISKS ================= -->
+  <section>
+    <div class="section-kicker">Risks</div>
+    <h2>What could sink it</h2>
+    <div class="riskgrid">
+      <div class="risk">
+        <h3><span class="badge red">High</span> A clean-room rebuild, by necessity</h3>
+        <p>Database Tools has no open-source counterpart to build on; it's proprietary and Ultimate-only. Tablecloth is therefore a clean-room rebuild: it uses none of JetBrains' code, and the running product serves purely as the behavioral spec.</p>
+        <p class="mit"><b>Mitigation:</b> replicate the UX from the product itself (its documentation and observed behavior - this plan), and build internals on open components: libpg_query (Postgres' actual parser as a library), ANTLR SQL grammars, existing SQL language servers.</p>
+      </div>
+      <div class="risk">
+        <h3><span class="badge red">High</span> SQL intelligence is the hardest rebuild</h3>
+        <p>Completion, JOIN inference, and inspections must be rebuilt from scratch; this is years of JetBrains work and the part most likely to feel shallow.</p>
+        <p class="mit"><b>Mitigation:</b> Phase 1 ships objects-in-schema completion only; deepen in Phase 2 on top of the open parsers rather than writing one from scratch.</p>
+      </div>
+      <div class="risk">
+        <h3><span class="badge amber">Medium</span> One-person scope</h3>
+        <p>Database Tools is a full team's decade of work; chasing all of it at once means shipping none of it. The goal of "works for me" keeps the chase bounded.</p>
+        <p class="mit"><b>Mitigation:</b> build only checklist items actually used; each phase is a usable end-state; the nice-to-have shelf exists precisely so low-priority features can't block real ones.</p>
+      </div>
+      <div class="risk">
+        <h3><span class="badge amber">Medium</span> Grid performance on large result sets</h3>
+        <p>A sluggish grid is where webview-based tools usually fall down, and where DataGrip's native grid shines.</p>
+        <p class="mit"><b>Mitigation:</b> adopt IntelliJ's exact model (500-row pages by default with the ⟨ 1-500 of 501+ ⟩ pager, COUNT(*) only on demand, page-size menu up to All) plus virtualized rendering within a page.</p>
+      </div>
+      <div class="risk">
+        <h3><span class="badge amber">Medium</span> IntelliJ fidelity vs. VS Code's native components</h3>
+        <p>Webview surfaces (grids, consoles' result panels, dialogs) can match IntelliJ almost exactly; the explorer tree uses VS Code's native tree view, which is bound to the editor theme.</p>
+        <p class="mit"><b>Mitigation:</b> the genuine platform icons from intellij-community (Apache 2.0) cover most nodes, an MIT pack (Tabler / Codicons) fills DatabaseTools-only gaps, and dense tree labels recover the rest; or go full-webview for the tree at the cost of native keyboard/UX niceties.</p>
+      </div>
+      <div class="risk">
+        <h3><span class="badge amber">Medium</span> Destructive-action safety</h3>
+        <p>An editable grid pointed at a real database is a foot-gun; one bad submit erodes all trust in the tool.</p>
+        <p class="mit"><b>Mitigation:</b> read-only mode per connection, DML preview before every submit, env colors on every surface, extra confirmation on prod-tagged sources.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Tablecloth · database tools for VS Code · personal project, free for anyone who cares · plan v4 ·
+    high-level scope only; mock-ups rendered in IntelliJ's New UI design language, with the VS Code activity bar as the only shell element.
+  </footer>
+</main>
+
+<script>
+  document.querySelectorAll('.ij-paneltabs .ptab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      var tabs = tab.parentElement.querySelectorAll('.ptab');
+      tabs.forEach(function (t) { t.classList.toggle('on', t === tab); });
+      ['services', 'history', 'output'].forEach(function (name) {
+        var pane = document.getElementById('pane-' + name);
+        if (pane) pane.hidden = (name !== tab.dataset.pane);
+      });
+    });
+  });
+</script>
+</body>
+</html>
