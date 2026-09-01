@@ -1,0 +1,150 @@
+/* Data Sources and Drivers dialog, in the IntelliJ New UI palette from the
+ * plan mock-ups (dialog surface #2b2d30, inputs on #1e1f22), with an IntelliJ
+ * Light approximation for light themes. */
+:root {
+  --ij-dlg: #2b2d30;
+  --ij-input-bg: #1e1f22;
+  --ij-border: #393b40;
+  --ij-border-strong: #43454a;
+  --ij-fg: #dfe1e5;
+  --ij-label: #bfc2c9;
+  --ij-fg-dim: #9da0a8;
+  --ij-hint: #82858c;
+  --ij-blue: #3574f0;
+  --ij-link: #56a8f5;
+  --ij-tab-sel: #2e436e;
+  --ij-hover: #393b40;
+  --ij-green: #4ec9a0;
+  --ij-error: #f75464;
+  --ij-mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace);
+}
+body.vscode-light {
+  --ij-dlg: #f2f3f5;
+  --ij-input-bg: #ffffff;
+  --ij-border: #d3d5db;
+  --ij-border-strong: #c9ccd6;
+  --ij-fg: #000000;
+  --ij-label: #333a45;
+  --ij-fg-dim: #6c707e;
+  --ij-hint: #818594;
+  --ij-tab-sel: #d4e2ff;
+  --ij-hover: #e6e8ec;
+  --ij-green: #208a3c;
+  --ij-error: #db3b4b;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--ij-dlg);
+  color: var(--ij-fg);
+  font-family: var(--vscode-font-family, -apple-system, 'Segoe UI', sans-serif);
+  font-size: 12.5px;
+}
+.dlg { max-width: 700px; margin: 0 auto; padding: 16px 20px 20px; }
+
+.row.head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.row.head label { color: var(--ij-label); }
+.row.head input { flex: 1; }
+
+input[type="text"], input[type="password"], select {
+  background: var(--ij-input-bg);
+  color: var(--ij-fg);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  min-width: 0;
+}
+input::placeholder { color: var(--ij-hint); }
+input:focus, select:focus { outline: 1px solid var(--ij-blue); outline-offset: -1px; }
+input.invalid { border-color: var(--ij-error); }
+input.invalid:focus { outline-color: var(--ij-error); }
+input.port { width: 76px; }
+input[type="checkbox"] { accent-color: var(--ij-blue); }
+
+.tabs { display: flex; gap: 2px; margin: 12px 0 4px; }
+.tab {
+  background: transparent;
+  border: none;
+  color: var(--ij-label);
+  padding: 4px 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+}
+.tab:hover { background: var(--ij-hover); }
+.tab.on { background: var(--ij-tab-sel); color: #fff; }
+body.vscode-light .tab.on { color: var(--ij-fg); }
+
+.pane { padding: 12px 0; min-height: 260px; }
+.frm {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 12px 14px;
+  align-items: center;
+}
+.frm label { text-align: right; color: var(--ij-label); }
+.frm label.inline { text-align: left; margin-left: 4px; }
+.hostrow, .filerow { display: flex; align-items: center; gap: 8px; }
+.hostrow input:first-child, .filerow input { flex: 1; }
+.url {
+  font-family: var(--ij-mono);
+  font-size: 11.5px;
+  color: var(--ij-fg-dim);
+  background: var(--ij-input-bg);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 6px;
+  padding: 5px 10px;
+  overflow-wrap: anywhere;
+}
+.hint { color: var(--ij-hint); font-size: 11.5px; }
+
+.btn {
+  background: var(--ij-dlg);
+  color: var(--ij-fg);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 6px;
+  padding: 4px 16px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+}
+.btn:hover { background: var(--ij-hover); }
+.btn.primary {
+  background: var(--ij-blue);
+  color: #ffffff;
+  border-color: var(--ij-blue);
+}
+.btn.primary:hover { background: #3f7df2; }
+.btn.link-like {
+  background: transparent;
+  border: none;
+  color: var(--ij-link);
+  padding-left: 0;
+}
+.btn.link-like:hover { background: transparent; text-decoration: underline; }
+
+.schema-list { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; color: var(--ij-fg-dim); }
+.schema-list label { display: flex; gap: 8px; align-items: center; text-align: left; color: var(--ij-fg); }
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--ij-border);
+  padding-top: 12px;
+  margin-top: 8px;
+}
+.foot .spacer { flex: 1; }
+#test-result { font-size: 12px; color: var(--ij-fg-dim); }
+#test-result.ok { color: var(--ij-green); }
+#test-result.fail { color: var(--ij-error); }
+
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-thumb { background: var(--ij-border-strong); border-radius: 5px; border: 2px solid var(--ij-dlg); }
+
+[hidden] { display: none !important; }

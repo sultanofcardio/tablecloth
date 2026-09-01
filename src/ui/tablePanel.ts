@@ -1,0 +1,80 @@
+import * as vscode from 'vscode';
+import type { DatabaseModel, RelationModel, SchemaModel, StoredDataSource } from '../core/types';
+import { qualify } from '../core/util';
+import type { SessionManager } from '../drivers/sessions';
+import { GridController } from './grid';
+import { gridHtml } from './gridHtml';
+import { makeRunQuery, TableGridProvider } from './providers';
+
+/** Table data editor tabs, one webview panel per table, reused on reopen. */
+export class TablePanels implements vscode.Disposable {
+  private readonly panels = new Map<string, vscode.WebviewPanel>();
+
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly sessions: SessionManager,
+  ) {}
+
+  dispose(): void {
+    for (const panel of this.panels.values()) panel.dispose();
+    this.panels.clear();
+  }
+
+  async open(ds: StoredDataSource, db: DatabaseModel, schema: SchemaModel, rel: RelationModel): Promise<void> {
+    const config = ds.config;
+    const key = [config.id, db.name, schema.name, rel.name].join('\x00');
+    const existing = this.panels.get(key);
+    if (existing) {
+      existing.reveal(undefined, false);
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      'tablecloth.table',
+      `${rel.name} [${db.name}]`,
+      { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.extensionUri, 'media'),
+          vscode.Uri.joinPath(this.extensionUri, 'dist'),
+        ],
+      },
+    );
+    panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'icons', rel.kind === 'view' ? 'view.svg' : 'table.svg');
+    this.panels.set(key, panel);
+    panel.onDidDispose(() => this.panels.delete(key));
+
+    const controller = new GridController();
+    panel.webview.html = gridHtml(panel.webview, this.extensionUri, 'table');
+    panel.webview.onDidReceiveMessage((message) => {
+      if (message?.type === 'ready') {
+        controller.onReady();
+        return;
+      }
+      void controller.handleMessage(message);
+    });
+    controller.attach(panel.webview);
+
+    // MySQL folds database and schema into one level; SQLite has neither.
+    const schemaName =
+      config.driver === 'postgres' ? schema.name : config.driver === 'mysql' ? db.name : undefined;
+    const provider = new TableGridProvider(
+      config.driver,
+      schemaName,
+      rel.name,
+      rel.columns.filter((c) => c.primaryKey).map((c) => c.name),
+      qualify(config.driver, schemaName, rel.name),
+      makeRunQuery(this.sessions, config),
+    );
+    const contextParts = [config.name, db.name];
+    if (!schema.implicit) contextParts.push(schema.name);
+    contextParts.push(rel.name);
+    await controller.show(provider, {
+      contextLabel: contextParts.join(' · '),
+      env: config.color,
+      readOnly: config.readOnly,
+    });
+  }
+}

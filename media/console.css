@@ -1,0 +1,86 @@
+/* Console editor: IntelliJ-style toolbar above a Monaco editor, in the
+ * IntelliJ New UI palette (with an IntelliJ Light approximation). */
+:root {
+  --ij-bg: #1e1f22;
+  --ij-panel: #2b2d30;
+  --ij-border: #393b40;
+  --ij-border-strong: #43454a;
+  --ij-fg: #dfe1e5;
+  --ij-fg-dim: #9da0a8;
+  --ij-btn-hover: #393b40;
+  --ij-warn: #d6ae58;
+  --ij-green: #57965c;
+}
+body.vscode-light {
+  --ij-bg: #ffffff;
+  --ij-panel: #f7f8fa;
+  --ij-border: #d3d5db;
+  --ij-border-strong: #c9ccd6;
+  --ij-fg: #000000;
+  --ij-fg-dim: #6c707e;
+  --ij-btn-hover: #e6e8ec;
+  --ij-warn: #9e7300;
+  --ij-green: #208a3c;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--ij-bg);
+  color: var(--ij-fg);
+  font-family: var(--vscode-font-family, -apple-system, 'Segoe UI', sans-serif);
+  font-size: 12.5px;
+}
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+#toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--ij-border);
+  background: var(--ij-bg);
+}
+#toolbar .sep {
+  width: 1px;
+  height: 16px;
+  background: var(--ij-border-strong);
+  margin: 0 5px;
+}
+#toolbar .spacer { flex: 1; }
+.tbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--ij-fg);
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 3px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tbtn:hover { background: var(--ij-btn-hover); }
+.tbtn svg { width: 16px; height: 16px; display: block; }
+.tbtn .chev { width: 11px; height: 11px; color: var(--ij-fg-dim); }
+.tbtn.warn { color: var(--ij-warn); }
+#tb-run svg, #tb-runscript svg, #tb-commit svg { color: var(--ij-green); }
+#tb-rollback svg, #tb-history svg, #tb-settings svg, #tb-schema svg.site { color: var(--ij-fg-dim); }
+#tb-readonly { color: var(--ij-warn); font-size: 11.5px; }
+.envdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+
+#editor { flex: 1; min-height: 0; }
+
+/* the green frame around the statement ⌘⏎ would run (IntelliJ style) */
+.tc-stmt-single { border: 1px solid rgba(87, 150, 92, 0.85); border-radius: 3px; }
+.tc-stmt-top { border: 1px solid rgba(87, 150, 92, 0.85); border-bottom: none; border-radius: 3px 3px 0 0; }
+.tc-stmt-middle { border-left: 1px solid rgba(87, 150, 92, 0.85); border-right: 1px solid rgba(87, 150, 92, 0.85); }
+.tc-stmt-bottom { border: 1px solid rgba(87, 150, 92, 0.85); border-top: none; border-radius: 0 0 3px 3px; }
+
+[hidden] { display: none !important; }

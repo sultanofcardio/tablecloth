@@ -1,0 +1,15 @@
+.vscode/**
+.gitignore
+.lavish/**
+intellij-screenshots/**
+docs/**
+node_modules/**
+out-test/**
+src/**
+test/**
+scripts/**
+esbuild.mjs
+eslint.config.mjs
+tsconfig.json
+tsconfig.test.json
+**/*.map
