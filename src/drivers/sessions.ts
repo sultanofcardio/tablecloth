@@ -9,6 +9,8 @@ export interface SessionDeps {
 
 type Listener = (dataSourceId: string) => void;
 
+type CloseListener = (dataSourceId: string, suffix: string) => void;
+
 interface Managed {
   session: DbSession;
   config: DataSourceConfig;
@@ -32,6 +34,7 @@ export class SessionManager {
   private readonly sessions = new Map<string, Promise<Managed>>();
   private readonly catalogs = new Map<string, CatalogModel>();
   private readonly listeners: Listener[] = [];
+  private readonly closeListeners: CloseListener[] = [];
 
   constructor(private readonly deps: SessionDeps) {}
 
@@ -43,10 +46,33 @@ export class SessionManager {
     };
   }
 
+  /** Fires when a session was dropped (closed, disconnected, or died). */
+  onDidCloseSession(listener: CloseListener): () => void {
+    this.closeListeners.push(listener);
+    return () => {
+      const i = this.closeListeners.indexOf(listener);
+      if (i >= 0) this.closeListeners.splice(i, 1);
+    };
+  }
+
   private fire(dataSourceId: string): void {
     for (const listener of [...this.listeners]) {
       try {
         listener(dataSourceId);
+      } catch {
+        // listeners must not break session management
+      }
+    }
+  }
+
+  private fireClosed(key: string): void {
+    const sep = key.indexOf('::');
+    if (sep < 0) return;
+    const dataSourceId = key.slice(0, sep);
+    const suffix = key.slice(sep + 2);
+    for (const listener of [...this.closeListeners]) {
+      try {
+        listener(dataSourceId, suffix);
       } catch {
         // listeners must not break session management
       }
@@ -107,9 +133,11 @@ export class SessionManager {
       return await task;
     } catch (err) {
       // A dead connection poisons every later statement; drop it so the next
-      // run reconnects instead of failing forever.
+      // run reconnects instead of failing forever. Only drop the session this
+      // task actually ran on: a queued task failing against an already-replaced
+      // session must not kill the healthy replacement.
       if (isConnectionError(err)) {
-        await this.closeKey(sessionKey(config.id, suffix));
+        await this.closeKey(sessionKey(config.id, suffix), managed);
         this.fire(config.id);
       }
       throw err;
@@ -134,16 +162,17 @@ export class SessionManager {
     return managed.session.serverVersion;
   }
 
-  private async closeKey(key: string): Promise<void> {
+  private async closeKey(key: string, expected?: Managed): Promise<void> {
     const pending = this.sessions.get(key);
+    if (!pending) return;
+    if (expected && (await pending.catch(() => undefined)) !== expected) return;
     this.sessions.delete(key);
-    if (pending) {
-      try {
-        const managed = await pending;
-        await managed.session.close();
-      } catch {
-        // already broken; nothing to close
-      }
+    this.fireClosed(key);
+    try {
+      const managed = await pending;
+      await managed.session.close();
+    } catch {
+      // already broken; nothing to close
     }
   }
 
@@ -164,6 +193,12 @@ export class SessionManager {
   async disconnectAll(): Promise<void> {
     const ids = new Set([...this.sessions.keys()].map((k) => k.split('::')[0]!));
     await Promise.all([...ids].map((id) => this.disconnect(id)));
+  }
+
+  /** Forget the cached catalog so the next introspection re-reads it; sessions stay live. */
+  dropCatalog(dataSourceId: string): void {
+    this.catalogs.delete(dataSourceId);
+    this.fire(dataSourceId);
   }
 
   /** Drop the sessions when their configuration changed under them. */

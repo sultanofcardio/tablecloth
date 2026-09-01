@@ -57,7 +57,28 @@ class MySqlSession implements DbSession {
   ) {}
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
-    const [rows, fields] = await this.connection.query({ sql, values: params, rowsAsArray: true });
+    let [rows, fields] = await this.connection.query({ sql, values: params, rowsAsArray: true });
+    // A CALL of a rowset-returning procedure yields nested result sets
+    // ([resultRows[], ResultSetHeader]) with per-set field arrays; present the
+    // last row-bearing one (mirrors the pg lastResult normalization).
+    if (Array.isArray(fields) && fields.some((f) => Array.isArray(f))) {
+      const sets = rows as unknown[];
+      const fieldSets = fields as unknown as (mysql.FieldPacket[] | undefined)[];
+      let picked = -1;
+      for (let i = fieldSets.length - 1; i >= 0; i--) {
+        if (Array.isArray(fieldSets[i]) && fieldSets[i]!.length > 0 && Array.isArray(sets[i])) {
+          picked = i;
+          break;
+        }
+      }
+      if (picked >= 0) {
+        rows = sets[picked] as typeof rows;
+        fields = fieldSets[picked] as typeof fields;
+      } else {
+        const header = sets.find((s): s is mysql.ResultSetHeader => !!s && !Array.isArray(s));
+        return makeResult([], [], header?.affectedRows ?? null);
+      }
+    }
     if (Array.isArray(rows)) {
       const cols = (fields ?? []).map((f: any) => {
         const code = typeof f.columnType === 'number' ? f.columnType : f.type;

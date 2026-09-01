@@ -108,6 +108,11 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
       await this.sessions.introspect(ds.config, force);
     } catch (err) {
       this.errors.set(dsId, errorMessage(err));
+      // with a cached catalog the tree keeps its (stale) children and the
+      // error node never renders; a notification is the only visible signal
+      if (this.sessions.getCatalog(dsId)) {
+        void vscode.window.showErrorMessage(`Tablecloth: refreshing ${ds.config.name} failed: ${errorMessage(err)}`);
+      }
     }
     this.postTree();
   }
@@ -181,7 +186,7 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
         await this.actions.toggleSystemSchemas();
         break;
       case 'copyName': {
-        const name = ref?.name?.split('.').pop() ?? ds?.config.name;
+        const name = ref?.leaf ?? ref?.name ?? ds?.config.name;
         if (name) await vscode.env.clipboard.writeText(name);
         break;
       }

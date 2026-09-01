@@ -185,7 +185,9 @@ export function activate(context: vscode.ExtensionContext): {
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('tablecloth.explorer.showSystemSchemas')) {
-        for (const s of store.list()) void sessions!.invalidate(s.config.id);
+        // a display-only option: force re-introspection by dropping the cached
+        // catalogs, but keep live sessions (and their open transactions) intact
+        for (const s of store.list()) sessions!.dropCatalog(s.config.id);
       }
     }),
   );

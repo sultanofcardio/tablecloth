@@ -68,8 +68,11 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
     panel.webview.html = this.html(panel.webview);
 
     // Text the webview last sent us; used to swallow the echo when our own
-    // applyEdit comes back through onDidChangeTextDocument.
+    // applyEdit comes back through onDidChangeTextDocument. Edits are applied
+    // strictly in arrival order so the echo guard never sees a newer text than
+    // the edit currently landing (concurrent applyEdits would clobber typing).
     let lastWebviewText: string | undefined;
+    let editQueue: Promise<void> = Promise.resolve();
     const pushState = () => void panel.webview.postMessage({ type: 'state', state: this.stateFor(uri) });
 
     const subscriptions: vscode.Disposable[] = [
@@ -100,12 +103,17 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
         }
         case 'edit': {
           const text = String(message.text ?? '');
-          lastWebviewText = text;
-          if (text !== document.getText()) {
-            const edit = new vscode.WorkspaceEdit();
-            edit.replace(uri, new vscode.Range(0, 0, document.lineCount, 0), text);
-            await vscode.workspace.applyEdit(edit);
-          }
+          editQueue = editQueue
+            .then(async () => {
+              lastWebviewText = text;
+              if (text !== document.getText()) {
+                const edit = new vscode.WorkspaceEdit();
+                edit.replace(uri, new vscode.Range(0, 0, document.lineCount, 0), text);
+                await vscode.workspace.applyEdit(edit);
+              }
+            })
+            .catch(() => undefined);
+          await editQueue;
           break;
         }
         case 'run':

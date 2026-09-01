@@ -50,6 +50,9 @@ export class ConsoleManager implements vscode.Disposable {
         this.stateEmitter.fire();
       }),
       vscode.workspace.onDidCloseTextDocument((doc) => void this.onDocumentClosed(doc)),
+      // a console session that died (or was disconnected) took its open
+      // transaction with it; keep the tracked state honest
+      { dispose: this.sessions.onDidCloseSession((_dsId, suffix) => this.onSessionClosed(suffix)) },
     );
     this.updateStatusBar();
   }
@@ -95,6 +98,13 @@ export class ConsoleManager implements vscode.Disposable {
   /** Session key suffix for a console document. */
   consoleSuffix(uri: vscode.Uri): string {
     return uri.toString();
+  }
+
+  private onSessionClosed(suffix: string): void {
+    if (this.inTx.delete(suffix)) {
+      this.updateStatusBar();
+      this.stateEmitter.fire();
+    }
   }
 
   private async onDocumentClosed(doc: vscode.TextDocument): Promise<void> {

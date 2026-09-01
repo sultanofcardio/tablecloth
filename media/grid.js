@@ -120,6 +120,7 @@
 
     const active = msg.tabs.find((t) => t.active);
     if (msg.dsActions) currentView = 'info';
+    else if (msg.error) currentView = 'grid'; // the error pane lives in the grid area
     else if (active) currentView = active.id === '__output' ? 'output' : 'grid';
 
     // the Database > data source > console tree
@@ -371,6 +372,12 @@
       case 'outputReset':
         outputEl.textContent = '';
         for (const entry of msg.entries ?? []) appendOutputLine(entry);
+        break;
+      case 'total':
+        if (state) {
+          state.page.total = msg.total;
+          updatePager();
+        }
         break;
       case 'busy':
         statusBusy.hidden = !msg.busy;

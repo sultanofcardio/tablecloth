@@ -108,7 +108,8 @@ export class QueryRunner {
   async runFileOnDataSource(uri: vscode.Uri, ds: StoredDataSource): Promise<void> {
     const bytes = await vscode.workspace.fs.readFile(uri);
     await this.services.reveal();
-    await this.runScript(ds, { dataSourceId: ds.config.id, database: ds.config.database }, bytes.toString(), uri.fsPath);
+    const text = new TextDecoder().decode(bytes);
+    await this.runScript(ds, { dataSourceId: ds.config.id, database: ds.config.database }, text, uri.fsPath);
   }
 
   private async runScript(
@@ -189,9 +190,12 @@ export class QueryRunner {
    * Session runner for one console: statements run on the console's own
    * session, with the bound schema applied and manual mode opening a
    * transaction before the first statement. All of it happens inside the same
-   * serialized session slot as the statement.
+   * serialized session slot as the statement. With `guarded`, statements run
+   * under a savepoint while a transaction is open, so a failed paging probe
+   * cannot abort the user's open transaction (Postgres would otherwise poison
+   * it and the raw fallback would fail too).
    */
-  private makeConsoleRun(ds: StoredDataSource, consoleUri?: vscode.Uri): RunQuery {
+  private makeConsoleRun(ds: StoredDataSource, consoleUri?: vscode.Uri, guarded = false): RunQuery {
     if (!consoleUri) return makeRunQuery(this.sessions, ds.config);
     const suffix = this.consoles.consoleSuffix(consoleUri);
     return async (sql: string) => {
@@ -204,6 +208,18 @@ export class QueryRunner {
           if (tx.mode === 'manual' && !this.consoles.isInTx(consoleUri)) {
             await session.query(this.beginSql(ds));
             this.consoles.setInTx(consoleUri, true);
+          }
+          if (guarded && this.consoles.isInTx(consoleUri)) {
+            await session.query('SAVEPOINT tablecloth_probe');
+            try {
+              const probed = await session.query(sql);
+              await session.query('RELEASE SAVEPOINT tablecloth_probe');
+              return probed;
+            } catch (err) {
+              await session.query('ROLLBACK TO SAVEPOINT tablecloth_probe').catch(() => undefined);
+              await session.query('RELEASE SAVEPOINT tablecloth_probe').catch(() => undefined);
+              throw err;
+            }
           }
           return session.query(sql);
         },
@@ -260,7 +276,7 @@ export class QueryRunner {
     if (cls.selectish) {
       // Page the result server-side by wrapping the statement; on any failure
       // fall back to running it verbatim (the raw error is the accurate one).
-      const provider = new ConsoleGridProvider(config.driver, sql, run);
+      const provider = new ConsoleGridProvider(config.driver, sql, this.makeConsoleRun(ds, consoleUri, true));
       try {
         const page = await provider.fetchPage({ offset: 0, limit: defaultPageSize() });
         const duration = formatMillis(page.durationMs);

@@ -59,6 +59,8 @@ interface ConsoleEntry {
   status: string;
   tabs: ResultTab[];
   activeTabId: string;
+  /** The content pane shows the error message instead of a tab's content. */
+  showingError: boolean;
   resultCounter: number;
   /** This console's own Output log, like IntelliJ's per-console output. */
   output: OutputEntry[];
@@ -198,25 +200,29 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
 
     let tabs: any[];
     let dsActions: string | null = null;
+    let error = false;
     if (this.selectedDsId) {
       // the IntelliJ data source view: an Information tab plus its action row
       tabs = [{ id: '__info', title: 'Information', active: true, closable: false }];
       dsActions = this.selectedDsId;
     } else {
       const active = this.activeConsole();
+      // while an error is showing, no tab is active: the content pane holds
+      // the error message, not a tab's content
+      error = !!active?.showingError;
       tabs = active
         ? [
-            { id: OUTPUT_TAB, title: 'Output', active: active.activeTabId === OUTPUT_TAB, closable: false },
+            { id: OUTPUT_TAB, title: 'Output', active: !error && active.activeTabId === OUTPUT_TAB, closable: false },
             ...active.tabs.map((t) => ({
               id: t.id,
               title: t.title,
-              active: t.id === active.activeTabId,
+              active: !error && t.id === active.activeTabId,
               closable: true,
             })),
           ]
         : [{ id: OUTPUT_TAB, title: 'Output', active: true, closable: false }];
     }
-    this.post({ type: 'services', tree: [...groups.values()], tabs, dsActions });
+    this.post({ type: 'services', tree: [...groups.values()], tabs, dsActions, error });
   }
 
   // ------------------------------------------------------------ console registry
@@ -237,6 +243,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
           status: 'idle',
           tabs: [],
           activeTabId: OUTPUT_TAB,
+          showingError: false,
           resultCounter: 0,
           output: [],
         }),
@@ -281,6 +288,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
         status: 'idle',
         tabs: [],
         activeTabId: OUTPUT_TAB,
+        showingError: false,
         resultCounter: 0,
         output: [],
       });
@@ -336,6 +344,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
       entry.tabs.push(tab);
     }
     entry.activeTabId = tab.id;
+    entry.showingError = false;
     const consoleChanged = this.activeConsoleKey !== key;
     this.activeConsoleKey = key;
     this.selectedDsId = undefined;
@@ -346,6 +355,8 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
 
   /** Errors render in the content pane without becoming a tab. */
   showError(key: string, text: string, meta: GridMeta): void {
+    const entry = this.consoles.get(key);
+    if (entry) entry.showingError = true;
     const consoleChanged = this.activeConsoleKey !== key;
     this.activeConsoleKey = key;
     this.selectedDsId = undefined;
@@ -357,6 +368,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
   private async selectConsole(key: string): Promise<void> {
     const entry = this.consoles.get(key);
     if (!entry) return;
+    entry.showingError = false;
     const consoleChanged = this.activeConsoleKey !== key;
     this.selectedDsId = undefined;
     this.activeConsoleKey = key;
@@ -398,6 +410,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     const entry = this.activeConsole();
     if (!entry) return;
     entry.activeTabId = id;
+    entry.showingError = false;
     if (id !== OUTPUT_TAB) {
       const tab = entry.tabs.find((t) => t.id === id);
       if (tab) await this.grid.show(tab.provider, tab.meta, tab.page);

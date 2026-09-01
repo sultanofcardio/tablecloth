@@ -153,7 +153,9 @@ export class GridController {
       this.postResult(page);
     } catch (err) {
       if (generation !== this.generation) return;
-      this.post({ type: 'message', kind: 'error', text: errorMessage(err), meta: this.metaPayload() });
+      const message = { type: 'message', kind: 'error', text: errorMessage(err), meta: this.metaPayload() };
+      this.lastRender = message;
+      this.post(message);
     } finally {
       if (generation === this.generation) this.post({ type: 'busy', busy: false });
     }
@@ -241,7 +243,11 @@ export class GridController {
           const total = await provider.fetchCount();
           if (total !== undefined) {
             this.state.total = total;
-            if (this.current) this.postResult(this.current);
+            // only the total changed; a full re-render would wipe the grid's
+            // row selection and scroll position
+            const last = this.lastRender as { type?: string; page?: { total: number | null } } | undefined;
+            if (last?.type === 'result' && last.page) last.page.total = total;
+            this.post({ type: 'total', total });
           }
         } catch (err) {
           void vscode.window.showErrorMessage(`Count failed: ${errorMessage(err)}`);

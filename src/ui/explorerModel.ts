@@ -23,6 +23,8 @@ export interface ExplorerRef {
   db?: string;
   schema?: string;
   name?: string;
+  /** Leaf object name when `name` is a packed path (column refs); names may contain dots. */
+  leaf?: string;
 }
 
 export interface ExplorerNode {
@@ -164,7 +166,7 @@ function groupChildren(
                 meta: parts.join(' · '),
                 pk: col.primaryKey,
                 fk: !!col.foreignKeyTarget,
-                ref: { dsId, db: dbName, schema: schemaRef, name: `${rel.name}.${col.name}` },
+                ref: { dsId, db: dbName, schema: schemaRef, name: `${rel.name}.${col.name}`, leaf: col.name },
               };
             }),
             ...rel.indexes.map((index) => ({

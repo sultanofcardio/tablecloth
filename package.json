@@ -243,7 +243,7 @@
         "tablecloth.dataSources": {
           "type": "array",
           "default": [],
-          "scope": "resource",
+          "scope": "window",
           "markdownDescription": "Data source definitions, managed through the **Tablecloth: New Data Source** dialog. Entries in user settings are Global data sources; entries in workspace settings are Project data sources. Passwords are kept in the VS Code secret store, never in this setting.",
           "items": {
             "type": "object"

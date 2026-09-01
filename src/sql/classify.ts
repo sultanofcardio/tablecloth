@@ -3,7 +3,7 @@ export interface StatementClass {
   keyword: string;
   /** Likely produces a row set worth showing in the grid. */
   selectish: boolean;
-  /** Definitely modifies data or schema (used for the client-side read-only guard). */
+  /** Definitely modifies data or schema (read-only is enforced server-side per session). */
   mutating: boolean;
 }
 
@@ -55,14 +55,77 @@ function significantStart(sql: string): number {
   return len;
 }
 
+/** Blank out string literals, quoted identifiers, and comments (splitter-style scan). */
+function stripLiteralsAndComments(sql: string): string {
+  const len = sql.length;
+  let out = '';
+  let i = 0;
+  while (i < len) {
+    const ch = sql[i]!;
+    const next = i + 1 < len ? sql[i + 1] : '';
+    if (ch === '-' && next === '-') {
+      const nl = sql.indexOf('\n', i + 2);
+      i = nl === -1 ? len : nl;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      let depth = 1;
+      i += 2;
+      while (i < len && depth > 0) {
+        if (sql[i] === '/' && sql[i + 1] === '*') {
+          depth++;
+          i += 2;
+        } else if (sql[i] === '*' && sql[i + 1] === '/') {
+          depth--;
+          i += 2;
+        } else {
+          i++;
+        }
+      }
+      out += ' ';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      i++;
+      while (i < len) {
+        if (sql[i] === ch) {
+          if (sql[i + 1] === ch) {
+            i += 2; // doubled quote
+            continue;
+          }
+          i++;
+          break;
+        }
+        i++;
+      }
+      out += ' ';
+      continue;
+    }
+    if (ch === '$') {
+      const tagMatch = /^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/.exec(sql.slice(i));
+      if (tagMatch) {
+        const tag = tagMatch[0];
+        const close = sql.indexOf(tag, i + tag.length);
+        i = close === -1 ? len : close + tag.length;
+        out += ' ';
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
 export function classifyStatement(sql: string): StatementClass {
   const start = significantStart(sql);
   const match = /^[A-Za-z_]+/.exec(sql.slice(start));
   const keyword = match ? match[0].toLowerCase() : '';
 
   if (keyword === 'with') {
-    // WITH can front DML; look for a top-level-ish data-modifying keyword.
-    const body = sql.slice(start).toLowerCase();
+    // WITH can front DML; look for a top-level-ish data-modifying keyword,
+    // ignoring keywords buried in strings, quoted identifiers, or comments.
+    const body = stripLiteralsAndComments(sql.slice(start)).toLowerCase();
     const dml = /\b(insert|update|delete|merge)\b/.test(body);
     return { keyword, selectish: !dml, mutating: dml };
   }
