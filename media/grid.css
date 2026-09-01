@@ -1,0 +1,379 @@
+/*
+ * DataGrip-style grid, in the IntelliJ New UI palette the plan mock-ups use.
+ * These surfaces commit to the IntelliJ look rather than the VS Code theme;
+ * a light variant approximating IntelliJ Light kicks in for light themes.
+ */
+:root {
+  --ij-bg: #1e1f22;
+  --ij-panel: #2b2d30;
+  --ij-panel-line: #1e1f22;
+  --ij-border: #393b40;
+  --ij-border-strong: #43454a;
+  --ij-fg: #dfe1e5;
+  --ij-fg-cell: #bcbec4;
+  --ij-fg-dim: #9da0a8;
+  --ij-fg-faint: #6e7076;
+  --ij-gutter: #4b5059;
+  --ij-blue: #3574f0;
+  --ij-blue-soft: rgba(53, 116, 240, 0.1);
+  --ij-link: #56a8f5;
+  --ij-num: #2aacb8;
+  --ij-sel: #214283;
+  --ij-hover: rgba(255, 255, 255, 0.045);
+  --ij-btn-hover: #393b40;
+  --ij-menu-sel: #2e436e;
+  --ij-warn: #d6ae58;
+  --ij-error: #f75464;
+  --ij-comment: #7a7e85;
+  --ij-meta: #82858c;
+  --ij-mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace);
+}
+body.vscode-light {
+  --ij-bg: #ffffff;
+  --ij-panel: #f7f8fa;
+  --ij-panel-line: #ebecf0;
+  --ij-border: #d3d5db;
+  --ij-border-strong: #c9ccd6;
+  --ij-fg: #000000;
+  --ij-fg-cell: #080808;
+  --ij-fg-dim: #6c707e;
+  --ij-fg-faint: #a8adbd;
+  --ij-gutter: #a8adbd;
+  --ij-blue-soft: rgba(53, 116, 240, 0.12);
+  --ij-num: #1750eb;
+  --ij-sel: #d4e2ff;
+  --ij-hover: rgba(0, 0, 0, 0.04);
+  --ij-btn-hover: #e6e8ec;
+  --ij-menu-sel: #d4e2ff;
+  --ij-warn: #9e7300;
+  --ij-error: #db3b4b;
+  --ij-comment: #8c8c8c;
+  --ij-meta: #6c707e;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--ij-bg);
+  color: var(--ij-fg);
+  font-family: var(--vscode-font-family, -apple-system, 'Segoe UI', sans-serif);
+  font-size: 12.5px;
+}
+#app { display: flex; flex-direction: column; height: 100vh; }
+.main { flex: 1; display: flex; min-height: 0; }
+.content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* --------------------------- the Database > data source > console tree */
+.stree {
+  width: 212px;
+  flex: none;
+  background: var(--ij-panel);
+  border-right: 1px solid var(--ij-panel-line);
+  overflow: auto;
+  padding: 6px 0 10px;
+  font-size: 12.5px;
+}
+.srow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 23px;
+  padding: 0 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--ij-fg);
+}
+.srow svg { width: 14px; height: 14px; flex: none; color: var(--ij-fg-dim); }
+.srow .vendor { width: 15px; height: 15px; flex: none; display: inline-flex; }
+.srow .vendor svg { width: 14px; height: 14px; margin: auto; }
+.srow.ds { padding-left: 24px; cursor: pointer; }
+.srow.ds:hover { background: var(--ij-btn-hover); }
+.srow.ds.sel { background: var(--ij-menu-sel); color: #fff; }
+body.vscode-light .srow.ds.sel { color: var(--ij-fg); }
+.srow.con { padding-left: 40px; cursor: pointer; }
+.srow.con:hover { background: var(--ij-btn-hover); }
+.srow.con.sel { background: var(--ij-menu-sel); color: #fff; }
+.srow.con.sel svg { color: #fff; }
+body.vscode-light .srow.con.sel { color: var(--ij-fg); }
+.srow .clabel { overflow: hidden; text-overflow: ellipsis; }
+.srow .smeta { margin-left: auto; color: var(--ij-meta); font-size: 11px; flex: none; }
+.srow.con.sel .smeta { color: rgba(255, 255, 255, 0.75); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--ij-border-strong); border-radius: 5px; border: 2px solid var(--ij-bg); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---------------------------------------------------------------- tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 5px 8px;
+  background: var(--ij-bg);
+  border-bottom: 1px solid var(--ij-border);
+  flex: none;
+}
+.tab {
+  background: transparent;
+  color: var(--ij-fg-dim);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.tab.on {
+  color: var(--ij-fg);
+  border-color: var(--ij-blue);
+  background: var(--ij-blue-soft);
+}
+.tab { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .x { margin-left: 7px; color: var(--ij-fg-faint); }
+.tab .x:hover { color: var(--ij-fg); }
+.tab-action {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  padding: 3px 6px;
+  margin-left: 4px;
+  cursor: pointer;
+  color: var(--ij-fg-dim);
+}
+.tab-action:hover { background: var(--ij-btn-hover); }
+.tab-action svg { width: 15px; height: 15px; display: block; }
+.tab-action.danger { color: var(--ij-error); }
+
+/* the data source Information view */
+.infopane {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ij-fg);
+}
+.infopane b { color: var(--ij-fg); }
+
+/* ---------------------------------------------------------------- toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--ij-panel);
+  border-bottom: 1px solid var(--ij-panel-line);
+  flex: none;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--ij-fg-dim);
+}
+.sep { width: 1px; height: 16px; background: var(--ij-border-strong); }
+.spacer { flex: 1; }
+.icon-btn, .tool-btn, .link {
+  background: transparent;
+  color: var(--ij-fg);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 2px 7px;
+}
+.tool-btn {
+  border: 1px solid var(--ij-border-strong);
+  background: var(--ij-panel);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 11.5px;
+}
+.icon-btn:hover, .tool-btn:hover { background: var(--ij-btn-hover); }
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.link {
+  color: var(--ij-link);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* -------------------------------------------------- floating pager pill */
+.gridarea { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.pager-pill {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--ij-panel);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 8px;
+  padding: 2px 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  z-index: 5;
+  white-space: nowrap;
+  color: var(--ij-fg);
+}
+.pager-pill .of { color: var(--ij-meta); padding: 0 2px; }
+.range-btn {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--ij-fg);
+  font-family: var(--ij-mono);
+  font-size: 12px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.range-btn::after {
+  content: '';
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-left: 5px;
+  vertical-align: -1px;
+  background-color: var(--ij-fg-dim);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6l6 -6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6l6 -6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.range-btn:hover { background: var(--ij-btn-hover); }
+.size-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ij-panel);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  min-width: 96px;
+  z-index: 6;
+}
+.size-menu .mi { padding: 3px 14px; border-radius: 5px; cursor: pointer; font-size: 12px; color: var(--ij-fg); }
+.size-menu .mi:hover { background: var(--ij-btn-hover); }
+.size-menu .mi.on { background: var(--ij-menu-sel); color: #fff; }
+body.vscode-light .size-menu .mi.on { color: var(--ij-fg); }
+
+select {
+  background: var(--ij-panel);
+  color: var(--ij-fg);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 11.5px;
+  padding: 1px 4px;
+}
+
+/* ------------------------------------------------------- statement echo */
+.statement {
+  flex: none;
+  padding: 4px 12px;
+  font-family: var(--ij-mono);
+  font-size: 11.5px;
+  color: var(--ij-meta);
+  background: var(--ij-bg);
+  border-bottom: 1px solid var(--ij-panel);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------- the grid */
+.gridwrap { flex: 1; overflow: auto; position: relative; background: var(--ij-bg); }
+.placeholder { padding: 24px; color: var(--ij-fg-dim); font-size: 12.5px; }
+
+table {
+  border-collapse: collapse;
+  font-family: var(--ij-mono);
+  font-size: 12px;
+  table-layout: fixed;
+}
+th, td {
+  border: 1px solid var(--ij-panel);
+  padding: 2px 10px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  height: 22px;
+}
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ij-panel);
+  color: var(--ij-fg);
+  font-weight: 600;
+  cursor: default;
+  user-select: none;
+}
+thead th.sortable { cursor: pointer; }
+thead th .sort-ind { color: var(--ij-blue); font-size: 10px; margin-left: 5px; }
+thead th .dt { color: var(--ij-meta); font-weight: 400; font-size: 10.5px; margin-left: 6px; }
+td.gut, th.gut {
+  background: var(--ij-panel);
+  color: var(--ij-gutter);
+  text-align: right;
+  font-size: 11px;
+  user-select: none;
+}
+td { color: var(--ij-fg-cell); }
+td.num { text-align: right; color: var(--ij-num); }
+td.null { color: var(--ij-fg-faint); font-style: italic; }
+tbody tr:hover td { background: var(--ij-hover); }
+/* selection keeps each cell's own coloring, like the IntelliJ grid */
+tbody tr.sel td, tbody tr.sel:hover td { background: var(--ij-sel); }
+tbody tr.sel td.gut { background: var(--ij-sel); color: #fff; }
+body.vscode-light tbody tr.sel td.gut { color: var(--ij-fg); }
+tr.spacer td { border: none; padding: 0; background: transparent; }
+/* the top-left corner cell toggles select-all */
+thead th.gut { cursor: pointer; }
+thead th.gut:hover { background: var(--ij-btn-hover); }
+
+/* ----------------------------------------------------- message + output */
+.msgline {
+  flex: none;
+  padding: 6px 12px;
+  font-family: var(--ij-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--ij-fg-cell);
+  border-top: 1px solid var(--ij-panel);
+}
+.msgline.error { color: var(--ij-error); }
+
+.output {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--ij-mono);
+  font-size: 12px;
+  padding: 8px 14px;
+  line-height: 1.65;
+  color: var(--ij-fg-cell);
+}
+.output .prompt { color: var(--ij-link); }
+.output .meta { color: var(--ij-comment); }
+.output .err { color: var(--ij-error); }
+.output div { white-space: pre-wrap; }
+
+/* ------------------------------------------------------------ status bar */
+.status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 12px;
+  background: var(--ij-panel);
+  border-top: 1px solid var(--ij-border);
+  color: var(--ij-fg-dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.envdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.status .ro { color: var(--ij-warn); }
+
+/* display:flex on classes would otherwise beat the UA [hidden] rule */
+[hidden] { display: none !important; }

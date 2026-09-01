@@ -2,13 +2,13 @@
 
 <div align="center">
 
-<img src="./assets/icon.svg" width="96" alt="Tablecloth icon: a gingham-clothed table standing on a database-column pedestal" />
+<img src="./assets/icon.png" width="96" alt="Tablecloth icon: a gingham-clothed table standing on a database-column pedestal" />
 
 <h1>Tablecloth</h1>
 
 **IntelliJ-grade database tools, laid over VS Code.**
 
-![Status](https://img.shields.io/badge/status-planning-blueviolet)
+![Status](https://img.shields.io/badge/status-phase%201%20built-3574f0)
 ![Price](https://img.shields.io/badge/price-free%2C%20forever-4ec9a0)
 ![Databases](https://img.shields.io/badge/databases-PostgreSQL%20·%20MySQL%2FMariaDB%20·%20SQLite-3574f0)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -52,7 +52,7 @@ Tablecloth is a personal port of the IntelliJ Ultimate **Database Tools** experi
 | IntelliJ Database Tools | Tablecloth in VS Code |
 | --- | --- |
 | Database tool window | Full object tree (schemas, tables, columns with PK/FK, indexes, object types) with introspection badges, env colors, and read-only guards |
-| Data Sources and Drivers | Connection dialog with General/Options/SSH-SSL tabs, per-source color, transaction control, keep-alive, auto-sync introspection |
+| Data Sources and Drivers | Connection dialog with General/Options/SSH-SSL tabs, per-source color, transaction control, keep-alive, auto-sync introspection; opens in its own compact floating window, like the IntelliJ dialog |
 | Query console | Consoles bound to a source and schema: run statement/selection/file, FK-aware JOIN completion, inspections, format, history, output log |
 | Data editor | 500-row pages with count-on-demand, WHERE/ORDER BY fields, header filters, batched change set with DML preview before submit |
 | Tx control | Auto/Manual commit per console, isolation levels, commit/rollback in the status bar |
@@ -84,7 +84,7 @@ flowchart LR
 | --- | --- | --- |
 | **1 · MVP** | Connections (PostgreSQL, MySQL/MariaDB, SQLite; SSH/SSL, pgpass), explorer tree, query console with object completion, read-only 500-row grid, core extractors, run `.sql` files | A normal day of database work happens in VS Code; the JetBrains icon stays in the dock, unclicked |
 | **2 · Daily driver** | Editable grid with change sets and DML preview, WHERE/ORDER BY + header filters, FK navigation, deep completion and inspections, Tx modes + isolation, history and output log, import wizard | IntelliJ muscle memory mostly works; nothing used weekly is missing |
-| **3 · Parity** | Object editor dialogs, dump/restore, visual explain plan + EXPLAIN ANALYZE, sessions viewer, full-text data search, find usages, rename refactor | Nothing left that makes you reinstall IntelliJ |
+| **3 · Parity** | Object editor dialogs, dump/restore, visual explain plan + EXPLAIN ANALYZE, sessions viewer, full-text data search, find usages, rename refactor, CSV file viewer/editor ("Edit as Table…") | Nothing left that makes you reinstall IntelliJ |
 | **Later** | ER diagrams, schema diff + migration scripts, extra drivers | Only if a real need appears; nothing depends on these |
 
 <details>
@@ -95,7 +95,7 @@ flowchart LR
 | **Connections** | Data source manager (Global + Project) · driver auto-download · SSH tunnel · SSL · user/password, pgpass, no-auth · read-only flag · env color labels · schema selection · auto-sync/manual re-introspection · keep-alive & auto-disconnect · startup script · per-source console files · DDL data source |
 | **Explorer & navigation** | Full object tree (tables, columns, PK/FK, indexes, views, sequences, routines, object types) · introspection count badges · tree filter & visibility options · quick documentation · go to object · view DDL · find usages · drop/rename with usage check · favorites |
 | **Console & assistance** | Run statement/selection/file · multiple consoles · object completion · per-dialect highlighting · context-aware completion · FK JOIN completion · inspections & quick fixes · format SQL · query history · output/audit log · parameters dialog · Tx auto/manual + isolation · kill query · live templates · rename refactor · run procedure with params |
-| **Data editor** | 500-row pages + page-size menu · count on demand · virtualized rendering · sort via ORDER BY · change set + DML preview · submit/revert · add/delete/clone rows · WHERE/ORDER BY fields · per-column filters · FK navigation · value editor · transpose + Table/Tree/Text views · hide/reorder columns · view query · aggregate view · compare result sets · full-text search |
+| **Data editor** | 500-row pages + page-size menu · count on demand · virtualized rendering · sort via ORDER BY · change set + DML preview · submit/revert · add/delete/clone rows · WHERE/ORDER BY fields · per-column filters · FK navigation · value editor · transpose + Table/Tree/Text views · hide/reorder columns · view query · aggregate view · compare result sets · full-text search · CSV file viewer/editor ("Edit as Table…") |
 | **Import / export** | SQL Inserts/Updates/Where Clause · CSV/TSV/pipe/semicolon + format config · JSON, Markdown, HTML, XML, Pretty, One-row, Python-DataFrame · copy-as · CSV import wizard · create table from file · Excel via Export Data · custom scripted extractors |
 | **Schema management** | Run `.sql` against a source · generate DDL · Modify Table/Column/Index dialogs · dump & restore · *(later)* schema diff · *(later)* migration scripts |
 | **Insight** | Visual explain plan · EXPLAIN ANALYZE · sessions/activity viewer · *(later)* ER diagrams |
@@ -108,11 +108,32 @@ Deliberately out of scope: Oracle, MongoDB, and other drivers until a real need 
 
 | | |
 | --- | --- |
-| <img src="./assets/icon.svg" width="64" alt="Marketplace icon" /> | **Marketplace icon**: a bistro table wearing its gingham cloth, standing on a database-column pedestal. |
-| <img src="./assets/activity-icon.svg" width="28" alt="Activity bar icon" /> | **Activity-bar icon**: 24×24 single-color outline (`currentColor`), recolored by VS Code themes. |
+| <img src="./assets/icon.png" width="64" alt="Marketplace icon" /> | **Marketplace icon**: a bistro table wearing its gingham cloth, standing on a database-column pedestal. |
+| <img src="./assets/activity-icon.png" width="28" alt="Activity bar icon" /> | **Activity-bar icon**: 24×24 single-color outline (`currentColor`), recolored by VS Code themes. |
 
 ## Status
 
-Planning. The [interactive plan](./docs/plan.html) is the source of truth for scope and sequencing; building starts with Phase 1. Free on the marketplace when it ships: built for one person's daily workflow, published for anyone else who cares.
+**Phase 1 (MVP) is built** and working: the connection manager (PostgreSQL, MySQL/MariaDB, SQLite, with SSH tunnels, SSL, and pgpass), the Database explorer tree with full object depth and env colors, query consoles with run-statement/selection/file and object completion, the read-only grid with 500-row pages, count on demand, sorting, and row selection, the core extractors (SQL Inserts/Updates, Where Clause, CSV family), and running `.sql` files against a source. A few console features were pulled forward from Phase 2 for daily-driver comfort: transaction mode (Auto/Manual) with isolation levels on per-console sessions, commit/roll back, query history, the schema switcher, and the green statement-under-caret frame. Consoles open in a dedicated console editor (a Monaco editor under an IntelliJ-style toolbar: run, run script, history, data source settings, Tx dropdown, schema switcher) with IntelliJ-flavored SQL colors; plain `.sql` files attached to a data source keep the native VS Code editor and get the same commands from the editor title and status bar. Phase 2 (editable grid, deep SQL intelligence) is next. The [interactive plan](./docs/plan.html) remains the source of truth for scope and sequencing.
+
+Phase 1 notes and limits:
+
+- The grid is read-only for now; change sets with DML preview land in Phase 2.
+- Console paging wraps SELECT-ish statements in a subquery (`LIMIT`/`OFFSET`); statements that cannot be wrapped (`SHOW`, `EXPLAIN`, `PRAGMA`, …) run verbatim and page client-side.
+- Read-only mode is enforced server-side per session (`default_transaction_read_only`, `SET SESSION TRANSACTION READ ONLY`, `PRAGMA query_only`) plus a lock badge in the tree.
+- Drivers ship with the extension (pure JS/WASM); there is nothing to download and no native compilation.
+- MySQL `DELIMITER` blocks (a CLI feature, not SQL) are not understood by the statement splitter yet.
+
+## Development
+
+```sh
+npm install
+npm run build            # typecheck + bundle to dist/
+npm test                 # unit tests + SQLite end-to-end (no external services)
+npm run test:integration # PostgreSQL/MySQL driver tests; see test/integration for the docker one-liners
+npm run test:vscode      # smoke test inside a real VS Code extension host
+npm run lint
+```
+
+Press F5 in VS Code to launch an Extension Development Host with the extension loaded.
 
 Licensed under [MIT](./LICENSE). Bundled third-party assets keep their own licenses; see [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).

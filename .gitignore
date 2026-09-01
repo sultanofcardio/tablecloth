@@ -7,3 +7,11 @@ intellij-screenshots/
 node_modules/
 
 .idea/
+
+# Build and test output
+dist/
+out-test/
+.vscode-test/
+*.vsix
+
+.DS_Store

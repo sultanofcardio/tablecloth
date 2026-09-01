@@ -1,0 +1,319 @@
+{
+  "name": "tablecloth",
+  "displayName": "Tablecloth",
+  "description": "IntelliJ-grade database tools, laid over VS Code. PostgreSQL, MySQL/MariaDB, and SQLite: explorer tree, query consoles, and a DataGrip-style data grid.",
+  "version": "0.0.1",
+  "publisher": "sultanofcardio",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sultanofcardio/tablecloth.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "database",
+    "sql",
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "sqlite",
+    "datagrip"
+  ],
+  "icon": "assets/icon.png",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:sql"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tablecloth",
+          "title": "Database",
+          "icon": "assets/activity-icon.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "tableclothPanel",
+          "title": "Tablecloth",
+          "icon": "assets/activity-icon.svg"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "tablecloth.console",
+        "displayName": "Tablecloth Console",
+        "selector": [
+          {
+            "filenamePattern": "**/sultanofcardio.tablecloth/consoles/**/*.sql"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "views": {
+      "tablecloth": [
+        {
+          "id": "tablecloth.explorer",
+          "type": "webview",
+          "name": "Database",
+          "contextualTitle": "Database"
+        }
+      ],
+      "tableclothPanel": [
+        {
+          "id": "tablecloth.services",
+          "type": "webview",
+          "name": "Tablecloth",
+          "contextualTitle": "Tablecloth"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tablecloth.addDataSource",
+        "title": "New Data Source\u2026",
+        "category": "Tablecloth",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tablecloth.editDataSource",
+        "title": "Data Source Properties\u2026",
+        "category": "Tablecloth",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "tablecloth.duplicateDataSource",
+        "title": "Duplicate Data Source",
+        "category": "Tablecloth"
+      },
+      {
+        "command": "tablecloth.removeDataSource",
+        "title": "Remove Data Source\u2026",
+        "category": "Tablecloth"
+      },
+      {
+        "command": "tablecloth.refreshNode",
+        "title": "Refresh",
+        "category": "Tablecloth",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tablecloth.disconnect",
+        "title": "Disconnect",
+        "category": "Tablecloth"
+      },
+      {
+        "command": "tablecloth.newConsole",
+        "title": "Query Console\u2026",
+        "category": "Tablecloth",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "tablecloth.runStatement",
+        "title": "Run Statement",
+        "category": "Tablecloth",
+        "icon": "$(play)"
+      },
+      {
+        "command": "tablecloth.runFile",
+        "title": "Run File on Bound Data Source",
+        "category": "Tablecloth"
+      },
+      {
+        "command": "tablecloth.runFileOnDataSource",
+        "title": "Run File on Data Source\u2026",
+        "category": "Tablecloth"
+      },
+      {
+        "command": "tablecloth.attachFile",
+        "title": "Attach File to Data Source\u2026",
+        "category": "Tablecloth",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "tablecloth.queryHistory",
+        "title": "Query History",
+        "category": "Tablecloth",
+        "icon": "$(history)"
+      },
+      {
+        "command": "tablecloth.txMode",
+        "title": "Transaction Mode\u2026",
+        "category": "Tablecloth",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "tablecloth.commit",
+        "title": "Commit Transaction",
+        "category": "Tablecloth",
+        "icon": "$(check)"
+      },
+      {
+        "command": "tablecloth.rollback",
+        "title": "Roll Back Transaction",
+        "category": "Tablecloth",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "tablecloth.selectSchema",
+        "title": "Select Schema\u2026",
+        "category": "Tablecloth",
+        "icon": "$(symbol-namespace)"
+      },
+      {
+        "command": "tablecloth.toggleSystemSchemas",
+        "title": "Show/Hide System Schemas",
+        "category": "Tablecloth",
+        "icon": "$(eye)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tablecloth.runStatement",
+          "when": "editorLangId == sql",
+          "group": "navigation@1"
+        },
+        {
+          "command": "tablecloth.queryHistory",
+          "when": "editorLangId == sql",
+          "group": "navigation@2"
+        },
+        {
+          "command": "tablecloth.txMode",
+          "when": "editorLangId == sql && tablecloth.consoleBound",
+          "group": "navigation@3"
+        },
+        {
+          "command": "tablecloth.commit",
+          "when": "editorLangId == sql && tablecloth.txManual",
+          "group": "navigation@4"
+        },
+        {
+          "command": "tablecloth.rollback",
+          "when": "editorLangId == sql && tablecloth.txManual",
+          "group": "navigation@5"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "tablecloth.runStatement",
+          "when": "editorLangId == sql",
+          "group": "tablecloth@1"
+        },
+        {
+          "command": "tablecloth.runFile",
+          "when": "editorLangId == sql",
+          "group": "tablecloth@2"
+        },
+        {
+          "command": "tablecloth.attachFile",
+          "when": "editorLangId == sql",
+          "group": "tablecloth@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "tablecloth.runFileOnDataSource",
+          "when": "resourceExtname == .sql",
+          "group": "tablecloth@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "tablecloth.runStatement",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && editorLangId == sql"
+      }
+    ],
+    "configuration": {
+      "title": "Tablecloth",
+      "properties": {
+        "tablecloth.dataSources": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "markdownDescription": "Data source definitions, managed through the **Tablecloth: New Data Source** dialog. Entries in user settings are Global data sources; entries in workspace settings are Project data sources. Passwords are kept in the VS Code secret store, never in this setting.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "tablecloth.dataSourceDialog.openIn": {
+          "type": "string",
+          "enum": [
+            "floatingWindow",
+            "editorTab"
+          ],
+          "enumDescriptions": [
+            "Open in a separate compact window. Closest to the JetBrains behaviour.",
+            "Open as a tab in the main window."
+          ],
+          "default": "floatingWindow",
+          "markdownDescription": "Where Tablecloth shows the Data Sources dialog. Separate windows open compact, stripped back to their content. Falls back to an editor tab when the editor build cannot open a separate window."
+        },
+        "tablecloth.grid.pageSize": {
+          "type": "number",
+          "default": 500,
+          "minimum": 1,
+          "description": "Default number of rows per data grid page."
+        },
+        "tablecloth.explorer.showSystemSchemas": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show system schemas and databases (pg_catalog, information_schema, mysql, sys, \u2026) in the explorer tree."
+        },
+        "tablecloth.export.nullText": {
+          "type": "string",
+          "default": "",
+          "description": "Text used for NULL values in CSV-family exports."
+        },
+        "tablecloth.export.csvQuoteAll": {
+          "type": "boolean",
+          "default": false,
+          "description": "Quote every value in CSV-family exports, not just the ones that need it."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "npm run typecheck && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
+    "pretest": "tsc -p tsconfig.test.json",
+    "test": "npm run pretest && node --test \"out-test/test/*.test.js\"",
+    "test:integration": "npm run pretest && node --test \"out-test/test/integration/*.test.js\"",
+    "test:vscode": "npm run build && node test/vscode/runTest.mjs",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "mysql2": "^3.15.0",
+    "node-sqlite3-wasm": "^0.8.45",
+    "pg": "^8.16.0",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.15.0",
+    "@types/ssh2": "^1.15.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.30.0",
+    "monaco-editor": "^0.56.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.40.0"
+  }
+}
