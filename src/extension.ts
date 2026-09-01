@@ -188,9 +188,12 @@ export function activate(context: vscode.ExtensionContext): {
         // a display-only option: force re-introspection by dropping the cached
         // catalogs, but keep live sessions (and their open transactions) intact
         for (const s of store.list()) {
+          // refresh the tree in place only where a catalog was actually showing;
+          // a connected-but-never-introspected source (autoSync off) must not
+          // introspect on a display toggle
+          const hadCatalog = sessions!.getCatalog(s.config.id) !== undefined;
           sessions!.dropCatalog(s.config.id);
-          // refresh the tree in place for sources that are already connected
-          if (sessions!.isConnected(s.config.id)) {
+          if (hadCatalog && sessions!.isConnected(s.config.id)) {
             void sessions!.introspect(s.config).catch(() => undefined);
           }
         }
