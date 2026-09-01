@@ -31,7 +31,8 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     const catalog = this.sessions.getCatalog(ds.config.id);
     if (!catalog) {
       // Warm the model in the background; completions appear once it lands.
-      void this.sessions.introspect(ds.config).catch(() => undefined);
+      // With auto-sync off, only an explicit Refresh may connect/introspect.
+      if (ds.config.autoSync) void this.sessions.introspect(ds.config).catch(() => undefined);
       return undefined;
     }
 

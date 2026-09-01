@@ -129,7 +129,7 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
         case 'completions': {
           const ds = this.dataSource(uri);
           const catalog = ds ? this.sessions.getCatalog(ds.config.id) : undefined;
-          if (ds && !catalog) void this.sessions.introspect(ds.config).catch(() => undefined);
+          if (ds && !catalog && ds.config.autoSync) void this.sessions.introspect(ds.config).catch(() => undefined);
           const entries =
             ds && catalog
               ? computeCompletions(catalog, ds.config.driver, String(message.text ?? ''), Number(message.offset ?? 0))

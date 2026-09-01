@@ -239,8 +239,10 @@ export class GridController {
       case 'count': {
         const provider = this.provider;
         if (!provider) return;
+        const generation = this.generation;
         try {
           const total = await provider.fetchCount();
+          if (generation !== this.generation) return;
           if (total !== undefined) {
             this.state.total = total;
             // only the total changed; a full re-render would wipe the grid's

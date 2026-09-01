@@ -85,7 +85,9 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
     for (const node of nodes) {
       const dsId = node.ref?.dsId;
       const error = dsId ? this.errors.get(dsId) : undefined;
-      if (error && !node.children) {
+      // without a catalog there is nothing else to show (the auto-sync hint
+      // included); the error node takes the children slot
+      if (error && dsId && !this.sessions.getCatalog(dsId)) {
         node.lazy = false;
         node.children = [{ id: `${node.id}:error`, kind: 'error', label: error }];
       }
@@ -124,9 +126,12 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
         this.resolved = true;
         this.postTree();
         break;
-      case 'introspect':
-        await this.introspect(String(message.dsId), false);
+      case 'introspect': {
+        // expansion-triggered: honor auto-sync (explicit Refresh always works)
+        const ds = this.store.get(String(message.dsId));
+        if (ds?.config.autoSync) await this.introspect(ds.config.id, false);
         break;
+      }
       case 'refresh': {
         const dsId = message.dsId ? String(message.dsId) : undefined;
         if (dsId) {

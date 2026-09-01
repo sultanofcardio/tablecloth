@@ -81,7 +81,14 @@ function dataSourceNode(ds: StoredDataSource, deps: ExplorerDeps): ExplorerNode 
     ref: { dsId: config.id },
   };
   if (!catalog) {
-    node.lazy = true;
+    if (config.autoSync) {
+      node.lazy = true;
+    } else {
+      // auto-sync off: expanding must not connect; only explicit Refresh introspects
+      node.children = [
+        { id: `ds:${config.id}:nosync`, kind: 'empty', label: 'auto-sync off - refresh to introspect' },
+      ];
+    }
     return node;
   }
   node.children = catalog.databases.map((db) => databaseNode(config.id, db));
