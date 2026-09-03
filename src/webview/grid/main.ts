@@ -50,7 +50,7 @@ import {
   clearChanges,
   clearSelection,
   displayRows,
-  editAt,
+  editFromCommit,
   editableText,
   hasChanges,
   isDeleted,
@@ -457,10 +457,8 @@ function commitEdit(): void {
   if (!editing) return;
   S.editing = null;
   const { r, c, input } = editing;
-  const text = input.value;
-  const before = editableText(r, c);
-  const hadEdit = editAt(r, c) !== undefined;
-  if (text !== before || (!hadEdit && isInserted(r))) applyEdit(r, c, { kind: 'value', text });
+  const edit = editFromCommit(r, c, input.value);
+  if (edit) applyEdit(r, c, edit);
   else refreshCell(r, c);
   el('gridwrap').focus();
 }

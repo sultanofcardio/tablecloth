@@ -268,26 +268,31 @@ export class ImportDialog {
       async (report, notificationToken) => {
         const cancelled = () => token.isCancellationRequested || notificationToken.isCancellationRequested;
         let lastProgress = 0;
-        await this.sessions.run(ds.config, async (session) => {
-          const result = await executeImport(session, {
-            dialect,
-            createSql,
-            dropSql: createSql ? buildDropTable(dialect, schemaName, tableName) : undefined,
-            batches,
-            batchRows: batches.map((_, i) => parsed.rows.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE)),
-            rowSql: (row) => buildRowInsert(plan, row),
-            onError: request.onError,
-            cancelled,
-            progressed: (done) => {
-              progress(done, total);
-              report.report({ increment: ((done - lastProgress) / Math.max(1, total)) * 100, message: `${done} of ${total} rows` });
-              lastProgress = done;
-            },
-          });
-          inserted = result.inserted;
-          skipped = result.skipped;
-          errors = result.errors;
-        }, IMPORT_SUFFIX).finally(() => this.sessions.closeSession(ds.config.id, IMPORT_SUFFIX));
+        try {
+          await this.sessions.run(ds.config, async (session) => {
+            const result = await executeImport(session, {
+              dialect,
+              createSql,
+              dropSql: createSql ? buildDropTable(dialect, schemaName, tableName) : undefined,
+              batches,
+              batchRows: batches.map((_, i) => parsed.rows.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE)),
+              rowSql: (row) => buildRowInsert(plan, row),
+              onError: request.onError,
+              cancelled,
+              progressed: (done) => {
+                progress(done, total);
+                report.report({ increment: ((done - lastProgress) / Math.max(1, total)) * 100, message: `${done} of ${total} rows` });
+                lastProgress = done;
+              },
+            });
+            inserted = result.inserted;
+            skipped = result.skipped;
+            errors = result.errors;
+          }, IMPORT_SUFFIX);
+        } finally {
+          // the next import must not reuse a session that is being torn down
+          await this.sessions.closeSession(ds.config.id, IMPORT_SUFFIX);
+        }
       },
     );
 

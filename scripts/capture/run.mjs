@@ -128,6 +128,7 @@ try {
     launchArgs: [workspace, '--user-data-dir', profile, '--disable-workspace-trust', '--disable-extensions'],
     extensionTestsEnv: {
       TABLECLOTH_CAPTURE: '1',
+      TABLECLOTH_TEST_HOOKS: '1',
       TABLECLOTH_DEMO_EXPAND: 'orders',
       TABLECLOTH_MARKER_DIR: markerDir,
     },

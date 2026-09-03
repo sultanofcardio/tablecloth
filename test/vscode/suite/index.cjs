@@ -36,6 +36,7 @@ exports.run = async function run() {
   assert.ok(extension, 'extension is installed in the dev host');
   await extension.activate();
   assert.ok(extension.isActive, 'extension activates');
+  assert.ok(extension.exports.hooks, 'test hooks are exported under TABLECLOTH_TEST_HOOKS=1');
 
   // 2. contributed commands are registered
   const commands = await vscode.commands.getCommands(true);

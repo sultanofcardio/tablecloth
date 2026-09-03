@@ -69,7 +69,9 @@ export function valueKind(dataType: string | undefined, numeric?: boolean): Valu
  * Describe how a page maps onto one table. Page columns that are not table
  * columns (aliases, expressions) render but cannot be edited; when every key
  * column is present the key identifies rows, otherwise every writable column
- * does and the caller verifies each statement touched exactly one row.
+ * does and the caller verifies each statement touched exactly one row. Console
+ * results (`requireSourceColumns`) do not take that fallback: without the key
+ * in the result they stay read-only, as the documented limit says.
  */
 export function makeEditTarget(
   dialect: DriverId,
@@ -114,6 +116,9 @@ export function makeEditTarget(
   let readOnlyReason: string | undefined;
   if (sourceReadOnly) readOnlyReason = 'The data source is read-only';
   else if (!columns.some((c) => !c.readOnly)) readOnlyReason = 'No editable columns in this result';
+  else if (requireSourceColumns && !keyPresent) {
+    readOnlyReason = "This result cannot be edited: the table's key columns are not in it";
+  }
   return { dialect, table: qualifiedTable, columns, readOnlyReason, wholeRowKey: !keyPresent };
 }
 
@@ -220,7 +225,8 @@ function qualifierMatches(qualifier: Token[], source: SourceRelation): boolean {
   return false;
 }
 
-function directProjection(tokens: Token[], source: SourceRelation): string | '*' | undefined {
+/** The token naming the projected column, `'*'` for a star, undefined for anything else. */
+function directProjection(tokens: Token[], source: SourceRelation): Token | '*' | undefined {
   let body = tokens;
   const as = body.findIndex((token) => token.kind === 'word' && token.value === 'as');
   if (as >= 0) body = body.slice(0, as);
@@ -238,7 +244,23 @@ function directProjection(tokens: Token[], source: SourceRelation): string | '*'
   const qualifier = body.filter((_, i) => i % 2 === 0).slice(0, -1);
   if (!qualifierMatches(qualifier, source)) return undefined;
   const last = body[body.length - 1]!;
-  return last.text === '*' ? '*' : last.value;
+  return last.text === '*' ? '*' : last;
+}
+
+/**
+ * Dialects where an unquoted reference finds a column whatever case it is
+ * stored in. PostgreSQL folds unquoted words to lower case instead, so there
+ * the tokenizer's lowercased value is already the name the server resolves.
+ */
+const FOLDS_UNQUOTED_CASE: Record<DriverId, boolean> = { postgres: false, mysql: true, sqlite: true };
+
+/** The catalog column a reference names, as the catalog spells it. */
+function catalogName(tableColumns: ColumnModel[], name: string, caseInsensitive: boolean): string {
+  if (tableColumns.some((column) => column.name === name)) return name;
+  if (!caseInsensitive) return name;
+  const folded = name.toLowerCase();
+  const matches = tableColumns.filter((column) => column.name.toLowerCase() === folded);
+  return matches.length === 1 ? matches[0]!.name : name;
 }
 
 /**
@@ -272,11 +294,23 @@ export function resultColumnOrigins(
     } else item.push(token);
   }
   if (item.length > 0) items.push(item);
+  const folds = FOLDS_UNQUOTED_CASE[dialect];
+  const projected = items.map((tokens) => directProjection(tokens, relation));
+  // a star stands for the columns the driver reported at those positions, which
+  // are the live table's; the catalog's order may be stale after DDL
+  const stars = projected.filter((origin) => origin === '*').length;
+  const starWidth = resultColumns.length - (projected.length - 1);
+  if (stars > 1 || (stars === 1 && starWidth < 0)) return resultColumns.map(() => undefined);
   const origins: (string | undefined)[] = [];
-  for (const tokens of items) {
-    const origin = directProjection(tokens, relation);
-    if (origin === '*') origins.push(...tableColumns.map((column) => column.name));
-    else origins.push(origin);
+  for (const origin of projected) {
+    if (origin === '*') {
+      for (let i = 0; i < starWidth; i++) {
+        const name = resultColumns[origins.length]?.name;
+        origins.push(name === undefined ? undefined : catalogName(tableColumns, name, folds));
+      }
+    } else if (origin) {
+      origins.push(catalogName(tableColumns, origin.value, folds && origin.kind === 'word'));
+    } else origins.push(undefined);
   }
   return origins.length === resultColumns.length ? origins : resultColumns.map(() => undefined);
 }

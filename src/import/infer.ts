@@ -72,7 +72,7 @@ const SQL_TYPES: Record<DriverId, Record<InferredType, string>> = {
   mysql: {
     integer: 'int',
     bigint: 'bigint',
-    numeric: 'decimal(20,6)',
+    numeric: 'decimal(38,10)',
     boolean: 'tinyint(1)',
     date: 'date',
     timestamp: 'datetime',

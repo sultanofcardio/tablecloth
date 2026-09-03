@@ -49,6 +49,12 @@ const OID_NAMES: Record<number, string> = {
 
 const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema']);
 
+/** Major release number of a "PostgreSQL 16.2" style version, 0 when unreadable. */
+function majorVersion(serverVersion: string): number {
+  const match = /(\d+)/.exec(serverVersion);
+  return match ? Number(match[1]) : 0;
+}
+
 /**
  * pg resolves multi-statement text to an ARRAY of results. Statements are
  * split upstream, but when several still arrive as one string, present the
@@ -235,11 +241,16 @@ export const postgresDriver: Driver = {
       relations.set(relKey(schemaName, relName), rel);
     }
 
+    // pg_attribute grew attidentity in 10 and attgenerated in 12; older servers
+    // introspect without them rather than failing the whole catalog
+    const major = majorVersion(session.serverVersion);
+    const identityExpr = major >= 10 ? `a.attidentity <> ''` : 'false';
+    const generatedExpr = major >= 12 ? `a.attgenerated <> ''` : 'false';
     const cols = await session.queryRaw(
       `SELECT n.nspname, c.relname, a.attname,
               format_type(a.atttypid, a.atttypmod) AS dtype,
               a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS default,
-              a.attidentity <> '' AS identity, a.attgenerated <> '' AS generated
+              ${identityExpr} AS identity, ${generatedExpr} AS generated
        FROM pg_attribute a
        JOIN pg_class c ON c.oid = a.attrelid
        JOIN pg_namespace n ON n.oid = c.relnamespace

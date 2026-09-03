@@ -19,6 +19,9 @@ try {
     extensionDevelopmentPath: root,
     extensionTestsPath: join(root, 'test', 'vscode', 'suite', 'index.cjs'),
     launchArgs: [workspace, '--disable-workspace-trust', '--disable-extensions'],
+    // the suite drives the extension through the test hooks, which the API
+    // only exposes under this flag
+    extensionTestsEnv: { TABLECLOTH_TEST_HOOKS: '1' },
   });
 } catch {
   console.error('VS Code smoke test failed');

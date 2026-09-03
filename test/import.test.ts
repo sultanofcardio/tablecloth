@@ -254,6 +254,23 @@ test('isNumericText follows the SQL number grammar', () => {
   }
 });
 
+test('the MySQL numeric column type holds the values that made the column numeric', () => {
+  // an integer past int64 and a fraction finer than six places are exactly why
+  // a column infers as numeric; the created column must accept both, or MySQL
+  // rejects the row in strict mode (or silently rounds it)
+  const samples = ['18446744073709551616', '-99999999999999999999999999.9999999999', '0.1234567890'];
+  assert.equal(inferColumnType(samples), 'numeric');
+  const type = sqlTypeFor('mysql', 'numeric');
+  const decimal = /^decimal\((\d+),(\d+)\)$/.exec(type);
+  assert.ok(decimal, `${type} is a DECIMAL(precision, scale)`);
+  const [precision, scale] = [Number(decimal![1]), Number(decimal![2])];
+  for (const sample of samples) {
+    const [whole = '', fraction = ''] = sample.replace('-', '').split('.');
+    assert.ok(fraction.length <= scale, `${sample} keeps every decimal place in ${type}`);
+    assert.ok(whole.length <= precision - scale, `${sample} fits the integer part of ${type}`);
+  }
+});
+
 test('sqlTypeFor maps every inferred type per dialect', () => {
   const all = ['integer', 'bigint', 'numeric', 'boolean', 'date', 'timestamp', 'text'] as const;
   assert.deepEqual(
@@ -262,7 +279,7 @@ test('sqlTypeFor maps every inferred type per dialect', () => {
   );
   assert.deepEqual(
     all.map((t) => sqlTypeFor('mysql', t)),
-    ['int', 'bigint', 'decimal(20,6)', 'tinyint(1)', 'date', 'datetime', 'text'],
+    ['int', 'bigint', 'decimal(38,10)', 'tinyint(1)', 'date', 'datetime', 'text'],
   );
   assert.deepEqual(
     all.map((t) => sqlTypeFor('sqlite', t)),

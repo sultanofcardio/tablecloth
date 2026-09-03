@@ -87,7 +87,25 @@ test('computed projections cannot impersonate source columns', () => {
   ]);
   assert.throws(
     () => buildChangeStatements(editable, [[2, 'new']], { updates: { 0: { 0: { kind: 'value', text: '3' } } }, deletes: [], inserts: [] }),
-    /Column "id" cannot be edited/,
+    /key columns are not in it/,
+    'the computed id took the key with it, so nothing in the result can be edited',
+  );
+  // with the real key in the result, only the computed column refuses edits
+  const keyedSql = "SELECT id, status || '' AS status FROM orders";
+  const keyedOrigins = resultColumnOrigins(keyedSql, 'postgres', tableColumns, result);
+  assert.deepEqual(keyedOrigins, ['id', undefined]);
+  const keyed = makeEditTarget(
+    'postgres',
+    'orders',
+    tableColumns,
+    result.map((column, i) => ({ ...column, sourceColumn: keyedOrigins[i] })),
+    false,
+    true,
+  );
+  assert.equal(keyed.readOnlyReason, undefined);
+  assert.throws(
+    () => buildChangeStatements(keyed, [[2, 'new']], { updates: { 0: { 1: { kind: 'value', text: 'x' } } }, deletes: [], inserts: [] }),
+    /Column "status" cannot be edited/,
   );
 });
 
@@ -299,4 +317,66 @@ test('reserved column names are quoted in generated DML on every dialect', () =>
     buildChangeStatements(makeEditTarget('sqlite', 't', cols, page, false), rows, changes).map((s) => s.sql),
     [`UPDATE t SET "rank" = 2, "order" = 'x' WHERE id = 1;`, `INSERT INTO t ("system") VALUES ('y');`],
   );
+});
+
+test('unquoted console references find the catalog column whatever case it is stored in', () => {
+  const cols: ColumnModel[] = [
+    { name: 'ID', dataType: 'int', nullable: false, primaryKey: true },
+    { name: 'firstName', dataType: 'varchar(50)', nullable: true, primaryKey: false },
+  ];
+  const result: ColumnInfo[] = [{ name: 'ID', numeric: true }, { name: 'firstName' }];
+  for (const dialect of ['mysql', 'sqlite'] as DriverId[]) {
+    assert.deepEqual(resultColumnOrigins('SELECT ID, firstName FROM users', dialect, cols, result), ['ID', 'firstName'], dialect);
+  }
+  const origins = resultColumnOrigins('SELECT ID, firstName FROM users', 'mysql', cols, result);
+  const target = makeEditTarget('mysql', '`users`', cols, result.map((c, i) => ({ ...c, sourceColumn: origins[i] })), false, true);
+  assert.equal(target.readOnlyReason, undefined);
+  assert.deepEqual(target.columns.map((c) => [c.name, c.key, c.readOnly]), [['ID', true, false], ['firstName', false, false]]);
+  assert.deepEqual(
+    buildChangeStatements(target, [[7, 'Ada']], { updates: { 0: { 1: { kind: 'value', text: 'Grace' } } }, deletes: [], inserts: [] }).map((s) => s.sql),
+    ["UPDATE `users` SET firstName = 'Grace' WHERE ID = 7;"],
+  );
+  assert.deepEqual(
+    resultColumnOrigins('SELECT "ID" FROM users', 'sqlite', cols, [{ name: 'ID' }]),
+    ['ID'],
+    'a quoted identifier still matches exactly',
+  );
+  assert.deepEqual(
+    resultColumnOrigins('SELECT ID FROM users', 'postgres', cols, [{ name: 'ID' }]),
+    ['id'],
+    'PostgreSQL folds an unquoted word instead, so it does not reach the quoted catalog name',
+  );
+});
+
+test('a star takes the columns the driver reported, not a catalog order DDL may have changed', () => {
+  // the catalog still has (id, a, b); a DROP + ADD since the last introspection
+  // made the live order (id, b, a)
+  const cols: ColumnModel[] = [
+    { name: 'id', dataType: 'integer', nullable: false, primaryKey: true },
+    { name: 'a', dataType: 'text', nullable: true, primaryKey: false },
+    { name: 'b', dataType: 'text', nullable: true, primaryKey: false },
+  ];
+  const result: ColumnInfo[] = [{ name: 'id', numeric: true }, { name: 'b' }, { name: 'a' }];
+  const origins = resultColumnOrigins('SELECT * FROM t', 'postgres', cols, result);
+  assert.deepEqual(origins, ['id', 'b', 'a']);
+  const target = makeEditTarget('postgres', 't', cols, result.map((c, i) => ({ ...c, sourceColumn: origins[i] })), false, true);
+  assert.deepEqual(
+    buildChangeStatements(target, [[1, 'bee', 'ay']], { updates: { 0: { 1: { kind: 'value', text: 'zed' } } }, deletes: [], inserts: [] }).map((s) => s.sql),
+    [`UPDATE t SET b = 'zed' WHERE id = 1;`],
+  );
+  assert.deepEqual(
+    resultColumnOrigins('SELECT id, * FROM t', 'postgres', cols, [{ name: 'id' }, ...result]),
+    ['id', 'id', 'b', 'a'],
+    'a star among named projections covers the remaining result positions',
+  );
+});
+
+test('a console result without the table key is read-only, as the documented limit says', () => {
+  const result: ColumnInfo[] = [{ name: 'status' }];
+  const origins = resultColumnOrigins('SELECT status FROM orders', 'postgres', tableColumns, result);
+  const consoleTarget = makeEditTarget('postgres', 'orders', tableColumns, result.map((c, i) => ({ ...c, sourceColumn: origins[i] })), false, true);
+  assert.equal(consoleTarget.readOnlyReason, "This result cannot be edited: the table's key columns are not in it");
+  const tableEditor = makeEditTarget('postgres', 'orders', tableColumns, result, false);
+  assert.equal(tableEditor.readOnlyReason, undefined, 'the table editor keeps its whole-row fallback');
+  assert.equal(tableEditor.wholeRowKey, true);
 });

@@ -291,7 +291,7 @@
         "command": "tablecloth.cancelStatement",
         "key": "ctrl+f2",
         "mac": "cmd+f2",
-        "when": "activeCustomEditorId == tablecloth.console || editorLangId == sql"
+        "when": "activeCustomEditorId == tablecloth.console || (editorLangId == sql && tablecloth.consoleBound)"
       },
       {
         "command": "tablecloth.gotoObject",

@@ -31,8 +31,11 @@ export function activate(context: vscode.ExtensionContext): {
   consoleEditorBooted(): boolean;
   explorerResolved(): boolean;
   gridReady(): boolean;
-  /** Test hooks: drive the extension without UI (smoke suite, screenshot rig). */
-  hooks: {
+  /**
+   * Test hooks: drive the extension without UI. Present only under
+   * TABLECLOTH_TEST_HOOKS=1 (the smoke suite and the screenshot rig).
+   */
+  hooks?: {
     introspect(dsId: string): Promise<void>;
     newConsole(dsId: string): Promise<string | undefined>;
     runScript(uriString: string, sql: string): Promise<void>;
@@ -495,7 +498,9 @@ export function activate(context: vscode.ExtensionContext): {
     ),
   );
 
-  // test hooks: the smoke suite and the screenshot rig drive the extension through these
+  // test hooks: the smoke suite and the screenshot rig drive the extension
+  // through these; they stay off the exported API otherwise, so a co-installed
+  // extension cannot run SQL on a configured data source
   const hooks = {
     introspect: async (dsId: string) => {
       const ds = store.get(dsId);
@@ -541,7 +546,7 @@ export function activate(context: vscode.ExtensionContext): {
     consoleEditorBooted: () => consoleEditor.booted,
     explorerResolved: () => explorer.resolved,
     gridReady: () => anyGridReady,
-    hooks,
+    hooks: process.env.TABLECLOTH_TEST_HOOKS === '1' ? hooks : undefined,
     capture: process.env.TABLECLOTH_CAPTURE === '1' ? hooks : undefined,
   };
 }

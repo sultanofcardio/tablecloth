@@ -155,6 +155,16 @@ export function editableText(r: number, c: number): string {
   return valueText(originalValue(r, c));
 }
 
+/**
+ * The edit a committed inline editor leaves behind. Text the user did not
+ * change makes no edit at all, so an editor opened and closed on an inserted
+ * row keeps the placeholder the grid shows (auto, default, <null>); an empty
+ * value only ever comes from typing one over something else.
+ */
+export function editFromCommit(r: number, c: number, text: string): CellEdit | undefined {
+  return text === editableText(r, c) ? undefined : { kind: 'value', text };
+}
+
 export function isCellEdited(r: number, c: number): boolean {
   return !isInserted(r) && S.updates.get(r)?.has(c) === true;
 }
