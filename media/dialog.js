@@ -224,7 +224,7 @@
         $('f-name').value = c.name || '';
         $('f-color').value = c.color || 'none';
         $('f-scope').value = msg.scope;
-        if (!msg.hasWorkspace) {
+        if (!msg.projectScopeAvailable) {
           $('f-scope').querySelector('option[value="project"]').disabled = true;
         }
         $('f-driver').value = c.driver;

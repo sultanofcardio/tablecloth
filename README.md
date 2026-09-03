@@ -62,14 +62,14 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 <div align="center">
   <img src="./assets/screenshot-data-source.png" width="720" alt="The Data Sources dialog in its own compact floating window: name with auto-derived value, environment color and scope selectors, General/Options/SSH-SSL/Schemas tabs, driver, host and port, authentication, a live URL preview, and Test Connection." />
   <br />
-  <sub>The Data Sources dialog opens in its own floating window, IntelliJ-style: env colors, Global/Project scope, SSH/SSL tabs, schema selection, Test Connection.</sub>
+  <sub>The Data Sources dialog opens in its own floating window, IntelliJ-style: env colors, Project/Global scope, SSH/SSL tabs, schema selection, Test Connection.</sub>
 </div>
 
 ## What works today
 
 | Area | Shipped |
 | --- | --- |
-| Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, no-auth · read-only sources (enforced server-side) · env color labels · Global (user) and Project (workspace) scopes · passwords only in the OS keychain |
+| Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, no-auth · read-only sources (enforced server-side) · env color labels · Project (workspace, the default) and Global (user) scopes · passwords only in the OS keychain |
 | Explorer | Tree in the IntelliJ design language: vendor marks, introspection badges, schemas, tables with PK/FK keys, indexes, views, sequences, routines, enum types · toolbar row · context menus · schema selection and system-schema toggle · auto-sync per source |
 | Consoles | Monaco-based editor under an IntelliJ toolbar · run statement with the statement frame · run script · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · object completion with dialect-correct identifier quoting · consoles persist, rename, and reopen |
 | Results | Tablecloth panel shaped like IntelliJ's Services window: Database → source → console tree, per-console result tabs and Output logs, a data source Information tab · multi-statement runs, one tab per query |
@@ -91,7 +91,7 @@ Found something else? [Open an issue](https://github.com/sultanofcardio/tableclo
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `tablecloth.dataSources` | `[]` | Data source definitions, managed through the dialog. User settings hold Global sources; workspace settings hold Project sources. Passwords are never stored here. |
+| `tablecloth.dataSources` | `[]` | Data source definitions, managed through the dialog. Workspace settings hold Project sources (the default when a trusted folder is open); user settings hold Global sources. Passwords are never stored here. |
 | `tablecloth.dataSourceDialog.openIn` | `floatingWindow` | Open the Data Sources dialog in a separate compact window or as an editor tab. |
 | `tablecloth.grid.pageSize` | `500` | Rows per data grid page. |
 | `tablecloth.explorer.showSystemSchemas` | `false` | Show `pg_catalog`, `information_schema`, `mysql`, `sys`, and friends in the explorer. |

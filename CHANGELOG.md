@@ -2,6 +2,13 @@
 
 All notable changes to Tablecloth are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may change the settings format.
 
+## [0.0.3] - 2026-09-03
+
+### Changed
+
+- New data sources default to Project scope (workspace settings) whenever a trusted workspace folder is open, so a source stays with the code it belongs to. Global remains a click away in the dialog, and is still the default with no folder open or in Restricted Mode.
+- The Project option in the Data Sources dialog is disabled in Restricted Mode instead of failing on save.
+
 ## [0.0.2] - 2026-09-02
 
 ### Added

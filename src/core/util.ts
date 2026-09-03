@@ -1,4 +1,13 @@
-import type { DriverId } from './types';
+import type { DriverId, StorageScope } from './types';
+
+/**
+ * Where a new data source is stored when the user has not chosen. Project
+ * (workspace settings) keeps a source with the code it belongs to, so it wins
+ * whenever a workspace folder is open and trusted; otherwise only Global works.
+ */
+export function defaultStorageScope(hasWorkspaceFolder: boolean, workspaceTrusted: boolean): StorageScope {
+  return hasWorkspaceFolder && workspaceTrusted ? 'project' : 'global';
+}
 
 /** Quote an identifier for the given dialect, doubling embedded quote characters. */
 export function quoteIdent(dialect: DriverId, name: string): string {

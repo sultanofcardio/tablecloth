@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
-import { errorMessage } from '../core/util';
+import { defaultStorageScope, errorMessage } from '../core/util';
 import type { DataSourceStore } from '../data/store';
 import { getDriver } from '../drivers/index';
 import type { SessionManager } from '../drivers/sessions';
@@ -54,7 +54,9 @@ export class DataSourceDialog {
           auth: 'userPassword',
           host: 'localhost',
         };
-    const scope: StorageScope = existing?.scope ?? 'global';
+    const hasWorkspaceFolder = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+    const projectScopeAvailable = hasWorkspaceFolder && vscode.workspace.isTrusted;
+    const scope: StorageScope = existing?.scope ?? defaultStorageScope(hasWorkspaceFolder, vscode.workspace.isTrusted);
 
     // Same ordering as every Porcelain surface: create the window first so the
     // dialog renders where it belongs instead of appearing here and jumping.
@@ -86,7 +88,7 @@ export class DataSourceDialog {
             config,
             scope,
             isNew,
-            hasWorkspace: (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
+            projectScopeAvailable,
             secretsPresent: {
               password: !!secrets.password,
               sshPassword: !!secrets.sshPassword,
@@ -268,8 +270,8 @@ export class DataSourceDialog {
       <option value="purple">Purple</option>
     </select>
     <select id="f-scope" title="Where this data source definition is stored">
-      <option value="global">Global</option>
       <option value="project">Project</option>
+      <option value="global">Global</option>
     </select>
   </div>
 
