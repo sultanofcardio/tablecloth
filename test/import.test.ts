@@ -7,9 +7,11 @@ import { sqliteDriver } from '../src/drivers/sqlite';
 import type { DataSourceConfig } from '../src/core/types';
 import { countDataRows, DELIMITERS, detectDelimiter, parseDelimited, type DelimitedOptions } from '../src/import/csv';
 import {
+  duplicateTarget,
   inferColumnType,
   isNumericText,
   matchTableColumn,
+  matchTableColumns,
   sqlTypeFor,
   suggestColumnName,
   valueKindForInferred,
@@ -631,4 +633,26 @@ test('matchTableColumn falls back to a whole word of the header', () => {
   assert.equal(matchTableColumn('First Name', columns), 'first_name', 'a multi-word column wins over its parts');
   assert.equal(matchTableColumn('Signup Date', columns), undefined);
   assert.equal(matchTableColumn('e mail', columns), undefined, 'single letters never match');
+});
+
+test('word matches only map a header that names exactly one column', () => {
+  assert.equal(matchTableColumn('Email Address', ['id', 'email', 'address']), undefined, 'two candidates is a guess');
+  assert.equal(matchTableColumn('Email Address', ['id', 'email', 'name']), 'email');
+});
+
+test('matchTableColumns never proposes the same table column twice', () => {
+  assert.deepEqual(matchTableColumns(['First Name', 'Last Name', 'id'], ['id', 'name', 'email']), ['name', undefined, 'id']);
+  assert.deepEqual(matchTableColumns(['Full Name', 'name'], ['id', 'name']), [undefined, 'name'], 'a name match beats an earlier word match');
+  assert.deepEqual(matchTableColumns(['email', 'Email'], ['Email', 'email']), ['email', 'Email']);
+});
+
+test('duplicateTarget reports the first target mapped twice', () => {
+  assert.equal(duplicateTarget([{ target: 'name' }, { target: '' }, { target: 'email' }]), undefined);
+  assert.equal(duplicateTarget([{ target: 'name' }, { target: 'email' }, { target: 'name ' }]), 'name');
+});
+
+test('the null marker is ignored when inferring a column type', () => {
+  assert.equal(inferColumnType(['1', 'NULL', '3'], 'NULL'), 'integer');
+  assert.equal(inferColumnType(['1', 'NULL', '3']), 'text');
+  assert.equal(inferColumnType(['2024-01-01', '\\N', ''], '\\N'), 'date');
 });

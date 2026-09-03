@@ -22,7 +22,8 @@ import {
   type OutputEntryDto,
   type ServicesMessage,
 } from './chrome';
-import { funnelClause, mergeWhere, quoteName, sqlLiteral, toggleSort } from './filters';
+import { compareCells } from './compare';
+import { composeWhere, funnelClause, resyncWhere, sqlLiteral, toggleSort } from './filters';
 import { ICONS } from './icons';
 import { attachLookup } from './lookup';
 import {
@@ -35,6 +36,7 @@ import {
   renderBody,
   renderResult,
   toggleTreeRow,
+  updatePager,
   updateStatus,
   updateToolbar,
 } from './render';
@@ -420,7 +422,11 @@ function startEdit(r: number, c: number, initial?: string, caret?: number): void
   else if (initial === undefined) input.select();
   else input.setSelectionRange(input.value.length, input.value.length);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      commitEdit();
+      submit();
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       commitEdit();
     } else if (e.key === 'Escape') {
@@ -430,9 +436,6 @@ function startEdit(r: number, c: number, initial?: string, caret?: number): void
       e.preventDefault();
       commitEdit();
       moveFocus(0, e.shiftKey ? -1 : 1, false);
-    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      commitEdit();
-      submit();
     }
     e.stopPropagation();
   });
@@ -574,8 +577,8 @@ function setSelectedTo(edit: CellEdit): void {
 
 function submit(): void {
   cancelEdit();
-  if (changeCount() === 0) return;
-  post({ type: 'submit', changes: toChangeSet() });
+  if (changeCount() === 0 || !S.data) return;
+  post({ type: 'submit', changes: toChangeSet(), generation: S.data.page.generation });
 }
 
 function showSubmitPreview(msg: SubmitPreviewMessage): void {
@@ -925,7 +928,7 @@ function openCellMenu(r: number, c: number, at: { x: number; y: number }): void 
   if (column.fk && value !== null) {
     items.push({ kind: 'separator' });
     add('goRef', { label: `Go to Referenced Row in ${column.fk.table}`, description: '↗' }, () =>
-      post({ type: 'navigateReferenced', column: column.name, value }),
+      post({ type: 'navigateReferenced', index: c, value }),
     );
   }
   if (!isInserted(r) && data.meta.referencing.length > 0) {
@@ -944,8 +947,7 @@ function openCellMenu(r: number, c: number, at: { x: number; y: number }): void 
     const literal = value === null ? 'IS NULL' : `= ${sqlLiteral(data.meta.dialect, value)}`;
     const shown = literal.length > 40 ? literal.slice(0, 39) + '…' : literal;
     add('filterBy', { label: `Filter by ${column.name} ${shown}` }, () => {
-      const clause = `${quoteName(data.meta.dialect, column.name)} ${literal}`;
-      guarded(() => post({ type: 'filter', where: mergeWhere(data.where, undefined, clause), orderBy: data.orderBy }));
+      applyFunnel(column.name, funnelClause(data.meta.dialect, column.name, [value]), data.orderBy);
     });
   }
   showMenu(at, { items, minWidth: 240, onPick: (id) => handlers.get(id)?.() });
@@ -953,6 +955,19 @@ function openCellMenu(r: number, c: number, at: { x: number; y: number }): void 
 
 // ------------------------------------------------------------ funnels
 let funnelRequest: { column: string; list: HTMLElement; values: CellValue[]; checked: Set<number> } | undefined;
+
+/** Set (or, with an empty clause, drop) a column's funnel and reload with the recomposed WHERE. */
+function applyFunnel(column: string, clause: string, orderBy: string): void {
+  const funnels = new Map(S.funnelClauses);
+  if (clause) funnels.set(column, clause);
+  else funnels.delete(column);
+  const where = composeWhere(S.manualWhere, funnels.values());
+  guarded(() => {
+    S.funnelClauses = funnels;
+    el<HTMLInputElement>('f-where').value = where;
+    post({ type: 'filter', where, orderBy });
+  });
+}
 
 function openFunnel(c: number, anchor: HTMLElement): void {
   const data = S.data;
@@ -997,19 +1012,14 @@ function openFunnel(c: number, anchor: HTMLElement): void {
   const close = showPopup(anchor, content, { width: 280 });
   apply.addEventListener('click', () => {
     const values = [...request.checked].map((i) => request.values[i] ?? null);
-    const previous = S.funnelClauses.get(column.name);
     const clause = values.length > 0 ? funnelClause(data.meta.dialect, column.name, values) : '';
-    const where = mergeWhere(data.where, previous, clause);
-    if (clause) S.funnelClauses.set(column.name, clause);
-    else S.funnelClauses.delete(column.name);
     close();
-    guarded(() => post({ type: 'filter', where, orderBy: data.orderBy }));
+    applyFunnel(column.name, clause, data.orderBy);
   });
   clear.addEventListener('click', () => {
     const previous = S.funnelClauses.get(column.name);
-    S.funnelClauses.delete(column.name);
     close();
-    if (previous) guarded(() => post({ type: 'filter', where: mergeWhere(data.where, previous, ''), orderBy: data.orderBy }));
+    if (previous) applyFunnel(column.name, '', data.orderBy);
   });
   setTimeout(() => search.focus(), 0);
 }
@@ -1075,8 +1085,12 @@ function wireGrid(): void {
   });
 
   const cellFromEvent = (e: Event): { td: HTMLElement; r: number; c: number } | undefined => {
-    const td = (e.target as HTMLElement).closest<HTMLElement>('td[data-r][data-c], th[data-r]');
-    if (!td || td.dataset.r === undefined) return undefined;
+    const td = (e.target as HTMLElement).closest<HTMLElement>('td[data-r], td.tname[data-c], th[data-r]');
+    if (!td) return undefined;
+    if (td.dataset.r === undefined) {
+      if (!td.classList.contains('tname') || td.dataset.c === undefined) return undefined;
+      return { td, r: displayRows()[0] ?? 0, c: Number(td.dataset.c) };
+    }
     const c = td.dataset.c !== undefined ? Number(td.dataset.c) : (visibleColumns()[0] ?? 0);
     return { td, r: Number(td.dataset.r), c };
   };
@@ -1091,8 +1105,7 @@ function wireGrid(): void {
     if (!cell) return;
     if (fk) {
       e.preventDefault();
-      const column = S.data!.columns[cell.c]!;
-      post({ type: 'navigateReferenced', column: column.name, value: originalValue(cell.r, cell.c) });
+      post({ type: 'navigateReferenced', index: cell.c, value: originalValue(cell.r, cell.c) });
       return;
     }
     if (S.editing && (S.editing.r !== cell.r || S.editing.c !== cell.c)) commitEdit();
@@ -1151,21 +1164,10 @@ function applyClientSort(): void {
     return;
   }
   const { column, direction } = S.clientSort;
-  const numeric = data.columns[column]?.numeric;
+  const numeric = data.columns[column]?.numeric ?? false;
   const dir = direction === 'desc' ? -1 : 1;
   const order = data.rows.map((_, i) => i);
-  order.sort((a, b) => {
-    const va = data.rows[a]![column] ?? null;
-    const vb = data.rows[b]![column] ?? null;
-    if (va === null) return vb === null ? 0 : -1;
-    if (vb === null) return 1;
-    if (numeric) {
-      const na = Number(va);
-      const nb = Number(vb);
-      if (Number.isFinite(na) && Number.isFinite(nb)) return dir * (na - nb);
-    }
-    return dir * String(va).localeCompare(String(vb));
-  });
+  order.sort((a, b) => dir * compareCells(data.rows[a]![column] ?? null, data.rows[b]![column] ?? null, numeric));
   S.order = order;
 }
 
@@ -1338,8 +1340,10 @@ function onResult(msg: ResultMessage): void {
   closeDialog();
   closePopup();
   loadResult(msg, computeWidths(msg.columns, msg.rows));
-  // funnel clauses that no longer appear in the WHERE text were edited away
-  for (const [column, clause] of [...S.funnelClauses]) if (!msg.where.includes(clause)) S.funnelClauses.delete(column);
+  // WHERE text edited by hand becomes the manual part and drops the funnels
+  const parts = resyncWhere(msg.where, { manual: S.manualWhere, funnels: S.funnelClauses });
+  S.manualWhere = parts.manual;
+  S.funnelClauses = parts.funnels;
   el<HTMLInputElement>('f-where').value = msg.where;
   el<HTMLInputElement>('f-order').value = msg.orderBy;
   setMessage('', 'none');
@@ -1414,7 +1418,7 @@ window.addEventListener('message', (event) => {
     case 'total':
       if (S.data) {
         S.data.page.total = msg.total;
-        renderResult();
+        updatePager();
       }
       break;
     case 'busy':

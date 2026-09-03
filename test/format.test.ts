@@ -137,6 +137,112 @@ test('a trailing newline in the input is kept, statements end with their own sem
   assert.equal(formatSql('', 'postgres'), '');
 });
 
+type Dialect = 'postgres' | 'mysql' | 'sqlite';
+
+/** Assert the exact output and that formatting the output again changes nothing. */
+function expectFormat(input: string, expected: string, dialect: Dialect = 'postgres'): void {
+  const once = formatSql(input, dialect);
+  assert.equal(once, expected);
+  assert.equal(formatSql(once, dialect), once, 'idempotent');
+}
+
+test('prefixed string literals, hex and binary numbers stay intact', () => {
+  expectFormat("select E'\\n', X'0A', N'abc', U&'d\\0061t', E'it\\'s' from t", "SELECT E'\\n', X'0A', N'abc', U&'d\\0061t', E'it\\'s'\nFROM t");
+  expectFormat("select _utf8mb4'abc', b'01', 0x1F, 0b101 from t", "SELECT _utf8mb4'abc', b'01', 0x1F, 0b101\nFROM t", 'mysql');
+  expectFormat("select x'0a', 0X1f from t", "SELECT x'0a', 0X1f\nFROM t", 'sqlite');
+});
+
+test('mysql variables are neither uppercased nor spaced', () => {
+  expectFormat("select @user_id, @@session.sql_mode, @@GLOBAL.x, @'q', @`q` from t", "SELECT @user_id, @@session.sql_mode, @@GLOBAL.x, @'q', @`q`\nFROM t", 'mysql');
+  expectFormat('set @a = 1, @@session.sql_mode = @b', 'SET @a = 1, @@session.sql_mode = @b', 'mysql');
+});
+
+test('postgres operators outside the fixed list round-trip', () => {
+  expectFormat('select a <-> b, x @@ y, j @? p, |/ 25, a ^@ b, ?- l, a -|- b, a <<| b, a &< b, a ?# b, a ## b from t', 'SELECT a <-> b, x @@ y, j @? p, |/ 25, a ^@ b, ?- l, a -|- b, a <<| b, a &< b, a ?# b, a ## b\nFROM t');
+  expectFormat('select 1+-2, a<-1, x=-1 from t', 'SELECT 1 + -2, a < -1, x = -1\nFROM t');
+});
+
+test('BETWEEN keeps its AND on the same line', () => {
+  expectFormat('select 1 from t where a between 1 and 2 and b is not null', 'SELECT 1\nFROM t\nWHERE a BETWEEN 1 AND 2\n  AND b IS NOT NULL');
+  expectFormat('select 1 from t join u on a between 1 and 2 and c = 1', 'SELECT 1\nFROM t\nJOIN u ON a BETWEEN 1 AND 2\n  AND c = 1');
+});
+
+test('type names hug their length and brackets are not spaced', () => {
+  expectFormat(
+    'create table t (a varchar (255), b numeric (10, 2), c character varying (10))',
+    ['CREATE TABLE t', '(', '    a varchar(255),', '    b numeric(10, 2),', '    c character varying(10)', ')'].join('\n'),
+  );
+  expectFormat('select a::int [ ], array [ 1, 2 ], arr [1] from t', 'SELECT a::int[], array[1, 2], arr[1]\nFROM t');
+});
+
+test('CREATE TABLE AS uses the query layout', () => {
+  expectFormat('create table t as select count(*) from x', 'CREATE TABLE t AS\nSELECT count(*)\nFROM x');
+  expectFormat('create table if not exists s.t (id int)', ['CREATE TABLE IF NOT EXISTS s.t', '(', '    id int', ')'].join('\n'));
+});
+
+test('function calls in FROM and JOIN keep no space; DDL and DML column lists keep theirs', () => {
+  expectFormat('select * from my_func (1)', 'SELECT *\nFROM my_func(1)');
+  expectFormat('select * from generate_series(1, 3) g join lateral unnest(a) u on true', 'SELECT *\nFROM generate_series(1, 3) g\nJOIN LATERAL unnest(a) u ON TRUE');
+  expectFormat('insert into t (a) values (1)', 'INSERT INTO t (a)\nVALUES (1)');
+  expectFormat('create index i on t (a)', 'CREATE INDEX i ON t (a)');
+});
+
+test('a terminator never lands inside a trailing line comment', () => {
+  expectFormat('select 1 -- c\n;\nselect 2;', 'SELECT 1 -- c\n;\n\nSELECT 2;');
+  expectFormat('select 1 # c\n;\nselect 2;', 'SELECT 1 # c\n;\n\nSELECT 2;', 'mysql');
+  expectFormat('select 1 /* c */ ;', 'SELECT 1 /* c */;');
+  expectFormat('select 1\n-- tail\n;', 'SELECT 1\n-- tail\n;');
+});
+
+test('a CASE with a line comment is laid out as a block', () => {
+  expectFormat('select case -- c\n when a then 1 else 2 end from t', ['SELECT CASE -- c', '           WHEN a THEN 1', '           ELSE 2', '       END', 'FROM t'].join('\n'));
+  expectFormat('select case when a then 1 -- c\n else 2 end from t', ['SELECT CASE', '           WHEN a THEN 1 -- c', '           ELSE 2', '       END', 'FROM t'].join('\n'));
+  expectFormat('select case x when 1 then 2\n -- c\n end as l from t', ['SELECT CASE x', '           WHEN 1 THEN 2', '           -- c', '       END AS l', 'FROM t'].join('\n'));
+  expectFormat('select case when a then 1 else 2 end -- c\n as l from t', ['SELECT CASE WHEN a THEN 1 ELSE 2 END -- c', '       AS l', 'FROM t'].join('\n'));
+});
+
+test('a comma precedes the line comment of a list item', () => {
+  expectFormat('select a -- c1\n, b from t', 'SELECT a, -- c1\n       b\nFROM t');
+  expectFormat('select a, -- first\n b from t', 'SELECT a, -- first\n       b\nFROM t');
+  expectFormat('update t set a = 1 -- c\n, b = 2', 'UPDATE t\nSET a = 1, -- c\n    b = 2');
+  expectFormat('insert into t (a) values (1) -- c\n, (2)', 'INSERT INTO t (a)\nVALUES (1), -- c\n       (2)');
+  expectFormat('with a as (select 1) -- c\n, b as (select 2) select 1', ['WITH a AS (', '    SELECT 1', '), -- c', 'b AS (', '    SELECT 2', ')', 'SELECT 1'].join('\n'));
+  expectFormat('create table t (a int -- c\n, b text)', ['CREATE TABLE t', '(', '    a int, -- c', '    b text', ')'].join('\n'));
+});
+
+test('comments on heads, connectors, parens and subquery closers are kept', () => {
+  expectFormat('select -- c\n a, b from t', 'SELECT -- c\n       a, b\nFROM t');
+  expectFormat('select /* c */ a, b from t', 'SELECT /* c */ a, b\nFROM t');
+  expectFormat('select distinct -- c\n a from t', 'SELECT DISTINCT -- c\n                a\nFROM t');
+  expectFormat('select a from t where -- c\n a = 1 and -- d\n b = 2', ['SELECT a', 'FROM t', 'WHERE -- c', '      a = 1', '  AND -- d', '      b = 2'].join('\n'));
+  expectFormat('select a from t where a = 1\n-- own line\nand b = 2', ['SELECT a', 'FROM t', 'WHERE a = 1', '  -- own line', '  AND b = 2'].join('\n'));
+  expectFormat('select a from t join u on -- c\n t.id = u.id', ['SELECT a', 'FROM t', 'JOIN u ON -- c', '          t.id = u.id'].join('\n'));
+  expectFormat('select * from ( -- open\n select 1 -- one\n -- before close\n ) -- after close\n q', ['SELECT *', 'FROM ( -- open', '    SELECT 1 -- one', '    -- before close', ') -- after close', 'q'].join('\n'));
+  expectFormat('create table t ( -- open\n -- id\n id int, -- pk\n name text\n) -- close\n', ['CREATE TABLE t', '( -- open', '    -- id', '    id   int, -- pk', '    name text', ') -- close', ''].join('\n'));
+  expectFormat('select a -- c1\n, -- c2\n b from t', 'SELECT a, -- c1\n       -- c2\n       b\nFROM t');
+});
+
+test('every comment in the input appears in the output, in order', () => {
+  const inputs: { sql: string; dialect?: Dialect }[] = [
+    { sql: 'select a, -- one\n b -- two\n from t -- three\n where x = 1 -- four\n and y = 2 -- five\n;' },
+    { sql: 'select case -- c1\n when a then 1 -- c2\n else 2 -- c3\n end -- c4\n from t' },
+    { sql: 'with a as ( -- c1\n select 1 -- c2\n ) -- c3\n, b as (select 2) -- c4\n select * from a -- c5\n join b on /* c6 */ true -- c7' },
+    { sql: 'insert into t (a, -- c1\n b) values (1, -- c2\n 2), -- c3\n (3, 4) -- c4' },
+    { sql: 'create table t ( -- c1\n a int, -- c2\n b text -- c3\n) -- c4' },
+    { sql: 'select `a` # c1\n, b # c2\n from t # c3\n order by a # c4', dialect: 'mysql' },
+    { sql: 'select 1 /* b1 */ , /* b2 */ 2 -- l1\n /* b3 */ from t /* b4 */' },
+  ];
+  for (const { sql, dialect = 'postgres' } of inputs) {
+    const once = formatSql(sql, dialect);
+    const commentsOf = (text: string) => tokenize(text, dialect).filter((t) => t.kind === 'comment').map((t) => t.text.trim());
+    assert.deepEqual(commentsOf(once), commentsOf(sql), `comments kept: ${sql}`);
+    assert.equal(formatSql(once, dialect), once, `idempotent: ${sql}`);
+    const before = significant(tokenize(sql, dialect)).map((t) => (t.kind === 'word' ? t.value : t.text));
+    const after = significant(tokenize(once, dialect)).map((t) => (t.kind === 'word' ? t.value : t.text));
+    assert.deepEqual(after, before, `tokens preserved: ${sql}`);
+  }
+});
+
 test('malformed input never throws and keeps its tokens', () => {
   const broken = "select (a, b from t where x = 'unterminated";
   const out = formatSql(broken, 'postgres');

@@ -10,6 +10,8 @@ export type TokenKind =
   | 'number'
   /** Bind parameter (:name, ${name}, ?, $1); `value` holds the bare name. */
   | 'param'
+  /** MySQL user or system variable (@name, @@session.name, @'quoted'); `value` is lowercased. */
+  | 'variable'
   /** Operators and punctuation, one token per operator. */
   | 'punct'
   | 'comment'
@@ -58,6 +60,11 @@ const MULTI_CHAR_OPERATORS = [
   '~~',
 ];
 
+/** Characters PostgreSQL allows in operator names; a run of them is one operator. */
+const PG_OPERATOR_CHARS = new Set(['+', '-', '*', '/', '<', '>', '=', '~', '!', '@', '#', '%', '^', '&', '|', '`', '?']);
+/** An operator run may only end in + or - when it contains one of these. */
+const PG_OPERATOR_SIGN_KEEPERS = new Set(['~', '!', '@', '#', '%', '^', '&', '|', '`', '?']);
+
 function isWordStart(ch: string): boolean {
   return /[A-Za-z_\u0080-\uffff]/.test(ch);
 }
@@ -68,6 +75,45 @@ function isWordChar(ch: string): boolean {
 
 function isDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9';
+}
+
+/**
+ * Length of the prefix of a string literal starting at `i`: `E'`, `U&'`,
+ * `X'`, `B'`, `N'` and MySQL charset introducers like `_utf8mb4'`. The quote
+ * must follow the prefix directly, so `SELECT e 'x'` stays a word and a string.
+ */
+function stringPrefixLength(sql: string, i: number, dialect: DriverId): number {
+  const ch = sql[i]!;
+  const lower = ch.toLowerCase();
+  if (sql[i + 1] === "'") {
+    if (lower === 'x' || lower === 'b' || lower === 'n') return 1;
+    if (lower === 'e' && dialect === 'postgres') return 1;
+    return 0;
+  }
+  if (lower === 'u' && dialect === 'postgres' && sql[i + 1] === '&' && sql[i + 2] === "'") return 2;
+  if (ch === '_' && dialect === 'mysql') {
+    let j = i + 1;
+    while (j < sql.length && /[A-Za-z0-9_]/.test(sql[j]!)) j++;
+    if (j > i + 1 && sql[j] === "'") return j - i;
+  }
+  return 0;
+}
+
+/**
+ * End of a PostgreSQL operator starting at `i`: the longest run of operator
+ * characters, stopped before a comment opener, and trimmed of trailing + or -
+ * unless the run also contains a character from PG_OPERATOR_SIGN_KEEPERS.
+ */
+function pgOperatorEnd(sql: string, i: number): number {
+  let j = i;
+  while (j < sql.length && PG_OPERATOR_CHARS.has(sql[j]!)) {
+    if (j > i && ((sql[j] === '-' && sql[j + 1] === '-') || (sql[j] === '/' && sql[j + 1] === '*'))) break;
+    j++;
+  }
+  const run = sql.slice(i, j);
+  if ([...run].some((c) => PG_OPERATOR_SIGN_KEEPERS.has(c))) return j;
+  while (j - i > 1 && (sql[j - 1] === '+' || sql[j - 1] === '-')) j--;
+  return j;
 }
 
 /**
@@ -127,12 +173,33 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
       continue;
     }
 
-    // string literals
-    if (ch === "'") {
-      const end = skipQuoted(sql, i, "'", dialect === 'mysql');
+    // string literals, with any prefix (E'..', U&'..', X'..', B'..', N'..', _utf8mb4'..')
+    const prefix = isWordStart(ch) ? stringPrefixLength(sql, i, dialect) : 0;
+    if (ch === "'" || prefix > 0) {
+      const escapes = dialect === 'mysql' || (prefix === 1 && ch.toLowerCase() === 'e');
+      const end = skipQuoted(sql, i + prefix, "'", escapes);
       push('string', i, end);
       i = end;
       continue;
+    }
+
+    // MySQL user and system variables: @name, @@name, @'name', @`name`
+    if (ch === '@' && dialect === 'mysql') {
+      const at = next === '@' ? i + 2 : i + 1;
+      const quote = sql[at];
+      if (quote === "'" || quote === '"' || quote === '`') {
+        const end = skipQuoted(sql, at, quote, quote !== '`');
+        push('variable', i, end, sql.slice(i, end).toLowerCase());
+        i = end;
+        continue;
+      }
+      let j = at;
+      while (j < len && /[A-Za-z0-9_$.]/.test(sql[j]!)) j++;
+      if (j > at) {
+        push('variable', i, j, sql.slice(i, j).toLowerCase());
+        i = j;
+        continue;
+      }
     }
 
     // quoted identifiers: "name" everywhere (a string in MySQL without
@@ -189,9 +256,9 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
       continue;
     }
 
-    // numbers
+    // numbers, including 0x1F hex and 0b101 binary literals
     if (isDigit(ch) || (ch === '.' && isDigit(next))) {
-      const match = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(sql.slice(i));
+      const match = /^0[xX][0-9A-Fa-f]+|^0[bB][01]+|^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(sql.slice(i));
       const end = i + match![0].length;
       push('number', i, end);
       i = end;
@@ -207,7 +274,14 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
       continue;
     }
 
-    // operators
+    // operators: PostgreSQL allows user-defined ones, so any run of operator
+    // characters is one token there; the other dialects have a fixed list
+    if (dialect === 'postgres' && PG_OPERATOR_CHARS.has(ch)) {
+      const end = pgOperatorEnd(sql, i);
+      push('punct', i, end);
+      i = end;
+      continue;
+    }
     const op = MULTI_CHAR_OPERATORS.find((candidate) => sql.startsWith(candidate, i));
     if (op) {
       push('punct', i, i + op.length);

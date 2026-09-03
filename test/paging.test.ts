@@ -1,6 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tableCountQuery, tableDistinctQuery, tablePageQuery, tableViewQuery, wrapCount, wrapDistinct, wrapPaged } from '../src/sql/paging';
+import { stripTrailingSemicolon, tableCountQuery, tableDistinctQuery, tablePageQuery, tableViewQuery, wrapCount, wrapDistinct, wrapPaged } from '../src/sql/paging';
+
+test('stripTrailingSemicolon drops trailing semicolons, comments and whitespace only', () => {
+  assert.equal(stripTrailingSemicolon('select 1; -- note'), 'select 1');
+  assert.equal(stripTrailingSemicolon('select 1;;'), 'select 1');
+  assert.equal(stripTrailingSemicolon('select 1 /* c */ ;'), 'select 1');
+  assert.equal(stripTrailingSemicolon('select 1 -- note\n'), 'select 1');
+  assert.equal(stripTrailingSemicolon('select 1;\n/* a */ -- b\n;\n'), 'select 1');
+  assert.equal(stripTrailingSemicolon('select 1 # note', 'mysql'), 'select 1');
+  // leading and inner text, including comments, strings and identifiers containing ; stay intact
+  assert.equal(stripTrailingSemicolon("  -- head\nselect ';' as \"a;b\" /* mid */ from t;"), "  -- head\nselect ';' as \"a;b\" /* mid */ from t");
+  assert.equal(stripTrailingSemicolon('select 1'), 'select 1');
+  assert.equal(stripTrailingSemicolon('; -- nothing'), '');
+});
+
+test('console wrappers survive a trailing comment or repeated terminators', () => {
+  assert.equal(
+    wrapPaged('postgres', 'select 1; -- note', { limit: 11, offset: 0 }),
+    'SELECT * FROM (\nselect 1\n) AS _tablecloth_q LIMIT 11 OFFSET 0',
+  );
+  assert.equal(wrapCount('mysql', 'select 1;; # note'), 'SELECT COUNT(*) FROM (\nselect 1\n) AS _tablecloth_q');
+  assert.equal(
+    wrapDistinct('sqlite', 'select 1 /* c */ ;', 'a', undefined, 5),
+    'SELECT DISTINCT a FROM (\nselect 1\n) AS _tablecloth_q ORDER BY a LIMIT 5',
+  );
+});
 
 test('wrapPaged wraps and pages', () => {
   const sql = wrapPaged('postgres', 'SELECT * FROM orders;', { limit: 501, offset: 0 });

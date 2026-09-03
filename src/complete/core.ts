@@ -1,6 +1,7 @@
 import type { CatalogModel, ColumnModel, DriverId, RelationModel, SchemaModel } from '../core/types';
 import { splitStatements, statementAt } from '../sql/splitter';
-import { SQL_FUNCTIONS, significant, tokenize, type Token } from '../sql/tokens';
+import { SQL_RESERVED_WORDS } from '../sql/reserved';
+import { SQL_FUNCTIONS, SQL_KEYWORDS, significant, tokenize, type Token } from '../sql/tokens';
 import { parseTableRefs, stripQuotes, type TableRef } from './refs';
 
 export type CompletionKind =
@@ -268,16 +269,30 @@ function resolveRefs(catalog: CatalogModel, refs: TableRef[]): ResolvedRef[] {
   return out;
 }
 
-/** A short alias IntelliJ would pick: initials of the underscore-separated words. */
+/** A word that cannot stand bare as an alias in some dialect (invoice_notes -> "in"). */
+function isReservedAlias(alias: string): boolean {
+  const lower = alias.toLowerCase();
+  return SQL_KEYWORDS.has(lower) || SQL_RESERVED_WORDS.has(lower);
+}
+
+/**
+ * A short alias IntelliJ would pick: initials of the underscore-separated
+ * words. Initials that spell a keyword grow by the following letters of the
+ * last word (invoice_notes -> ino); an alias another table holds gets a
+ * numeric suffix (c2).
+ */
 export function aliasFor(name: string, taken: Set<string>): string {
   // words split on underscores and camel humps; initials keep their case (Programs -> P, LiveStream -> LS)
   const words = name
     .split(/[_\s]+/)
     .filter(Boolean)
     .flatMap((w) => w.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z0-9]+|[A-Z]/g) ?? [w]);
-  const alias = (words.length > 1 ? words.map((w) => w[0]!).join('') : name.slice(0, 1)) || 't';
+  const initials = (words.length > 1 ? words.map((w) => w[0]!).join('') : name.slice(0, 1)) || 't';
+  const lastWord = words[words.length - 1] ?? name;
+  let alias = initials;
+  for (let k = 2; isReservedAlias(alias) && k <= lastWord.length; k++) alias = initials + lastWord.slice(1, k);
   let candidate = alias;
-  for (let n = 2; taken.has(candidate.toLowerCase()); n++) candidate = `${alias}${n}`;
+  for (let n = 2; taken.has(candidate.toLowerCase()) || isReservedAlias(candidate); n++) candidate = `${alias}${n}`;
   return candidate;
 }
 
@@ -480,9 +495,9 @@ function currentClause(tokens: Token[]): Clause {
   return 'other';
 }
 
-function aliasEntry(table: string, refs: TableRef[]): CompletionEntry {
+function aliasEntry(table: Token, refs: TableRef[]): CompletionEntry {
   const taken = new Set(refs.filter((r) => r.alias).map((r) => r.alias!.toLowerCase()));
-  const alias = aliasFor(table, taken);
+  const alias = aliasFor(table.kind === 'ident' ? table.value : table.text, taken);
   return { label: alias, kind: 'alias', detail: 'alias', sortText: '2' + alias };
 }
 
@@ -497,6 +512,7 @@ function nextTokenEntries(dialect: DriverId, tokens: Token[], refs: TableRef[]):
   const clause = currentClause(tokens);
   const statement = tokens.find((t) => t.kind === 'word')?.value ?? '';
   const afterName = last.kind === 'word' || last.kind === 'ident';
+  const afterStar = last.kind === 'punct' && last.text === '*';
   const returning = dialect !== 'mysql' && ['insert', 'update', 'delete'].includes(statement) ? ['RETURNING'] : [];
   const conditions = afterName ? CONDITION_OPERATORS : [];
   const entries: CompletionEntry[] = [];
@@ -504,7 +520,7 @@ function nextTokenEntries(dialect: DriverId, tokens: Token[], refs: TableRef[]):
   let rest: string[] = [];
   switch (clause) {
     case 'select':
-      first = ['FROM', 'AS'];
+      first = afterStar ? ['FROM'] : ['FROM', 'AS'];
       break;
     case 'from':
     case 'join': {
@@ -514,7 +530,7 @@ function nextTokenEntries(dialect: DriverId, tokens: Token[], refs: TableRef[]):
         ((prev.kind === 'word' && (prev.value === 'from' || prev.value === 'join')) ||
           (prev.kind === 'punct' && (prev.text === ',' || prev.text === '.')));
       if (justNamed) {
-        entries.push(aliasEntry(last.value, refs));
+        entries.push(aliasEntry(last, refs));
         first.push('AS');
       }
       if (statement === 'delete') {
@@ -553,7 +569,7 @@ function nextTokenEntries(dialect: DriverId, tokens: Token[], refs: TableRef[]):
       break;
     case 'update':
       if (afterName && prev?.kind === 'word' && prev.value === 'update') {
-        entries.push(aliasEntry(last.value, refs));
+        entries.push(aliasEntry(last, refs));
         first.push('AS');
       }
       first.push('SET');
@@ -565,10 +581,10 @@ function nextTokenEntries(dialect: DriverId, tokens: Token[], refs: TableRef[]):
       first = [...returning, dialect === 'mysql' ? 'ON DUPLICATE KEY UPDATE' : 'ON CONFLICT'];
       break;
     case 'returning':
-      first = ['AS'];
+      first = afterStar ? [] : ['AS'];
       break;
     default:
-      first = ['AND', 'OR', ...conditions, 'AS'];
+      first = afterStar ? [] : ['AND', 'OR', ...conditions, 'AS'];
   }
   const seen = new Set(first);
   first.forEach((word, i) => entries.push({ label: word, kind: 'keyword', sortText: '3' + String(i).padStart(2, '0') }));
@@ -623,6 +639,16 @@ export function computeCompletions(
   if (last.kind === 'word' && (last.value === 'on' || ((last.value === 'and' || last.value === 'or') && inOnClause(tokens)))) {
     const resolved = resolveRefs(catalog, refs);
     return quoted([...joinConditionEntries(catalog, dialect, resolved), ...generalEntries(catalog, refs), ...keywordEntries(['NOT', 'EXISTS'], '4')]);
+  }
+
+  // "SELECT *", "t.*", "count(*": a star standing as a whole term
+  const starTerm =
+    last.kind === 'punct' &&
+    last.text === '*' &&
+    ((last2?.kind === 'word' && ['select', 'distinct', 'returning'].includes(last2.value)) ||
+      (last2?.kind === 'punct' && [',', '.', '('].includes(last2.text)));
+  if (starTerm) {
+    return nextTokenEntries(dialect, tokens, refs);
   }
 
   const afterKeyword = last.kind === 'word' && ['select', 'where', 'and', 'or', 'by', 'having', 'set', 'when', 'then', 'else', 'distinct', 'not', 'returning', 'case'].includes(last.value);

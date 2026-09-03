@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { aliasFor, computeCompletions, identifierInsertText } from '../src/complete/core';
 import type { CatalogModel } from '../src/core/types';
+import { SQL_RESERVED_WORDS } from '../src/sql/reserved';
+import { SQL_KEYWORDS } from '../src/sql/tokens';
 
 const catalog: CatalogModel = {
   serverVersion: 'PostgreSQL 17',
@@ -205,4 +207,88 @@ test('aliasFor uses initials and avoids taken names', () => {
   assert.equal(aliasFor('Programs', new Set()), 'P');
   assert.equal(aliasFor('LiveStream', new Set()), 'LS');
   assert.equal(aliasFor('pg_stat_activity', new Set()), 'psa');
+});
+
+test('aliasFor never spells a keyword or reserved word', () => {
+  const reserved = new Set([...SQL_KEYWORDS, ...SQL_RESERVED_WORDS]);
+  for (const name of ['invoice_notes', 'order_notes', 'audit_sessions', 'item_stock', 'order_requests', 'order_form', 'digital_orders']) {
+    const alias = aliasFor(name, new Set());
+    assert.equal(reserved.has(alias.toLowerCase()), false, `${name} -> ${alias}`);
+  }
+  assert.equal(aliasFor('invoice_notes', new Set()), 'ino', 'initials grow by the next letters of the last word');
+  assert.equal(aliasFor('order_notes', new Set()), 'ono');
+  assert.equal(aliasFor('audit_sessions', new Set()), 'ase');
+  assert.equal(aliasFor('invoice_notes', new Set(['ino'])), 'ino2', 'a taken lengthened alias still gets the numeric suffix');
+  assert.equal(aliasFor('a_s', new Set()), 'as2', 'a last word too short to lengthen falls back to the numeric suffix');
+});
+
+const keywordAliasCatalog: CatalogModel = {
+  serverVersion: 'MySQL 8',
+  introspectedAt: 0,
+  databases: [
+    {
+      name: 'acme',
+      allSchemaNames: ['acme'],
+      schemas: [
+        {
+          name: 'acme',
+          implicit: true,
+          sequences: [],
+          enums: [],
+          routines: [],
+          relations: [
+            {
+              name: 'invoices',
+              kind: 'table',
+              indexes: [],
+              columns: [{ name: 'id', dataType: 'bigint', nullable: false, primaryKey: true }],
+            },
+            {
+              name: 'invoice_notes',
+              kind: 'table',
+              indexes: [],
+              columns: [
+                { name: 'id', dataType: 'bigint', nullable: false, primaryKey: true },
+                { name: 'invoice_id', dataType: 'bigint', nullable: false, primaryKey: false, foreignKeyTarget: 'invoices' },
+              ],
+            },
+            { name: 'order_notes', kind: 'table', indexes: [], columns: [] },
+            { name: 'LiveStream', kind: 'table', indexes: [], columns: [] },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+test('the alias suggestion keeps the case the table was typed with', () => {
+  const entries = computeCompletions(keywordAliasCatalog, 'mysql', 'SELECT * FROM LiveStream ', 'SELECT * FROM LiveStream '.length);
+  assert.deepEqual(entries[0], { label: 'LS', kind: 'alias', detail: 'alias', sortText: '2LS' });
+  const update = computeCompletions(keywordAliasCatalog, 'mysql', 'UPDATE LiveStream ', 'UPDATE LiveStream '.length);
+  assert.equal(update[0]?.label, 'LS');
+});
+
+test('an alias that would be a keyword is never offered, in the FROM clause or in FK joins', () => {
+  const afterFrom = computeCompletions(keywordAliasCatalog, 'mysql', 'SELECT * FROM order_notes ', 'SELECT * FROM order_notes '.length);
+  assert.equal(afterFrom[0]?.kind, 'alias');
+  assert.equal(afterFrom[0]?.label, 'ono');
+  assert.equal(afterFrom.some((e) => e.label.toLowerCase() === 'on' && e.kind === 'alias'), false);
+
+  const text = 'SELECT * FROM invoices i JOIN ';
+  const joins = computeCompletions(keywordAliasCatalog, 'mysql', text, text.length).filter((e) => e.kind === 'join');
+  assert.deepEqual(joins.map((e) => e.label), ['invoice_notes ino ON ino.invoice_id = i.id']);
+});
+
+test('a star that completes a term offers the clause keywords, FROM first', () => {
+  for (const text of ['SELECT * ', 'SELECT DISTINCT * ', 'SELECT id, * ', 'SELECT o.* ']) {
+    const entries = computeCompletions(catalog, 'postgres', text, text.length);
+    assert.deepEqual(entries[0], { label: 'FROM', kind: 'keyword', sortText: '300' }, text);
+    assert.equal(entries.some((e) => e.kind === 'column' || e.kind === 'function'), false, `no columns after ${JSON.stringify(text)}`);
+    assert.equal(entries.some((e) => e.label === 'AS'), false, `AS makes no sense after ${JSON.stringify(text)}`);
+  }
+  const inCall = computeCompletions(catalog, 'postgres', 'SELECT count(* ', 'SELECT count(* '.length);
+  assert.equal(inCall.some((e) => e.kind === 'column' || e.kind === 'function'), false, 'nothing to name inside count(*');
+  assert.equal(inCall.some((e) => e.label === 'AS' || e.label === 'AND'), false);
+  const multiplication = computeCompletions(catalog, 'postgres', 'SELECT id * FROM orders', 'SELECT id * '.length);
+  assert.equal(multiplication[0]?.kind, 'column', 'a star after a name multiplies, so operands follow');
 });

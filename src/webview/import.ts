@@ -1,5 +1,7 @@
 // The Import Data dialog webview: format settings, the column mapping table,
 // a preview of the first rows, and progress while the host runs the inserts.
+import { duplicateTarget } from '../import/infer';
+
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
 const vscode = acquireVsCodeApi();
@@ -20,7 +22,7 @@ interface Analysis {
   mode: 'existing' | 'create';
   targetLabel: string;
   defaultTableName: string;
-  settings: { delimiter: string; quote: string; hasHeader: boolean; trim: boolean };
+  settings: { delimiter: string; quote: string; hasHeader: boolean; trim: boolean; nullText: string };
   delimiters: { id: string; label: string; char: string }[];
   tableColumns: { name: string; dataType: string }[];
   columns: ColumnInfo[];
@@ -38,6 +40,7 @@ function settings() {
     quote: el<HTMLSelectElement>('f-quote').value,
     hasHeader: el<HTMLInputElement>('f-header').checked,
     trim: el<HTMLInputElement>('f-trim').checked,
+    nullText: el<HTMLInputElement>('f-null').value,
   };
 }
 
@@ -55,6 +58,7 @@ function renderSettings(a: Analysis): void {
   el<HTMLSelectElement>('f-quote').value = a.settings.quote;
   el<HTMLInputElement>('f-header').checked = a.settings.hasHeader;
   el<HTMLInputElement>('f-trim').checked = a.settings.trim;
+  el<HTMLInputElement>('f-null').value = a.settings.nullText;
 }
 
 function renderMapping(a: Analysis): void {
@@ -162,11 +166,15 @@ function mappedColumns() {
 function updateSummary(): void {
   const a = analysis;
   if (!a) return;
-  const mapped = mappedColumns().length;
+  const mapped = mappedColumns();
+  const duplicate = duplicateTarget(mapped);
   const rows = a.totalRows.toLocaleString();
-  el('summary').textContent = `${a.settings.hasHeader ? 'First row is header' : 'No header row'} · ${rows} data rows · ${mapped} of ${a.columns.length} columns mapped`;
+  el('summary').textContent = duplicate
+    ? `Column "${duplicate}" is mapped more than once`
+    : `${a.settings.hasHeader ? 'First row is header' : 'No header row'} · ${rows} data rows · ${mapped.length} of ${a.columns.length} columns mapped`;
+  el('summary').classList.toggle('err', !!duplicate);
   el('b-import').textContent = `Import ${rows} rows`;
-  (el('b-import') as HTMLButtonElement).disabled = importing || mapped === 0;
+  (el('b-import') as HTMLButtonElement).disabled = importing || mapped.length === 0 || !!duplicate;
 }
 
 function renderPreview(a: Analysis): void {
@@ -200,7 +208,7 @@ function renderPreview(a: Analysis): void {
   });
 }
 
-for (const id of ['f-delimiter', 'f-quote', 'f-header', 'f-trim']) {
+for (const id of ['f-delimiter', 'f-quote', 'f-header', 'f-trim', 'f-null']) {
   el(id).addEventListener('change', () => vscode.postMessage({ type: 'reparse', settings: settings() }));
 }
 el('b-preview').addEventListener('click', () => {

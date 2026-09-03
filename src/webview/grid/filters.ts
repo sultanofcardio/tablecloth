@@ -1,6 +1,7 @@
 // Text helpers for the WHERE and ORDER BY fields. The fields hold free text
 // the user may edit by hand; header clicks and funnels compose into them.
 import type { CellValue, DriverId } from '../../core/types';
+import { sqlName } from '../../core/util';
 
 export interface OrderTerm {
   /** Column name (unquoted) or the raw expression text. */
@@ -44,19 +45,16 @@ function splitTopLevel(text: string): string[] {
 
 export function parseOrderBy(text: string): OrderTerm[] {
   return splitTopLevel(text).map((part) => {
-    const match = /^(.*?)\s+(asc|desc)(\s+nulls\s+(?:first|last))?$/i.exec(part);
+    const match = /^(.*?)(?:\s+(asc|desc))?(\s+nulls\s+(?:first|last))?$/i.exec(part);
     const column = stripQuotes((match ? match[1]! : part).trim());
-    const direction = match && match[2]!.toLowerCase() === 'desc' ? 'desc' : 'asc';
+    const direction = match?.[2]?.toLowerCase() === 'desc' ? 'desc' : 'asc';
     return { column, direction };
   });
 }
 
-/** Identifier spelling for generated clauses: bare when it survives folding, else quoted. */
+/** Identifier spelling for generated clauses: bare when it survives folding and is no keyword, else quoted. */
 export function quoteName(dialect: DriverId, name: string): string {
-  const plain = dialect === 'mysql' ? /^[A-Za-z_$][A-Za-z0-9_$]*$/ : /^[a-z_][a-z0-9_]*$/;
-  if (plain.test(name)) return name;
-  const q = dialect === 'mysql' ? '`' : '"';
-  return q + name.replaceAll(q, q + q) + q;
+  return sqlName(dialect, name);
 }
 
 export function composeOrderBy(dialect: DriverId, terms: OrderTerm[]): string {
@@ -128,18 +126,58 @@ export function funnelClause(dialect: DriverId, column: string, values: CellValu
   return parts.length > 1 ? `(${parts.join(' OR ')})` : (parts[0] ?? '');
 }
 
-/** AND a clause onto the WHERE text, replacing the previous clause for the same column. */
-export function mergeWhere(where: string, previous: string | undefined, clause: string): string {
-  let base = where;
-  if (previous) {
-    const wrapped = `(${previous})`;
-    const matched = base.includes(wrapped) ? wrapped : previous;
-    const idx = base.indexOf(matched);
-    if (idx >= 0) {
-      base = (base.slice(0, idx) + base.slice(idx + matched.length)).replace(/^\s*AND\s+/i, '');
-      base = base.replace(/\s+AND\s*$/i, '').replace(/\s+AND\s+AND\s+/i, ' AND ').trim();
+/** Whether the text has an OR outside quotes and parentheses, so ANDing onto it needs parentheses. */
+function hasTopLevelOr(text: string): boolean {
+  let depth = 0;
+  let quote: string | null = null;
+  const word = /^[A-Za-z0-9_$]$/;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (depth === 0 && (ch === 'o' || ch === 'O') && /^or$/i.test(text.slice(i, i + 2))) {
+      const before = i === 0 ? '' : text[i - 1]!;
+      const after = text[i + 2] ?? '';
+      if (!word.test(before) && !word.test(after)) return true;
     }
   }
-  if (!clause) return base;
-  return base.trim() ? `(${base.trim()}) AND (${clause})` : clause;
+  return false;
+}
+
+/**
+ * The WHERE text as the field shows it: the hand-written part first, then
+ * one clause per funnelled column, all joined with AND. The manual part is
+ * parenthesized only when a top-level OR would otherwise bind wrongly, so
+ * recomposing after every funnel change never grows the text.
+ */
+export function composeWhere(manual: string, funnels: Iterable<string>): string {
+  const clauses = [...funnels].map((clause) => clause.trim()).filter(Boolean);
+  const text = manual.trim();
+  if (!text) return clauses.join(' AND ');
+  if (clauses.length === 0) return text;
+  return [hasTopLevelOr(text) ? `(${text})` : text, ...clauses].join(' AND ');
+}
+
+export interface WhereParts {
+  /** The user-typed part of the WHERE text. */
+  manual: string;
+  /** Funnel clauses per column, in application order. */
+  funnels: Map<string, string>;
+}
+
+/**
+ * Reconcile the funnel bookkeeping with the WHERE text a result came back
+ * with. Text that still equals the composed form keeps its funnels; anything
+ * else was edited by hand and becomes the manual part, with no funnels.
+ */
+export function resyncWhere(where: string, parts: WhereParts): WhereParts {
+  if (where.trim() === composeWhere(parts.manual, parts.funnels.values())) {
+    return { manual: parts.manual, funnels: new Map(parts.funnels) };
+  }
+  return { manual: where, funnels: new Map() };
 }

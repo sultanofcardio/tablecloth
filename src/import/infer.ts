@@ -117,12 +117,8 @@ export function suggestColumnName(header: string, used: Set<string>): string {
   return name;
 }
 
-/**
- * Match a file header to a table column: exact, then case-insensitive, then by
- * normalized slug, then by a whole word of the header ("Email Address" maps to
- * email, "Full Name" to name). Word matches prefer the longest column name.
- */
-export function matchTableColumn(header: string, tableColumns: string[]): string | undefined {
+/** A header's column by name: exact, then case-insensitive, then by normalized slug. */
+function matchByName(header: string, tableColumns: string[]): string | undefined {
   const exact = tableColumns.find((c) => c === header);
   if (exact !== undefined) return exact;
   const lower = header.toLowerCase();
@@ -130,16 +126,64 @@ export function matchTableColumn(header: string, tableColumns: string[]): string
   if (caseless !== undefined) return caseless;
   const normalized = slug(header);
   if (normalized === '') return undefined;
-  const bySlug = tableColumns.find((c) => slug(c) === normalized);
-  if (bySlug !== undefined) return bySlug;
+  return tableColumns.find((c) => slug(c) === normalized);
+}
+
+/**
+ * A header's column by a whole word of the header ("Full Name" maps to name),
+ * only when exactly one column matches: "Email Address" against email and
+ * address names both, so it maps to neither rather than to a guess.
+ */
+function matchByWord(header: string, tableColumns: string[]): string | undefined {
+  const normalized = slug(header);
+  if (normalized === '') return undefined;
   const words = new Set(normalized.split('_').filter((w) => w.length > 1));
-  const byWord = tableColumns
-    .filter((c) => {
-      const columnSlug = slug(c);
-      return words.has(columnSlug) || (columnSlug.includes('_') && columnSlug.split('_').every((w) => words.has(w)));
-    })
-    .sort((a, b) => b.length - a.length);
-  return byWord[0];
+  const byWord = tableColumns.filter((c) => {
+    const columnSlug = slug(c);
+    return words.has(columnSlug) || (columnSlug.includes('_') && columnSlug.split('_').every((w) => words.has(w)));
+  });
+  return byWord.length === 1 ? byWord[0] : undefined;
+}
+
+/**
+ * Match a file header to a table column: exact, then case-insensitive, then by
+ * normalized slug, then by a whole word of the header when that names exactly
+ * one column.
+ */
+export function matchTableColumn(header: string, tableColumns: string[]): string | undefined {
+  return matchByName(header, tableColumns) ?? matchByWord(header, tableColumns);
+}
+
+/**
+ * Match every header at once so no table column is proposed twice: name
+ * matches are settled first, then word matches over the columns still free
+ * ("First Name" takes name, "Last Name" is left unmapped for the user).
+ */
+export function matchTableColumns(headers: string[], tableColumns: string[]): (string | undefined)[] {
+  const taken = new Set<string>();
+  const matches: (string | undefined)[] = headers.map((header) => {
+    const match = matchByName(header, tableColumns.filter((c) => !taken.has(c)));
+    if (match !== undefined) taken.add(match);
+    return match;
+  });
+  return matches.map((match, i) => {
+    if (match !== undefined) return match;
+    const byWord = matchByWord(headers[i]!, tableColumns.filter((c) => !taken.has(c)));
+    if (byWord !== undefined) taken.add(byWord);
+    return byWord;
+  });
+}
+
+/** The first target column mapped twice, or undefined when every mapped target is distinct. */
+export function duplicateTarget(columns: { target: string }[]): string | undefined {
+  const seen = new Set<string>();
+  for (const column of columns) {
+    const target = column.target.trim();
+    if (!target) continue;
+    if (seen.has(target)) return target;
+    seen.add(target);
+  }
+  return undefined;
 }
 
 /**

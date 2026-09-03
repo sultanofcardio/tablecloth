@@ -102,7 +102,6 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 - Cancelling a running statement is unavailable for SQLite, which runs in-process.
 - MySQL `DELIMITER` blocks are not understood by the statement splitter.
 - SQLite empty results lose their column headers.
-- An isolation level is not reapplied after a silent reconnect.
 - Paste in the console uses the keyboard; Monaco's context-menu Paste is inert inside webviews.
 
 Found something else? [Open an issue](https://github.com/sultanofcardio/tablecloth/issues).
@@ -137,7 +136,7 @@ npm run lint
 npm run package          # build the .vsix
 ```
 
-Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/` (`SHOT_SUITE=phase2.cjs` stages the data editor, console, and import shots).
+Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces (`SHOT_NAMES` narrows either list).
 
 **Releasing.** CI runs on every push and pull request. To release, move the `Unreleased` section of [CHANGELOG.md](./CHANGELOG.md) under the new version, run `npm version <patch|minor|major>`, and `git push --follow-tags`. The `v*` tag triggers the release workflow, which tests, packages, publishes to the Marketplace, and creates the GitHub release with the `.vsix` attached. The workflow needs a `VSCE_PAT` repository secret.
 

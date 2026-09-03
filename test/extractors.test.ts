@@ -103,13 +103,60 @@ test('selectedColumns projects columns for SQL extractors', () => {
   );
 });
 
-test('selectedColumns drops a deselected key column from SQL Updates', () => {
+test('SQL Updates keeps a deselected key column in WHERE while SET follows the selection', () => {
   const out = extract('sql-updates', { ...input, selectedColumns: [1] });
   assert.equal(
     out,
+    "UPDATE public.customers SET email = 'ada@example.com' WHERE id = 1;\n" +
+      "UPDATE public.customers SET email = 'o''hara@example.com' WHERE id = 2;\n",
+  );
+});
+
+test('Where Clause keeps a deselected key column', () => {
+  assert.equal(extract('sql-where', { ...input, selectedColumns: [1] }), 'WHERE id = 1\n   OR id = 2\n');
+  assert.equal(extract('sql-where', { ...input, selectedColumns: [3, 2] }), 'WHERE id = 1\n   OR id = 2\n');
+});
+
+test('without a known key, SQL Updates and Where Clause fall back to the selected columns', () => {
+  const noKey = { ...input, keyColumns: undefined, selectedColumns: [1] };
+  assert.equal(
+    extract('sql-updates', noKey),
     "UPDATE public.customers SET email = 'ada@example.com' WHERE email = 'ada@example.com';\n" +
       "UPDATE public.customers SET email = 'o''hara@example.com' WHERE email = 'o''hara@example.com';\n",
   );
+  assert.equal(extract('sql-where', noKey), "WHERE email = 'ada@example.com'\n   OR email = 'o''hara@example.com'\n");
+});
+
+test('SQL Updates emits nothing when every emitted column is part of the key', () => {
+  assert.equal(extract('sql-updates', { ...input, selectedColumns: [0] }), '');
+  const userRoles: ExtractorInput = {
+    dialect: 'postgres',
+    columns: [
+      { name: 'user_id', numeric: true },
+      { name: 'role_id', numeric: true },
+    ],
+    rows: [
+      [1, 2],
+      [1, 3],
+    ],
+    tableName: 'user_roles',
+    keyColumns: ['user_id', 'role_id'],
+  };
+  assert.equal(extract('sql-updates', userRoles), '');
+  const withGrantedAt = {
+    ...userRoles,
+    columns: [...userRoles.columns, { name: 'granted_at' }],
+    rows: [
+      [1, 2, '2026-01-01'],
+      [1, 3, null],
+    ],
+  };
+  assert.equal(
+    extract('sql-updates', withGrantedAt),
+    "UPDATE user_roles SET granted_at = '2026-01-01' WHERE user_id = 1 AND role_id = 2;\n" +
+      'UPDATE user_roles SET granted_at = NULL WHERE user_id = 1 AND role_id = 3;\n',
+  );
+  assert.equal(extract('sql-updates', { ...withGrantedAt, selectedColumns: [0, 1] }), '');
 });
 
 test('an empty or out-of-range selection falls back to every valid column', () => {
@@ -150,6 +197,36 @@ test('SQL Updates without keys filters on all columns', () => {
 
 test('Where Clause', () => {
   assert.equal(extract('sql-where'), 'WHERE id = 1\n   OR id = 2\n');
+});
+
+test('SQL extractors quote a column named after a reserved word on every dialect', () => {
+  const quoted = { postgres: '"order"', sqlite: '"order"', mysql: '`order`' } as const;
+  for (const dialect of ['postgres', 'sqlite', 'mysql'] as const) {
+    const source: ExtractorInput = {
+      dialect,
+      columns: [{ name: 'id', numeric: true }, { name: 'order' }],
+      rows: [[1, 'x']],
+      tableName: 't',
+      keyColumns: ['order'],
+    };
+    const q = quoted[dialect];
+    assert.equal(extract('sql-inserts', source), `INSERT INTO t (id, ${q}) VALUES (1, 'x');\n`, dialect);
+    assert.equal(extract('sql-insert-multirow', source), `INSERT INTO t (id, ${q})\nVALUES (1, 'x');\n`, dialect);
+    assert.equal(extract('sql-updates', source), `UPDATE t SET id = 1 WHERE ${q} = 'x';\n`, dialect);
+    assert.equal(extract('sql-where', source), `WHERE ${q} = 'x'\n`, dialect);
+  }
+});
+
+test('SQL extractors quote a mixed-case column where the dialect would fold it', () => {
+  const source = (dialect: ExtractorInput['dialect']): ExtractorInput => ({
+    dialect,
+    columns: [{ name: 'Id', numeric: true }],
+    rows: [[1]],
+    tableName: 't',
+  });
+  assert.equal(extract('sql-inserts', source('postgres')), 'INSERT INTO t ("Id") VALUES (1);\n');
+  assert.equal(extract('sql-inserts', source('sqlite')), 'INSERT INTO t ("Id") VALUES (1);\n');
+  assert.equal(extract('sql-inserts', source('mysql')), 'INSERT INTO t (Id) VALUES (1);\n');
 });
 
 test('mysql literals double backslashes', () => {
@@ -290,6 +367,33 @@ test('JSON keeps numeric-column strings as numbers and everything else as text',
       '    "s": null',
       '  }',
       ']',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('JSON and Python keep numeric-column strings beyond double precision as numbers', () => {
+  const source: ExtractorInput = {
+    ...input,
+    columns: [
+      { name: 'big', numeric: true },
+      { name: 'dec', numeric: true },
+    ],
+    rows: [['9007199254740993', '1234567890.1234567']],
+  };
+  assert.equal(
+    extract('json', source),
+    ['[', '  {', '    "big": 9007199254740993,', '    "dec": 1234567890.1234567', '  }', ']', ''].join('\n'),
+  );
+  assert.equal(
+    extract('python-dataframe', source),
+    [
+      'import pandas as pd',
+      '',
+      'df = pd.DataFrame({',
+      "    'big': [9007199254740993],",
+      "    'dec': [1234567890.1234567],",
+      '})',
       '',
     ].join('\n'),
   );

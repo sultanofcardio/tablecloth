@@ -1,5 +1,5 @@
 import type { CellValue, ColumnInfo, DriverId } from '../core/types';
-import { isPlainIdentifier, quoteIdent, quoteLiteral } from '../core/util';
+import { quoteLiteral, sqlName } from '../core/util';
 import { buildXlsx, escapeXmlAttr, escapeXmlText, numericLiteral } from './xlsx';
 
 /** Menu sections, mirroring IntelliJ's Data Extractors popup. */
@@ -55,8 +55,16 @@ const PLACEHOLDER_TABLE = 'MY_TABLE';
 const LINE_BREAK = /\r\n|\r|\n/g;
 
 /**
+ * An extractor body: `input` is narrowed to the selected columns, while `source` is the
+ * unprojected input for extractors that must see every column (key-aware WHERE clauses).
+ */
+interface ExtractorDefinition extends Omit<Extractor, 'extract'> {
+  extract(input: ExtractorInput, options: ExtractorOptions, source: ExtractorInput): string;
+}
+
+/**
  * Narrow the input to `selectedColumns` so extractor bodies only ever see the columns
- * they should emit. Key columns are matched by name, so a deselected key simply drops out.
+ * they should emit.
  */
 function projectColumns(input: ExtractorInput): ExtractorInput {
   const selected = input.selectedColumns;
@@ -70,8 +78,8 @@ function projectColumns(input: ExtractorInput): ExtractorInput {
   };
 }
 
-function defineExtractor(extractor: Extractor): Extractor {
-  return { ...extractor, extract: (input, options) => extractor.extract(projectColumns(input), options) };
+function defineExtractor(extractor: ExtractorDefinition): Extractor {
+  return { ...extractor, extract: (input, options) => extractor.extract(projectColumns(input), options, input) };
 }
 
 function defineBinaryExtractor(extractor: BinaryExtractor): BinaryExtractor {
@@ -85,10 +93,6 @@ function defineBinaryExtractor(extractor: BinaryExtractor): BinaryExtractor {
 // Value formatting
 // ---------------------------------------------------------------------------
 
-function sqlIdent(dialect: DriverId, name: string): string {
-  return isPlainIdentifier(name) ? name : quoteIdent(dialect, name);
-}
-
 function sqlValue(dialect: DriverId, value: CellValue): string {
   if (value === null) return 'NULL';
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : quoteLiteral(dialect, String(value));
@@ -98,6 +102,21 @@ function sqlValue(dialect: DriverId, value: CellValue): string {
 
 function targetTable(input: ExtractorInput): string {
   return input.tableName ?? PLACEHOLDER_TABLE;
+}
+
+/** Indices of the known primary key within the unprojected columns; empty when no key is known or present. */
+function keyIndices(source: ExtractorInput): number[] {
+  const keySet = new Set(source.keyColumns ?? []);
+  return keySet.size > 0 ? source.columns.flatMap((c, i) => (keySet.has(c.name) ? [i] : [])) : [];
+}
+
+/** `col = value` (or `col IS NULL`) for each index, joined with AND. */
+function wherePredicates(dialect: DriverId, columns: ColumnInfo[], row: CellValue[], indices: number[]): string[] {
+  return indices.map((i) => {
+    const v = row[i] ?? null;
+    const col = sqlName(dialect, columns[i]!.name);
+    return v === null ? `${col} IS NULL` : `${col} = ${sqlValue(dialect, v)}`;
+  });
 }
 
 function cellText(value: CellValue, nullText: string): string {
@@ -152,7 +171,7 @@ const sqlInserts = defineExtractor({
   extract(input) {
     const { dialect, columns, rows } = input;
     const table = targetTable(input);
-    const colList = columns.map((c) => sqlIdent(dialect, c.name)).join(', ');
+    const colList = columns.map((c) => sqlName(dialect, c.name)).join(', ');
     const lines = rows.map((row) => {
       const values = columns.map((_, i) => sqlValue(dialect, row[i] ?? null)).join(', ');
       return `INSERT INTO ${table} (${colList}) VALUES (${values});`;
@@ -166,32 +185,23 @@ const sqlUpdates = defineExtractor({
   label: 'SQL Updates',
   group: 'builtin',
   fileExtension: 'sql',
-  extract(input) {
+  extract(input, _options, source) {
     const { dialect, columns, rows } = input;
     const table = targetTable(input);
-    const keySet = new Set(input.keyColumns ?? []);
-    const keyIdx: number[] = [];
-    const valueIdx: number[] = [];
-    columns.forEach((c, i) => {
-      if (keySet.size > 0 ? keySet.has(c.name) : false) keyIdx.push(i);
-      else valueIdx.push(i);
-    });
-    // Without a known key, fall back to updating every column with a WHERE on every column.
-    const whereIdx = keyIdx.length > 0 ? keyIdx : columns.map((_, i) => i);
-    const setIdx = keyIdx.length > 0 ? valueIdx : columns.map((_, i) => i);
+    const keyIdx = keyIndices(source);
+    const keyNames = new Set(keyIdx.map((i) => source.columns[i]!.name));
+    const setIdx = columns.flatMap((c, i) => (keyNames.has(c.name) ? [] : [i]));
+    if (setIdx.length === 0) return '';
 
-    const lines = rows.map((row) => {
+    const lines = rows.map((row, r) => {
       const sets = setIdx
-        .map((i) => `${sqlIdent(dialect, columns[i]!.name)} = ${sqlValue(dialect, row[i] ?? null)}`)
+        .map((i) => `${sqlName(dialect, columns[i]!.name)} = ${sqlValue(dialect, row[i] ?? null)}`)
         .join(', ');
-      const wheres = whereIdx
-        .map((i) => {
-          const v = row[i] ?? null;
-          const col = sqlIdent(dialect, columns[i]!.name);
-          return v === null ? `${col} IS NULL` : `${col} = ${sqlValue(dialect, v)}`;
-        })
-        .join(' AND ');
-      return `UPDATE ${table} SET ${sets} WHERE ${wheres};`;
+      const wheres =
+        keyIdx.length > 0
+          ? wherePredicates(dialect, source.columns, source.rows[r] ?? [], keyIdx)
+          : wherePredicates(dialect, columns, row, setIdx);
+      return `UPDATE ${table} SET ${sets} WHERE ${wheres.join(' AND ')};`;
     });
     return lines.join('\n') + (lines.length ? '\n' : '');
   },
@@ -202,16 +212,14 @@ const sqlWhereClause = defineExtractor({
   label: 'Where Clause',
   group: 'builtin',
   fileExtension: 'sql',
-  extract(input) {
+  extract(input, _options, source) {
     const { dialect, columns, rows } = input;
-    const keySet = new Set(input.keyColumns ?? []);
-    const idx = keySet.size > 0 ? columns.flatMap((c, i) => (keySet.has(c.name) ? [i] : [])) : columns.map((_, i) => i);
-    const perRow = rows.map((row) => {
-      const parts = idx.map((i) => {
-        const v = row[i] ?? null;
-        const col = sqlIdent(dialect, columns[i]!.name);
-        return v === null ? `${col} IS NULL` : `${col} = ${sqlValue(dialect, v)}`;
-      });
+    const keyIdx = keyIndices(source);
+    const perRow = rows.map((row, r) => {
+      const parts =
+        keyIdx.length > 0
+          ? wherePredicates(dialect, source.columns, source.rows[r] ?? [], keyIdx)
+          : wherePredicates(dialect, columns, row, columns.map((_, i) => i));
       return parts.length > 1 ? `(${parts.join(' AND ')})` : parts.join(' AND ');
     });
     if (perRow.length === 0) return 'WHERE FALSE\n';
@@ -361,7 +369,7 @@ const sqlInsertMultirow = defineExtractor({
   extract(input) {
     const { dialect, columns, rows } = input;
     if (rows.length === 0) return '';
-    const colList = columns.map((c) => sqlIdent(dialect, c.name)).join(', ');
+    const colList = columns.map((c) => sqlName(dialect, c.name)).join(', ');
     const tuples = rows.map((row) => `(${columns.map((_, i) => sqlValue(dialect, row[i] ?? null)).join(', ')})`);
     return `INSERT INTO ${targetTable(input)} (${colList})\nVALUES ${tuples.join(',\n       ')};\n`;
   },

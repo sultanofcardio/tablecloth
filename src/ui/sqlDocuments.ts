@@ -19,12 +19,20 @@ export class SqlDocuments implements vscode.TextDocumentContentProvider, vscode.
   private seq = 0;
 
   constructor(private readonly sessions: SessionManager) {
-    this.registration = vscode.workspace.registerTextDocumentContentProvider(SCHEME, this);
+    this.registration = vscode.Disposable.from(
+      vscode.workspace.registerTextDocumentContentProvider(SCHEME, this),
+      vscode.workspace.onDidCloseTextDocument((document) => this.forget(document.uri)),
+    );
   }
 
   dispose(): void {
     this.registration.dispose();
     this.emitter.dispose();
+  }
+
+  /** Drop the text behind a closed document; every Go to DDL / View Query mints a fresh URI anyway. */
+  private forget(uri: vscode.Uri): void {
+    if (uri.scheme === SCHEME) this.contents.delete(uri.toString());
   }
 
   provideTextDocumentContent(uri: vscode.Uri): string {

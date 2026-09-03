@@ -38,6 +38,15 @@ const catalog: CatalogModel = {
                 { name: 'email', dataType: 'text', nullable: false, primaryKey: false },
               ],
             },
+            {
+              name: 'Programs',
+              kind: 'table',
+              indexes: [],
+              columns: [
+                { name: 'id', dataType: 'bigint', nullable: false, primaryKey: true },
+                { name: 'channelId', dataType: 'bigint', nullable: false, primaryKey: false },
+              ],
+            },
           ],
         },
       ],
@@ -90,6 +99,41 @@ test('offsets are absolute across statements', () => {
   const found = inspectSql(catalog, 'postgres', sql, 'public');
   assert.equal(found.length, 1);
   assert.equal(sql.slice(found[0]!.start, found[0]!.end), 'bogus');
+});
+
+test('quick fixes write the suggestion so it resolves: the token\'s own quotes, or the dialect\'s', () => {
+  const fixes = (sql: string, dialect: 'postgres' | 'mysql' = 'postgres') =>
+    inspectSql(catalog, dialect, sql, 'public').map((i) => [i.fix?.title, i.fix?.replacement]);
+  assert.deepEqual(fixes('SELECT * FROM "Progrms"'), [["Change to 'Programs'", '"Programs"']], 'a quoted typo stays quoted');
+  assert.deepEqual(fixes('SELECT * FROM progrms'), [["Change to 'Programs'", '"Programs"']], 'Postgres folds a bare name');
+  assert.deepEqual(fixes('SELECT * FROM progrms', 'mysql'), [["Change to 'Programs'", 'Programs']], 'MySQL keeps a bare name\'s case');
+  assert.deepEqual(fixes('SELECT * FROM `Progrms`', 'mysql'), [["Change to 'Programs'", '`Programs`']]);
+  assert.deepEqual(fixes('SELECT * FROM ordrs'), [["Change to 'orders'", 'orders']], 'a lowercase name stays bare');
+
+  assert.deepEqual(fixes('SELECT p.chanelId FROM "Programs" p'), [["Change to 'channelId'", '"channelId"']]);
+  assert.deepEqual(fixes('SELECT p."chanelId" FROM "Programs" p'), [["Change to 'channelId'", '"channelId"']]);
+  assert.deepEqual(fixes('SELECT chanelId FROM "Programs"'), [["Change to 'channelId'", '"channelId"']]);
+  assert.deepEqual(fixes('SELECT "chanelId" FROM "Programs"'), [["Change to 'channelId'", '"channelId"']]);
+  assert.deepEqual(fixes('SELECT o.stauts FROM orders o'), [["Change to 'status'", 'status']]);
+});
+
+test('IS DISTINCT FROM and ON DUPLICATE KEY UPDATE do not introduce tables', () => {
+  assert.deepEqual(messages('SELECT * FROM orders WHERE status IS DISTINCT FROM total'), []);
+  assert.deepEqual(messages('SELECT * FROM orders o WHERE o.status IS NOT DISTINCT FROM o.total'), []);
+  assert.deepEqual(messages('SELECT * FROM orders WHERE status IS DISTINCT FROM totl'), ["Unable to resolve column 'totl'"], 'the operand is still a column');
+  assert.deepEqual(
+    inspectSql(catalog, 'mysql', "INSERT INTO orders (id, status) VALUES (1, 'x') ON DUPLICATE KEY UPDATE status = 'y'", 'public').map((i) => i.message),
+    [],
+  );
+  assert.deepEqual(messages('SELECT * FROM typo'), ["Unable to resolve table 'typo'"], 'an ordinary FROM is still checked');
+});
+
+test('implicit select-list aliases resolve later in the statement', () => {
+  assert.deepEqual(messages('SELECT count(*) cnt FROM orders GROUP BY status ORDER BY cnt DESC'), []);
+  assert.deepEqual(messages('SELECT status s, total * 2 doubled FROM orders ORDER BY s, doubled'), []);
+  assert.deepEqual(messages('SELECT count(*) "Cnt" FROM orders ORDER BY "Cnt"'), []);
+  const found = inspectSql(catalog, 'postgres', 'SELECT count(*) cnt FROM orders ORDER BY cn', 'public');
+  assert.deepEqual(found.map((i) => [i.message, i.fix?.replacement]), [["Unable to resolve column 'cn'", 'cnt']]);
 });
 
 test('closestName', () => {

@@ -1,7 +1,7 @@
 import { computeFilterCompletions, type CompletionEntry, type FilterField } from '../complete/core';
-import type { CellValue, ColumnInfo, DataSourceConfig, DriverId, TxIsolation, TxMode } from '../core/types';
+import type { CellValue, ColumnInfo, ColumnModel, DataSourceConfig, DriverId, TxIsolation, TxMode } from '../core/types';
 import { errorMessage } from '../core/util';
-import type { ChangeStatement, EditTarget } from '../edit/changeSet';
+import { makeEditTarget, type ChangeStatement, type EditTarget } from '../edit/changeSet';
 import type { DbSession } from '../drivers/driver';
 import type { SessionManager } from '../drivers/sessions';
 import {
@@ -99,9 +99,11 @@ export async function runChangeBatch(
 }
 
 /**
- * Transaction control for a table data editor. Auto mode submits on the
- * shared main session inside BEGIN/COMMIT; Manual mode moves the editor onto
- * its own session, where submits accumulate until Commit or Roll Back.
+ * Transaction control for a table data editor. The editor owns a session of
+ * its own in both modes, so its BEGIN/COMMIT never meets a script's or an
+ * import's transaction on the main session and Stop only cancels its own
+ * statement. Auto mode submits each batch inside BEGIN/COMMIT; Manual mode
+ * accumulates submits until Commit or Roll Back.
  */
 export class TableTxControl implements GridTxControl {
   mode: TxMode = 'auto';
@@ -116,9 +118,9 @@ export class TableTxControl implements GridTxControl {
     private readonly onChange: () => void,
   ) {}
 
-  /** The session suffix reads and writes go to under the current mode. */
-  suffix(): string | undefined {
-    return this.mode === 'manual' ? this.dedicatedSuffix : undefined;
+  /** The session suffix reads and writes go to. */
+  suffix(): string {
+    return this.dedicatedSuffix;
   }
 
   state(): GridTxDto {
@@ -146,7 +148,6 @@ export class TableTxControl implements GridTxControl {
         else await this.rollback();
       }
       this.mode = value;
-      if (value === 'auto') await this.sessions.closeSession(this.config.id, this.dedicatedSuffix);
       this.onChange();
       return;
     }
@@ -175,16 +176,14 @@ export class TableTxControl implements GridTxControl {
   }
 
   async submit(statements: ChangeStatement[]): Promise<void> {
-    if (this.mode === 'auto') {
-      await this.sessions.run(this.config, (session) =>
-        runChangeBatch(session, statements, { joinOpenTransaction: false, commit: true }),
-      );
-      return;
-    }
     await this.sessions.run(
       this.config,
       async (session) => {
         await this.ensureIsolation(session);
+        if (this.mode === 'auto') {
+          await runChangeBatch(session, statements, { joinOpenTransaction: false, commit: true });
+          return;
+        }
         if (!this.inTx) {
           await session.query(beginSql(session.dialect));
           this.inTx = true;
@@ -224,9 +223,10 @@ export class TableTxControl implements GridTxControl {
 }
 
 export interface TableEditingOptions {
-  target: EditTarget;
+  /** The table's catalog columns; each fetched page maps onto them by name. */
+  tableColumns: ColumnModel[];
   referencing: ReferencingDto[];
-  /** Unique per data editor; names its dedicated session in Manual mode. */
+  /** Unique per data editor; names its dedicated session. */
   panelKey: string;
   onTxChange: () => void;
 }
@@ -253,7 +253,10 @@ export class TableGridProvider implements GridProvider {
       this.tx = tx;
       this.referencing = editing.referencing;
       this.editing = {
-        target: editing.target,
+        // the page is SELECT *, so its columns are the live table's: map them
+        // by name rather than trusting the catalog's column order, which DDL
+        // run since the last introspection may have changed
+        targetFor: (page) => makeEditTarget(dialect, tableName, editing.tableColumns, page.columns, config.readOnly),
         submit: (statements) => tx.submit(statements),
         tx,
       };
@@ -332,7 +335,7 @@ export class ConsoleGridProvider implements GridProvider {
   ) {
     if (editing) {
       this.referencing = editing.referencing;
-      this.editing = { target: editing.target, submit: editing.submit };
+      this.editing = { targetFor: () => editing.target, submit: editing.submit };
     }
   }
 

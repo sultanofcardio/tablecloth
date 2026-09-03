@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as zlib from 'node:zlib';
-import { buildXlsx, crc32 } from '../src/export/xlsx';
-import { DEFAULT_EXTRACTOR_OPTIONS, getBinaryExtractor } from '../src/export/extractors';
+import { buildXlsx, crc32, numericLiteral } from '../src/export/xlsx';
+import { DEFAULT_EXTRACTOR_OPTIONS, getBinaryExtractor, getExtractor } from '../src/export/extractors';
 import type { CellValue, ColumnInfo } from '../src/core/types';
 
 const columns: ColumnInfo[] = [{ name: 'id', numeric: true }, { name: 'email' }, { name: 'note' }, { name: 'active' }];
@@ -154,6 +154,38 @@ test('numeric strings beyond Excel precision are written as text', () => {
   );
   assert.ok(sheet.includes('<c r="A2" t="inlineStr"><is><t>9007199254740993</t></is></c>'));
   assert.ok(sheet.includes('<c r="B2" t="inlineStr"><is><t>123456789012345.1</t></is></c>'));
+});
+
+test('numericLiteral passes numeric-column strings through verbatim without Excel limits', () => {
+  const numeric: ColumnInfo = { name: 'n', numeric: true };
+  assert.equal(numericLiteral(numeric, '9007199254740993'), '9007199254740993');
+  assert.equal(numericLiteral(numeric, '1234567890.1234567'), '1234567890.1234567');
+  assert.equal(numericLiteral(numeric, '-123456789012345678901234567890'), '-123456789012345678901234567890');
+  assert.equal(numericLiteral(numeric, '12.50'), '12.50');
+  assert.equal(numericLiteral(numeric, '+5'), '5');
+  assert.equal(numericLiteral(numeric, '.5'), '0.5');
+  assert.equal(numericLiteral(numeric, 7), '7');
+  assert.equal(numericLiteral(numeric, 'abc'), undefined);
+  assert.equal(numericLiteral(numeric, '1e400'), undefined);
+  assert.equal(numericLiteral(numeric, NaN), undefined);
+  assert.equal(numericLiteral({ name: 's' }, '12.50'), undefined);
+});
+
+test('values beyond Excel precision stay numbers in JSON but are written to xlsx as text', () => {
+  const precise: ColumnInfo[] = [
+    { name: 'big', numeric: true },
+    { name: 'dec', numeric: true },
+  ];
+  const preciseRows: CellValue[][] = [['9007199254740993', '1234567890.1234567']];
+  const json = getExtractor('json')!.extract(
+    { dialect: 'postgres', columns: precise, rows: preciseRows },
+    DEFAULT_EXTRACTOR_OPTIONS,
+  );
+  assert.ok(json.includes('"big": 9007199254740993,'));
+  assert.ok(json.includes('"dec": 1234567890.1234567'));
+  const sheet = part(buildXlsx({ columns: precise, rows: preciseRows }), 'xl/worksheets/sheet1.xml');
+  assert.ok(sheet.includes('<c r="A2" t="inlineStr"><is><t>9007199254740993</t></is></c>'));
+  assert.ok(sheet.includes('<c r="B2" t="inlineStr"><is><t>1234567890.1234567</t></is></c>'));
 });
 
 test('cell references continue past column Z', () => {

@@ -71,6 +71,8 @@ export const S = {
   /** Chrome state for the Services panel. */
   view: 'grid' as 'grid' | 'output' | 'info',
   baseStatus: '',
+  /** The hand-written part of the WHERE text; funnel clauses are ANDed after it. */
+  manualWhere: '',
   /** Funnel clauses per column, so re-filtering a column replaces its clause. */
   funnelClauses: new Map<string, string>(),
 };

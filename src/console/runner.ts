@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
 import { basename } from 'node:path';
-import { parseTableRefs } from '../complete/refs';
 import type { ConsoleBinding, StoredDataSource, TxIsolation, TxMode } from '../core/types';
 import { ENV_COLOR_HEX, TX_ISOLATION_LABELS } from '../core/types';
 import { errorMessage, formatMillis, qualify, quoteIdent, timestamp, truncate } from '../core/util';
-import { makeEditTarget, resultColumnOrigins, type ChangeStatement } from '../edit/changeSet';
+import { makeEditTarget, resultColumnOrigins, singleSourceRelation, type ChangeStatement } from '../edit/changeSet';
 import { findRelation, referencingColumns } from '../edit/relations';
-import type { DbSession } from '../drivers/driver';
+import { isCancellationError, type DbSession } from '../drivers/driver';
 import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
@@ -34,6 +33,14 @@ const ISOLATION_SQL: Record<Exclude<TxIsolation, 'default'>, string> = {
 };
 
 const PARAM_VALUES_KEY = 'tablecloth.parameterValues';
+
+/**
+ * Session suffix for scripts run without a console document (Run File on a
+ * data source). They get a session of their own so a script's BEGIN, or a
+ * result grid's submit, never shares a transaction with introspection, table
+ * editors, or imports on the main session.
+ */
+const SCRIPT_SUFFIX = 'script';
 
 /**
  * Asks the user for parameter values. The console webview registers its
@@ -256,7 +263,7 @@ export class QueryRunner {
    * it and the raw fallback would fail too).
    */
   private makeConsoleRun(ds: StoredDataSource, consoleUri?: vscode.Uri, guarded = false): RunQuery {
-    if (!consoleUri) return makeRunQuery(this.sessions, ds.config);
+    if (!consoleUri) return makeRunQuery(this.sessions, ds.config, SCRIPT_SUFFIX);
     const suffix = this.consoles.consoleSuffix(consoleUri);
     return async (sql: string, params?: unknown[]) => {
       const started = Date.now();
@@ -357,8 +364,10 @@ export class QueryRunner {
   // ------------------------------------------------------------ editable results
 
   /**
-   * A console SELECT over one table becomes editable when the table is in the
-   * catalog and its key columns are all in the result.
+   * A console SELECT over one plain table becomes editable when the table is
+   * in the catalog and its key columns are all in the result. Anything that
+   * reads more than that one table (joins, derived tables, CTEs, set
+   * operations) stays read-only: its rows cannot be traced back by name.
    */
   private editingFor(
     ds: StoredDataSource,
@@ -368,17 +377,16 @@ export class QueryRunner {
     consoleUri: vscode.Uri | undefined,
   ): { editing: ConsoleEditingOptions; object: GridMeta['object'] } | undefined {
     if (classifyStatement(sql).keyword !== 'select') return undefined;
-    const refs = parseTableRefs(sql);
-    if (refs.length !== 1) return undefined;
-    const ref = refs[0]!;
+    const source = singleSourceRelation(sql, ds.config.driver);
+    if (!source) return undefined;
     const catalog = this.sessions.getCatalog(ds.config.id);
     if (!catalog) return undefined;
     const defaultSchema = ds.config.driver === 'mysql' ? binding.database : binding.schema;
-    const found = findRelation(catalog, ref.schema ?? defaultSchema, ref.table);
+    const found = findRelation(catalog, source.schema ?? defaultSchema, source.table);
     if (!found || found.relation.kind !== 'table') return undefined;
     const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
     const qualified = qualify(ds.config.driver, schemaForSql, found.relation.name);
-    const origins = resultColumnOrigins(sql, ds.config.driver, found.relation.columns, columns);
+    const origins = resultColumnOrigins(sql, ds.config.driver, found.relation.columns, columns, source);
     const sourcedColumns = columns.map((column, index) => ({ ...column, sourceColumn: origins[index] }));
     const target = makeEditTarget(ds.config.driver, qualified, found.relation.columns, sourcedColumns, ds.config.readOnly, true);
     const referencing: ReferencingDto[] = referencingColumns(catalog, found.schema, found.relation).map((r) => ({
@@ -418,7 +426,7 @@ export class QueryRunner {
         const joinOpen = !!consoleUri && this.consoles.isInTx(consoleUri);
         await runChangeBatch(session, statements, { joinOpenTransaction: joinOpen, commit: !manual });
       },
-      consoleUri ? this.consoles.consoleSuffix(consoleUri) : undefined,
+      consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX,
     );
     for (const statement of statements) {
       this.services.appendOutput(key, { kind: 'cmd', prompt: ds.config.name, text: truncate(statement.sql, 160) });
@@ -468,7 +476,7 @@ export class QueryRunner {
 
     this.services.setStatus(key, 'running…');
     this.services.appendOutput(key, { kind: 'cmd', prompt, text: truncate(sql, 160) });
-    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : undefined;
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
     this.running.set(key, { ds, suffix });
     this.runningEmitter.fire({ key, running: true });
     const cancel = this.sessions.canCancel(config) ? () => this.sessions.cancel(config, suffix) : undefined;
@@ -479,10 +487,21 @@ export class QueryRunner {
     const freshBinding = consoleUri ? (this.consoles.getBinding(consoleUri) ?? binding) : binding;
     const tabTitle = () => resultTabTitle(sql, freshBinding, () => this.services.nextResultNumber(key));
 
+    const fail = (err: unknown): RunOutcome => {
+      const message = errorMessage(err);
+      this.services.showError(key, message, meta);
+      this.services.setStatus(key, 'error');
+      this.services.appendOutput(key, { kind: 'error', text: `[${timestamp()}] ${message}` });
+      record(`error: ${truncate(message, 120)}`);
+      return { ok: false, error: message };
+    };
+
     try {
       if (cls.selectish) {
         // Page the result server-side by wrapping the statement; on any failure
-        // fall back to running it verbatim (the raw error is the accurate one).
+        // fall back to running it verbatim (the raw error is the accurate one),
+        // except a cancellation: the user stopped this statement, so it must
+        // not run a second time.
         try {
           const probe = new ConsoleGridProvider(
             config.driver,
@@ -517,8 +536,8 @@ export class QueryRunner {
           this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] ${note}` });
           record(note);
           return { ok: true };
-        } catch {
-          // fall through to the raw path
+        } catch (err) {
+          if (isCancellationError(err)) return fail(err);
         }
       }
 
@@ -547,12 +566,7 @@ export class QueryRunner {
         record(note);
         return { ok: true };
       } catch (err) {
-        const message = errorMessage(err);
-        this.services.showError(key, message, meta);
-        this.services.setStatus(key, 'error');
-        this.services.appendOutput(key, { kind: 'error', text: `[${timestamp()}] ${message}` });
-        record(`error: ${truncate(message, 120)}`);
-        return { ok: false, error: message };
+        return fail(err);
       }
     } finally {
       this.running.delete(key);

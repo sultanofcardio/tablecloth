@@ -5,6 +5,7 @@ import {
   countChanges,
   makeEditTarget,
   resultColumnOrigins,
+  singleSourceRelation,
   typedLiteral,
   valueKind,
   type ChangeSet,
@@ -214,4 +215,88 @@ test('valueKind and typedLiteral', () => {
   assert.equal(typedLiteral('postgres', 'numeric', 'twelve'), "'twelve'");
   assert.equal(typedLiteral('mysql', 'text', 'a\\b'), "'a\\\\b'");
   assert.equal(typedLiteral('sqlite', 'boolean', 'off'), '0');
+});
+
+test('singleSourceRelation proves a statement reads one plain table', () => {
+  assert.deepEqual(singleSourceRelation('SELECT id, status FROM orders', 'postgres'), { schema: undefined, table: 'orders', alias: undefined });
+  assert.deepEqual(singleSourceRelation('select * from "Shop".orders o where o.id > 1 order by 1 limit 5;', 'postgres'), {
+    schema: 'Shop',
+    table: 'orders',
+    alias: 'o',
+  });
+  assert.deepEqual(singleSourceRelation('SELECT * FROM orders AS o WHERE id IN (SELECT id FROM t)', 'postgres'), {
+    schema: undefined,
+    table: 'orders',
+    alias: 'o',
+  });
+  assert.deepEqual(singleSourceRelation('SELECT * FROM `orders` FOR UPDATE', 'mysql'), { schema: undefined, table: 'orders', alias: undefined });
+  const rejected = [
+    'SELECT id FROM (SELECT id + 1 AS id FROM t) sub',
+    'SELECT orders.id, customers.status FROM orders, customers',
+    'SELECT o.id FROM orders o JOIN customers c ON c.id = o.customer_id',
+    'SELECT o.id FROM orders o LEFT JOIN customers c ON c.id = o.customer_id',
+    'SELECT * FROM orders NATURAL JOIN customers',
+    'WITH t AS (SELECT id + 1 AS id FROM orders) SELECT id FROM t',
+    'SELECT id FROM orders UNION ALL SELECT id FROM archived_orders',
+    'SELECT id FROM orders WHERE x = 1 EXCEPT SELECT id FROM t',
+    'SELECT * FROM generate_series(1, 3)',
+    'SELECT * FROM orders TABLESAMPLE SYSTEM (10)',
+    'SELECT * FROM a.b.c',
+    '(SELECT * FROM orders)',
+    'UPDATE orders SET status = 1',
+    'SELECT 1',
+  ];
+  for (const sql of rejected) assert.equal(singleSourceRelation(sql, 'postgres'), undefined, sql);
+});
+
+test('a derived table cannot lend its computed key to the outer projection', () => {
+  const result: ColumnInfo[] = [{ name: 'id', numeric: true }];
+  const sql = 'SELECT id FROM (SELECT id + 1 AS id FROM orders) sub';
+  assert.deepEqual(resultColumnOrigins(sql, 'postgres', tableColumns, result), [undefined]);
+});
+
+test('qualified projections must name the one source relation', () => {
+  const result: ColumnInfo[] = [{ name: 'id', numeric: true }, { name: 'status' }];
+  assert.deepEqual(
+    resultColumnOrigins('SELECT o.id, orders.status FROM orders o', 'postgres', tableColumns, result),
+    ['id', undefined],
+    'the table name no longer addresses a table that has an alias',
+  );
+  assert.deepEqual(resultColumnOrigins('SELECT o.id, o.status FROM orders AS o', 'postgres', tableColumns, result), ['id', 'status']);
+  assert.deepEqual(resultColumnOrigins('SELECT orders.id, public.orders.status FROM public.orders', 'postgres', tableColumns, result), ['id', 'status']);
+  assert.deepEqual(resultColumnOrigins('SELECT orders.id, customers.status FROM orders', 'postgres', tableColumns, result), ['id', undefined]);
+  assert.deepEqual(resultColumnOrigins('SELECT o.* FROM orders o', 'postgres', tableColumns, pageColumns), tableColumns.map((c) => c.name));
+  assert.deepEqual(resultColumnOrigins('SELECT c.* FROM orders o', 'postgres', tableColumns, pageColumns), pageColumns.map(() => undefined));
+  assert.deepEqual(
+    resultColumnOrigins('SELECT orders.id, customers.status FROM orders, customers', 'postgres', tableColumns, result),
+    [undefined, undefined],
+  );
+});
+
+test('reserved column names are quoted in generated DML on every dialect', () => {
+  const cols: ColumnModel[] = [
+    { name: 'id', dataType: 'integer', nullable: false, primaryKey: true },
+    { name: 'rank', dataType: 'integer', nullable: true, primaryKey: false },
+    { name: 'order', dataType: 'text', nullable: true, primaryKey: false },
+    { name: 'system', dataType: 'text', nullable: true, primaryKey: false },
+  ];
+  const page: ColumnInfo[] = cols.map((c) => ({ name: c.name, numeric: c.dataType === 'integer' }));
+  const changes: ChangeSet = {
+    updates: { 0: { 1: { kind: 'value', text: '2' }, 2: { kind: 'value', text: 'x' } } },
+    deletes: [],
+    inserts: [{ id: 'n', cells: { 3: { kind: 'value', text: 'y' } } }],
+  };
+  const rows = [[1, 1, 'a', 'b']];
+  assert.deepEqual(
+    buildChangeStatements(makeEditTarget('postgres', 't', cols, page, false), rows, changes).map((s) => s.sql),
+    [`UPDATE t SET "rank" = 2, "order" = 'x' WHERE id = 1;`, `INSERT INTO t ("system") VALUES ('y');`],
+  );
+  assert.deepEqual(
+    buildChangeStatements(makeEditTarget('mysql', 't', cols, page, false), rows, changes).map((s) => s.sql),
+    ["UPDATE t SET `rank` = 2, `order` = 'x' WHERE id = 1;", "INSERT INTO t (`system`) VALUES ('y');"],
+  );
+  assert.deepEqual(
+    buildChangeStatements(makeEditTarget('sqlite', 't', cols, page, false), rows, changes).map((s) => s.sql),
+    [`UPDATE t SET "rank" = 2, "order" = 'x' WHERE id = 1;`, `INSERT INTO t ("system") VALUES ('y');`],
+  );
 });

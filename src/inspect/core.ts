@@ -2,6 +2,7 @@
 // tables and columns, each with a "Change to …" quick fix when a close match
 // exists. Pure and vscode-free, shared by the console webview (Monaco markers)
 // and the extension host (diagnostics for attached .sql files).
+import { identifierInsertText } from '../complete/core';
 import { parseTableRefs, type TableRef } from '../complete/refs';
 import type { CatalogModel, DriverId, RelationModel } from '../core/types';
 import { findRelation } from '../edit/relations';
@@ -22,10 +23,40 @@ const NOT_A_COLUMN = new Set([
   ...SQL_FUNCTIONS,
   'year', 'month', 'day', 'hour', 'minute', 'second', 'epoch', 'dow', 'doy', 'week', 'quarter', 'millisecond',
   'microsecond', 'century', 'decade', 'timezone', 'isodow', 'isoyear', 'julian',
-  'asc', 'desc', 'nulls', 'first', 'last', 'lateral', 'only', 'excluded', 'new', 'old',
+  'asc', 'desc', 'nulls', 'first', 'last', 'lateral', 'only', 'excluded', 'new', 'old', 'duplicate',
 ]);
 
 const OBJECT_INTRODUCERS = new Set(['from', 'join', 'update', 'into', 'table', 'index', 'view', 'sequence', 'type', 'schema']);
+
+/** Words that close a SELECT list at parenthesis depth 0. */
+const SELECT_LIST_ENDS = new Set([
+  'from', 'where', 'group', 'having', 'order', 'limit', 'offset', 'fetch', 'for', 'window', 'into',
+  'union', 'intersect', 'except',
+]);
+
+/**
+ * Whether the word at `i` introduces an object name. FROM inside
+ * `IS [NOT] DISTINCT FROM` and UPDATE inside `ON DUPLICATE KEY UPDATE` are
+ * operators, so what follows them is a value.
+ */
+function introducesObject(tokens: Token[], i: number): boolean {
+  const t = tokens[i];
+  if (!t || t.kind !== 'word' || !OBJECT_INTRODUCERS.has(t.value)) return false;
+  const prev = tokens[i - 1];
+  return !(prev?.kind === 'word' && (prev.value === 'distinct' || prev.value === 'key'));
+}
+
+/**
+ * The suggested name written so it resolves: inside the quotes the offending
+ * token already had, or quoted the way the dialect needs when written bare.
+ */
+function replacementFor(dialect: DriverId, token: Token, suggestion: string): string {
+  if (token.kind === 'ident') {
+    const quote = token.text[0]!;
+    return quote + suggestion.replaceAll(quote, quote + quote) + quote;
+  }
+  return identifierInsertText(dialect, suggestion) ?? suggestion;
+}
 
 function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -74,10 +105,27 @@ function nameToken(token: Token | undefined): string | undefined {
   return undefined;
 }
 
+/** Whether an expression ends with this token, so a bare name after it is an implicit alias. */
+function endsTerm(token: Token | undefined): boolean {
+  if (!token) return false;
+  if (token.kind === 'word') return token.value === 'end' || !SQL_KEYWORDS.has(token.value);
+  return token.kind === 'ident' || token.kind === 'number' || token.kind === 'string' || token.text === ')';
+}
+
 function collectLocalNames(tokens: Token[]): Map<string, string> {
   const names = new Map<string, string>();
+  let depth = 0;
+  let inSelectList = false;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
+    if (t.text === '(') {
+      depth++;
+      continue;
+    }
+    if (t.text === ')') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
     // WITH name AS (   ,  name AS (
     if (t.kind === 'word' && t.value === 'as') {
       const next = tokens[i + 1];
@@ -85,7 +133,22 @@ function collectLocalNames(tokens: Token[]): Map<string, string> {
       if (next?.text === '(' && prev) names.set(prev.toLowerCase(), prev);
       const alias = nameToken(next);
       if (alias && next?.text !== '(') names.set(alias.toLowerCase(), alias);
+      continue;
     }
+    if (depth !== 0) continue;
+    if (t.kind === 'word' && t.value === 'select') {
+      inSelectList = true;
+      continue;
+    }
+    if (t.kind === 'word' && SELECT_LIST_ENDS.has(t.value)) {
+      inSelectList = false;
+      continue;
+    }
+    if (!inSelectList) continue;
+    // an implicit alias: "count(*) total", "price * qty amount"
+    const alias = nameToken(t);
+    if (!alias || (t.kind === 'word' && SQL_KEYWORDS.has(t.value))) continue;
+    if (endsTerm(tokens[i - 1])) names.set(alias.toLowerCase(), alias);
   }
   return names;
 }
@@ -143,7 +206,7 @@ export function inspectSql(catalog: CatalogModel, dialect: DriverId, text: strin
     // --- object references after FROM / JOIN / UPDATE / INTO / TABLE ...
     for (let i = 0; i < tokens.length - 1; i++) {
       const t = tokens[i]!;
-      if (t.kind !== 'word' || !OBJECT_INTRODUCERS.has(t.value)) continue;
+      if (!introducesObject(tokens, i)) continue;
       if (inCall[i]) continue;
       if (t.value === 'table' || t.value === 'index' || t.value === 'view' || t.value === 'sequence' || t.value === 'type' || t.value === 'schema') {
         // CREATE/DROP/ALTER targets may legitimately not exist yet; only DROP/ALTER TABLE x are worth checking
@@ -182,7 +245,7 @@ export function inspectSql(catalog: CatalogModel, dialect: DriverId, text: strin
         end: abs(table.end),
         message: `Unable to resolve table '${tableName}'`,
         severity: 'warning',
-        fix: suggestion ? { title: `Change to '${suggestion}'`, replacement: suggestion } : undefined,
+        fix: suggestion ? { title: `Change to '${suggestion}'`, replacement: replacementFor(dialect, table, suggestion) } : undefined,
       });
     }
 
@@ -205,7 +268,7 @@ export function inspectSql(catalog: CatalogModel, dialect: DriverId, text: strin
         end: abs(col.end),
         message: `Unable to resolve column '${colName}' in ${relation.name}`,
         severity: 'warning',
-        fix: suggestion ? { title: `Change to '${suggestion}'`, replacement: suggestion } : undefined,
+        fix: suggestion ? { title: `Change to '${suggestion}'`, replacement: replacementFor(dialect, col, suggestion) } : undefined,
       });
     }
 
@@ -228,7 +291,7 @@ export function inspectSql(catalog: CatalogModel, dialect: DriverId, text: strin
       if (prev?.text === '::') continue; // cast target type
       // an implicit alias ("count(*) total") or a value in a list of literals
       if (prev && (prev.kind === 'word' && !SQL_KEYWORDS.has(prev.value) && prev.text !== ',' || prev.kind === 'ident' || prev.kind === 'number' || prev.kind === 'string' || prev.text === ')')) continue;
-      if (prev?.kind === 'word' && OBJECT_INTRODUCERS.has(prev.value)) continue;
+      if (introducesObject(tokens, i - 1)) continue;
       if (prev?.kind === 'word' && (prev.value === 'as' || prev.value === 'into' || prev.value === 'language')) continue;
       if (allColumns.some((c) => c.toLowerCase() === lower)) continue;
       // a bare name that is another table (a JOIN-less reference) is still a table
@@ -239,7 +302,7 @@ export function inspectSql(catalog: CatalogModel, dialect: DriverId, text: strin
         end: abs(t.end),
         message: `Unable to resolve column '${name}'`,
         severity: 'warning',
-        fix: suggestion ? { title: `Change to '${suggestion}'`, replacement: suggestion } : undefined,
+        fix: suggestion ? { title: `Change to '${suggestion}'`, replacement: replacementFor(dialect, t, suggestion) } : undefined,
       });
     }
   }

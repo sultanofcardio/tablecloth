@@ -61,6 +61,7 @@ html, body {
 .spacer { flex: 1; }
 .inline { color: var(--ij-label); white-space: nowrap; }
 .summary { color: var(--ij-hint); font-size: 12px; }
+.summary.err { color: var(--ij-error); }
 
 .frm { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 14px; align-items: center; }
 .frm > label { text-align: right; color: var(--ij-label); }

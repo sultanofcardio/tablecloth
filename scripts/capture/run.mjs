@@ -11,9 +11,15 @@ import { runTests } from '@vscode/test-electron';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outDir = process.env.SHOT_DIR ?? join(root, 'scripts', 'capture', 'out');
-// which in-host suite to run and which markers it drops (README shots by default)
+// which in-host suite to run and which markers it drops (README shots by default);
+// SHOT_NAMES narrows the list, otherwise every marker the suite drops is shot
 const suiteFile = process.env.SHOT_SUITE ?? 'suite.cjs';
-const shotNames = (process.env.SHOT_NAMES ?? 'hero,grid,dialog').split(',').filter(Boolean);
+const suiteShots = {
+  'suite.cjs': 'hero,grid,dialog',
+  'phase2.cjs': 'grid-changes,grid-submit,grid-filter,grid-transposed,console-inspections,console-parameters,import',
+};
+const shotNames = (process.env.SHOT_NAMES ?? suiteShots[suiteFile] ?? '').split(',').filter(Boolean);
+if (shotNames.length === 0) throw new Error(`set SHOT_NAMES: no known shots for ${suiteFile}`);
 const venvPython = process.env.VENV_PY;
 if (!venvPython) throw new Error('set VENV_PY to the pyobjc venv python');
 

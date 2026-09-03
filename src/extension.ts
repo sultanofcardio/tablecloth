@@ -181,10 +181,20 @@ export function activate(context: vscode.ExtensionContext): {
     await sqlDocuments.showDdl(ds, { kind: ddlKind, schema: ddlSchema(ds, ref), name: ref.name });
   };
 
+  /** A database node names no schema; when its database has several, the user picks the target. */
   const importFromRef = async (ref: ExplorerRef): Promise<void> => {
     const located = await locate(ref);
     if (!located) return;
-    importDialog.open({ ds: located.ds, db: located.db, schema: located.schema, relation: located.rel });
+    let schema = located.schema;
+    if (!ref.schema && !ref.name && !schema.implicit && located.db.schemas.length > 1) {
+      const picked = await vscode.window.showQuickPick(
+        located.db.schemas.map((s) => ({ label: s.name, schema: s })),
+        { placeHolder: `Create the new table in which schema of ${located.db.name}?` },
+      );
+      if (!picked) return;
+      schema = picked.schema;
+    }
+    importDialog.open({ ds: located.ds, db: located.db, schema, relation: located.rel });
   };
 
   const explorer = new ExplorerViewProvider(context.extensionUri, store, sessions, {

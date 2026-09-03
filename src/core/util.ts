@@ -1,4 +1,5 @@
 import type { DriverId, StorageScope } from './types';
+import { SQL_RESERVED_WORDS } from '../sql/reserved';
 import { SQL_KEYWORDS } from '../sql/tokens';
 
 /**
@@ -31,11 +32,13 @@ export function isPlainIdentifier(name: string): boolean {
 /**
  * An identifier as generated SQL must spell it: bare when the dialect resolves
  * the bare form to the same object (Postgres and SQLite fold unquoted names to
- * lowercase, MySQL keeps case), quoted for reserved words and anything else.
+ * lowercase, MySQL keeps case), quoted for keywords, words reserved by any
+ * supported dialect, and anything else.
  */
 export function sqlName(dialect: DriverId, name: string): string {
   const plain = dialect === 'mysql' ? /^[A-Za-z_$][A-Za-z0-9_$]*$/ : /^[a-z_][a-z0-9_]*$/;
-  if (plain.test(name) && !SQL_KEYWORDS.has(name.toLowerCase())) return name;
+  const lower = name.toLowerCase();
+  if (plain.test(name) && !SQL_KEYWORDS.has(lower) && !SQL_RESERVED_WORDS.has(lower)) return name;
   return quoteIdent(dialect, name);
 }
 

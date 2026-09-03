@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
+import { errorMessage } from '../core/util';
 import { GridController, type GridHost, type GridMeta, type GridPage, type GridProvider, type GridViewState } from './grid';
 import { gridHtml } from './gridHtml';
 
@@ -148,7 +149,9 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         case 'cancelConsole':
-          void this.actions?.cancelConsole(String(message.key));
+          this.actions?.cancelConsole(String(message.key)).catch((err: unknown) => {
+            void vscode.window.showErrorMessage(`Cancel failed: ${errorMessage(err)}`);
+          });
           return;
         case 'selectDataSource':
           void this.selectDataSource(String(message.dsId));

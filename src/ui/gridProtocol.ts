@@ -28,6 +28,8 @@ export interface GridPageDto {
   shown: number;
   hasMore: boolean;
   total: number | null;
+  /** Identifies the host's render of this page; a submit echoes it so a reloaded grid cannot be edited against stale rows. */
+  generation: number;
 }
 
 export interface ReferencingDto {
@@ -133,13 +135,13 @@ export type GridRequest =
   | { type: 'setExtractor'; id: string }
   | { type: 'distinct'; column: string }
   | { type: 'completions'; id: number; field: FilterField; text: string; offset: number }
-  | { type: 'submit'; changes: ChangeSet }
+  | { type: 'submit'; changes: ChangeSet; generation: number }
   | { type: 'submitConfirm' }
   | { type: 'submitCancel' }
   | { type: 'txPick'; itemId: string }
   | { type: 'commit' }
   | { type: 'rollback' }
-  | { type: 'navigateReferenced'; column: string; value: CellValue }
+  | { type: 'navigateReferenced'; index: number; value: CellValue }
   | { type: 'navigateReferencing'; index: number; value: CellValue }
   | { type: 'ddl' }
   | { type: 'import' }

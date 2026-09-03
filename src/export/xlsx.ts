@@ -44,24 +44,33 @@ const LOOSE_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /**
  * The number token to emit for a cell, or undefined when it should be written as text.
- * Drivers hand back bigint and decimal columns as strings. Values Excel cannot
- * represent safely are kept as text instead of being silently rounded.
+ * Drivers hand back bigint and decimal columns as strings; those pass through
+ * verbatim so no precision is lost in formats such as JSON that have no limit.
  */
 export function numericLiteral(column: ColumnInfo, value: CellValue): string | undefined {
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) return undefined;
-    return String(value);
-  }
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : undefined;
   if (typeof value !== 'string' || !column.numeric) return undefined;
   if (!LOOSE_NUMBER.test(value) || !Number.isFinite(Number(value))) return undefined;
-  if (/^[+-]?\d+$/.test(value)) {
-    const integer = BigInt(value);
+  return JSON_NUMBER.test(value) ? value : String(Number(value));
+}
+
+/**
+ * The number token to write into an Excel cell, or undefined when it should be text.
+ * Excel stores doubles and keeps 15 significant digits, so integers outside the
+ * safe range and longer decimals are kept as text instead of being silently rounded.
+ */
+function excelNumber(column: ColumnInfo, value: CellValue): string | undefined {
+  const token = numericLiteral(column, value);
+  if (token === undefined) return undefined;
+  if (typeof value === 'number') return Number.isInteger(value) && !Number.isSafeInteger(value) ? undefined : token;
+  const text = String(value);
+  if (/^[+-]?\d+$/.test(text)) {
+    const integer = BigInt(text);
     if (integer < BigInt(Number.MIN_SAFE_INTEGER) || integer > BigInt(Number.MAX_SAFE_INTEGER)) return undefined;
   }
-  const mantissa = value.replace(/^[+-]/, '').split(/[eE]/)[0] ?? '';
+  const mantissa = text.replace(/^[+-]/, '').split(/[eE]/)[0] ?? '';
   const significantDigits = mantissa.replace('.', '').replace(/^0+/, '').replace(/0+$/, '').length;
-  if (significantDigits > 15) return undefined;
-  return JSON_NUMBER.test(value) ? value : String(Number(value));
+  return significantDigits > 15 ? undefined : token;
 }
 
 export function escapeXmlText(text: string): string {
@@ -98,7 +107,7 @@ function columnLetters(index: number): string {
 function cellXml(ref: string, column: ColumnInfo, value: CellValue): string | undefined {
   if (value === null) return undefined;
   if (typeof value === 'boolean') return `<c r="${ref}" t="b"><v>${value ? 1 : 0}</v></c>`;
-  const num = numericLiteral(column, value);
+  const num = excelNumber(column, value);
   if (num !== undefined) return `<c r="${ref}"><v>${num}</v></c>`;
   return `<c r="${ref}" t="inlineStr">${inlineString(String(value))}</c>`;
 }

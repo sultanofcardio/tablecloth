@@ -141,6 +141,7 @@ function fillCell(td: HTMLTableCellElement, r: number, c: number): void {
   const display = cellDisplay(r, c);
   td.dataset.r = String(r);
   td.dataset.c = String(c);
+  td.removeAttribute('title');
   const classes: string[] = [];
   if (display.placeholder) classes.push('ph');
   if (display.isNull) classes.push('null');

@@ -6,8 +6,9 @@ import { errorMessage, formatMillis } from '../core/util';
 import type { SessionManager } from '../drivers/sessions';
 import { DELIMITERS, countDataRows, detectDelimiter, parseDelimited, type DelimitedOptions } from '../import/csv';
 import {
+  duplicateTarget,
   inferColumnType,
-  matchTableColumn,
+  matchTableColumns,
   sqlTypeFor,
   suggestColumnName,
   valueKindForInferred,
@@ -31,6 +32,8 @@ interface ParseSettings {
   quote: string;
   hasHeader: boolean;
   trim: boolean;
+  /** Cell text standing for NULL; ignored by type inference. */
+  nullText: string;
 }
 
 interface ImportRequest {
@@ -46,6 +49,8 @@ interface ImportRequest {
 const MAX_FILE_BYTES = 256 * 1024 * 1024;
 const PREVIEW_ROWS = 100;
 const BATCH_SIZE = 500;
+/** Imports run on a session of their own so their transaction never meets other work. */
+const IMPORT_SUFFIX = 'import';
 
 /**
  * The IntelliJ "Import Data" dialog: map file columns onto a table, or create
@@ -117,7 +122,7 @@ export class ImportDialog {
           const delimiter = detectDelimiter(text.slice(0, 64 * 1024));
           void panel.webview.postMessage({
             type: 'init',
-            ...analyze({ delimiter, quote: '"', hasHeader: true, trim: true }),
+            ...analyze({ delimiter, quote: '"', hasHeader: true, trim: true, nullText: '' }),
           });
           break;
         }
@@ -159,16 +164,22 @@ export class ImportDialog {
 
   /** Parse with the given settings and describe the columns for the mapping table. */
   private analysis(target: ImportTarget, fileName: string, text: string, settings: ParseSettings) {
-    const opts: DelimitedOptions = { ...settings };
+    const opts: DelimitedOptions = {
+      delimiter: settings.delimiter,
+      quote: settings.quote,
+      hasHeader: settings.hasHeader,
+      trim: settings.trim,
+    };
     const parsed = parseDelimited(text, opts);
     const totalRows = countDataRows(text, opts);
     const sample = parsed.rows.slice(0, PREVIEW_ROWS);
     const tableColumns = target.relation?.columns.map((c) => ({ name: c.name, dataType: c.dataType })) ?? [];
     const used = new Set<string>();
+    const matches = target.relation ? matchTableColumns(parsed.headers, tableColumns.map((c) => c.name)) : [];
     const columns = parsed.headers.map((header, i) => {
       const samples = sample.map((row) => row[i] ?? '');
-      const inferred = inferColumnType(samples);
-      const match = target.relation ? matchTableColumn(header, tableColumns.map((c) => c.name)) : undefined;
+      const inferred = inferColumnType(samples, settings.nullText);
+      const match = matches[i];
       return {
         header,
         sample: samples.find((s) => s.trim().length > 0) ?? '',
@@ -214,6 +225,8 @@ export class ImportDialog {
     if (!tableName) throw new Error('Choose a table name.');
     const mapped = request.columns.filter((c) => c.target && c.target !== '');
     if (mapped.length === 0) throw new Error('Map at least one column.');
+    const duplicate = duplicateTarget(mapped);
+    if (duplicate) throw new Error(`Column "${duplicate}" is mapped more than once; map each target column at most once.`);
 
     const parsed = parseDelimited(text, { ...request.settings });
     const tableTypes = new Map((target.relation?.columns ?? []).map((c) => [c.name, c.dataType]));
@@ -274,7 +287,7 @@ export class ImportDialog {
           inserted = result.inserted;
           skipped = result.skipped;
           errors = result.errors;
-        });
+        }, IMPORT_SUFFIX).finally(() => this.sessions.closeSession(ds.config.id, IMPORT_SUFFIX));
       },
     );
 

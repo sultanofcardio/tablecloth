@@ -53,6 +53,17 @@ export function cancelStatementSql(dialect: DriverId, backendId: number): string
   }
 }
 
+/**
+ * Whether a statement failed because it was cancelled (PostgreSQL SQLSTATE
+ * 57014, MySQL errno 1317), as opposed to any other error.
+ */
+export function isCancellationError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const { code, errno, message } = err as { code?: unknown; errno?: unknown; message?: unknown };
+  if (code === '57014' || code === 'ER_QUERY_INTERRUPTED' || errno === 1317) return true;
+  return /canceling statement due to user request|query execution was interrupted/i.test(String(message ?? ''));
+}
+
 // ---------------------------------------------------------------------------
 // Value normalization
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { CellValue, DatabaseModel, RelationModel, SchemaModel, StoredDataSource } from '../core/types';
 import { qualify, sqlName } from '../core/util';
-import { makeEditTarget, originalLiteral, valueKind } from '../edit/changeSet';
+import { originalLiteral, valueKind } from '../edit/changeSet';
 import { referencingColumns } from '../edit/relations';
 import type { SessionManager } from '../drivers/sessions';
 import { GridController, type GridHost } from './grid';
@@ -120,8 +120,6 @@ export class TablePanels implements vscode.Disposable {
           viaColumn: ref.viaColumn,
         }))
       : [];
-    const pageColumns = rel.columns.map((c) => ({ name: c.name, dataType: c.dataType }));
-    const target = makeEditTarget(config.driver, qualified, rel.columns, pageColumns, config.readOnly);
     const provider = new TableGridProvider(
       config.driver,
       schemaName,
@@ -132,7 +130,7 @@ export class TablePanels implements vscode.Disposable {
       config,
       rel.kind === 'table'
         ? {
-            target,
+            tableColumns: rel.columns,
             referencing,
             panelKey: key,
             onTxChange: () => void controller.handleMessage({ type: 'txChanged' }),
@@ -145,7 +143,7 @@ export class TablePanels implements vscode.Disposable {
     panel.onDidDispose(() => {
       this.panels.delete(key);
       controller.detach(panel.webview);
-      // a Manual-mode editor's dedicated session goes with its tab
+      // the editor's dedicated session goes with its tab
       void this.sessions.closeSession(config.id, `table:${key}`);
     });
 

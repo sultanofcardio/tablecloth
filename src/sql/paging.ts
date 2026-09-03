@@ -1,5 +1,6 @@
 import type { DriverId } from '../core/types';
 import { quoteIdent, sqlName } from '../core/util';
+import { tokenize } from './tokens';
 
 export interface SortSpec {
   column: string;
@@ -17,9 +18,20 @@ export interface PageOptions {
   orderBy?: string;
 }
 
-/** Strip a single trailing semicolon so the statement can be embedded in a subquery. */
-export function stripTrailingSemicolon(sql: string): string {
-  return sql.replace(/;\s*$/, '');
+/**
+ * Strip trailing semicolons, comments and whitespace so the statement can be
+ * embedded in a subquery: a trailing line comment would otherwise swallow the
+ * wrapper's closing paren. Leading and inner text is left intact.
+ */
+export function stripTrailingSemicolon(sql: string, dialect: DriverId = 'postgres'): string {
+  const tokens = tokenize(sql, dialect);
+  let end = tokens.length;
+  while (end > 0) {
+    const token = tokens[end - 1]!;
+    if (token.kind === 'ws' || token.kind === 'comment' || (token.kind === 'punct' && token.text === ';')) end--;
+    else break;
+  }
+  return end === 0 ? '' : sql.slice(0, tokens[end - 1]!.end);
 }
 
 function clauses(dialect: DriverId, opts: Pick<PageOptions, 'sort' | 'where' | 'orderBy'>): string {
@@ -38,20 +50,20 @@ function clauses(dialect: DriverId, opts: Pick<PageOptions, 'sort' | 'where' | '
  * when the sort is applied here (on the wrapper), not inside the query.
  */
 export function wrapPaged(dialect: DriverId, sql: string, opts: PageOptions): string {
-  const inner = stripTrailingSemicolon(sql);
+  const inner = stripTrailingSemicolon(sql, dialect);
   const paging = opts.limit === null ? '' : ` LIMIT ${opts.limit} OFFSET ${opts.offset}`;
   return `SELECT * FROM (\n${inner}\n) AS _tablecloth_q${clauses(dialect, opts)}${paging}`;
 }
 
 /** Wrap a SELECT-ish statement to count its (filtered) result set. */
 export function wrapCount(dialect: DriverId, sql: string, where?: string): string {
-  const inner = stripTrailingSemicolon(sql);
+  const inner = stripTrailingSemicolon(sql, dialect);
   return `SELECT COUNT(*) FROM (\n${inner}\n) AS _tablecloth_q${clauses(dialect, { where })}`;
 }
 
 /** Distinct values of one column of a wrapped statement, for the header funnel. */
 export function wrapDistinct(dialect: DriverId, sql: string, column: string, where: string | undefined, limit: number): string {
-  const inner = stripTrailingSemicolon(sql);
+  const inner = stripTrailingSemicolon(sql, dialect);
   const name = sqlName(dialect, column);
   return `SELECT DISTINCT ${name} FROM (\n${inner}\n) AS _tablecloth_q${clauses(dialect, { where })} ORDER BY ${name} LIMIT ${limit}`;
 }

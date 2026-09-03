@@ -86,3 +86,27 @@ test('completionReplacement keeps a quote the user already typed instead of doub
   const keyword = entry('WHERE', '4WHERE', { kind: 'keyword' });
   assert.deepEqual(completionReplacement(keyword, 'x = "', '"'), { insertText: 'WHERE', extendStart: 0, extendEnd: 0 });
 });
+
+test('completionReplacement tells a closing quote from an opening one', () => {
+  const programs = entry('Programs', '1Programs', { kind: 'table', insertText: '"Programs"' });
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "Programs"', ''), {
+    insertText: '"Programs"',
+    extendStart: 0,
+    extendEnd: 0,
+  });
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', '"'), {
+    insertText: '"Programs"',
+    extendStart: 1,
+    extendEnd: 1,
+    filterText: '"Programs',
+  });
+  assert.deepEqual(completionReplacement(programs, 'SELECT "a", "b" FROM "', '"').extendStart, 1, 'earlier closed pairs do not count');
+  const orders = entry('orders', '1orders', { kind: 'table' });
+  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `orders`', ''), { insertText: 'orders', extendStart: 0, extendEnd: 0 });
+  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `', '`'), {
+    insertText: '`orders`',
+    extendStart: 1,
+    extendEnd: 1,
+    filterText: '`orders',
+  });
+});

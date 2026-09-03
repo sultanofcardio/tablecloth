@@ -47,7 +47,8 @@ export interface GridTxControl {
 }
 
 export interface GridEditing {
-  target: EditTarget;
+  /** How a fetched page maps onto the table; table editors derive it from the page's own columns. */
+  targetFor(page: GridPage): EditTarget;
   /** Run the reviewed statements atomically on the right session. */
   submit(statements: ChangeStatement[]): Promise<void>;
   tx?: GridTxControl;
@@ -273,11 +274,18 @@ export class GridController {
       : null;
   }
 
+  /** The edit target of the page on screen. */
+  private editTarget(): EditTarget | undefined {
+    const page = this.current;
+    const editing = this.provider?.editing;
+    return page && editing ? editing.targetFor(page) : undefined;
+  }
+
   private metaPayload(): GridMetaDto {
     const meta = this.meta!;
     const provider = this.provider!;
     const editing = provider.editing;
-    const target = editing?.target;
+    const target = this.editTarget();
     let readOnlyReason: string | null = null;
     if (meta.readOnly) readOnlyReason = 'The data source is read-only';
     else if (target?.readOnlyReason) readOnlyReason = target.readOnlyReason;
@@ -303,7 +311,7 @@ export class GridController {
 
   private columnDtos(page: GridPage): GridColumnDto[] {
     const provider = this.provider!;
-    const target = provider.editing?.target;
+    const target = provider.editing?.targetFor(page);
     const counts = new Map<string, number>();
     for (const c of page.columns) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
     const keys = new Set(provider.keyColumns ?? []);
@@ -371,6 +379,7 @@ export class GridController {
         shown: page.rows.length,
         hasMore: page.hasMore,
         total: this.state.total ?? null,
+        generation: this.generation,
       },
       where: this.state.where,
       orderBy: this.state.orderBy,
@@ -512,7 +521,7 @@ export class GridController {
         break;
       }
       case 'submit':
-        this.previewSubmit(message.changes as ChangeSet);
+        this.previewSubmit(message.changes as ChangeSet, Number(message.generation));
         break;
       case 'submitConfirm':
         await this.confirmSubmit();
@@ -548,7 +557,7 @@ export class GridController {
       }
       case 'navigateReferenced': {
         const meta = this.meta;
-        const column = provider?.editing?.target.columns.find((c) => c.name === String(message.column));
+        const column = this.editTarget()?.columns[Number(message.index)];
         if (!meta || !column?.foreignKeyTarget) return;
         const dot = column.foreignKeyTarget.lastIndexOf('.');
         await this.host.navigate(
@@ -630,7 +639,12 @@ export class GridController {
     }
   }
 
-  private previewSubmit(changes: ChangeSet): void {
+  /**
+   * The change set's row indices refer to the page the webview built it on;
+   * `generation` proves that page is still the one on the host (a navigation
+   * or a commit may have reloaded the grid while the submit was in flight).
+   */
+  private previewSubmit(changes: ChangeSet, generation: number): void {
     const page = this.current;
     const editing = this.provider?.editing;
     const meta = this.meta;
@@ -638,8 +652,12 @@ export class GridController {
       this.notice('This result is read-only', 'error');
       return;
     }
+    if (generation !== this.generation) {
+      this.notice('The grid was reloaded while you were editing; review your changes against the current rows and submit again', 'error');
+      return;
+    }
     try {
-      const statements = buildChangeStatements(editing.target, page.rows, changes);
+      const statements = buildChangeStatements(editing.targetFor(page), page.rows, changes);
       if (statements.length === 0) return;
       this.pendingSubmit = statements;
       const preview: SubmitPreviewMessage = {

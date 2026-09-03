@@ -137,7 +137,8 @@ const IDENTIFIER_KINDS: ReadonlySet<string> = new Set(['column', 'table', 'view'
  * quoted, so `"Prog|"` becomes `"Programs"` rather than `""Programs""`.
  */
 export function completionReplacement(entry: CompletionEntry, before: string, after: string): CompletionReplacement {
-  const quote = before.endsWith('"') ? '"' : before.endsWith('`') ? '`' : undefined;
+  const last = before.endsWith('"') ? '"' : before.endsWith('`') ? '`' : undefined;
+  const quote = last && isOpeningQuote(before, last) ? last : undefined;
   if (!quote || !IDENTIFIER_KINDS.has(entry.kind)) {
     return { insertText: entry.insertText ?? entry.label, extendStart: 0, extendEnd: 0 };
   }
@@ -147,4 +148,11 @@ export function completionReplacement(entry: CompletionEntry, before: string, af
     extendEnd: after.startsWith(quote) ? 1 : 0,
     filterText: quote + entry.label,
   };
+}
+
+/** The quote ending `before` opens an identifier when it is unpaired, as in wordBeforeCaret. */
+function isOpeningQuote(before: string, quote: string): boolean {
+  let count = 0;
+  for (const ch of before) if (ch === quote) count++;
+  return count % 2 === 1;
 }

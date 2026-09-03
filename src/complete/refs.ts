@@ -41,12 +41,16 @@ export function stripQuotes(name: string): string {
   return name;
 }
 
+/** `IS [NOT] DISTINCT FROM x` and `ON DUPLICATE KEY UPDATE x` name values, so their FROM / UPDATE introduce no table. */
+const NOT_AN_INTRODUCER_AFTER = /\b(?:distinct|key)\s+$/i;
+
 /** Best-effort alias map for a statement: FROM/JOIN/UPDATE/INTO targets. */
 export function parseTableRefs(statement: string): TableRef[] {
   const refs: TableRef[] = [];
   const pattern =
     /\b(from|join|update|into)\s+((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*))(?:\s*\.\s*((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)))?(?:\s+(?:as\s+)?((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)))?/gi;
   for (const match of statement.matchAll(pattern)) {
+    if (NOT_AN_INTRODUCER_AFTER.test(statement.slice(0, match.index))) continue;
     const [, , first, second, aliasRaw] = match;
     const schema = second ? stripQuotes(first!) : undefined;
     const table = stripQuotes(second ?? first!);

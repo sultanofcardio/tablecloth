@@ -1,6 +1,6 @@
 import type { CellValue, ColumnInfo, ColumnModel, DriverId } from '../core/types';
 import { quoteLiteral, sqlName } from '../core/util';
-import { significant, tokenize, type Token } from '../sql/tokens';
+import { SQL_KEYWORDS, significant, tokenize, type Token } from '../sql/tokens';
 
 /** How literals for a column are written into generated DML. */
 export type ValueKind = 'numeric' | 'boolean' | 'text';
@@ -117,7 +117,110 @@ export function makeEditTarget(
   return { dialect, table: qualifiedTable, columns, readOnlyReason, wholeRowKey: !keyPresent };
 }
 
-function directProjection(tokens: Token[]): string | '*' | undefined {
+/** The one table a SELECT reads from, as the statement names it. */
+export interface SourceRelation {
+  schema?: string;
+  table: string;
+  alias?: string;
+}
+
+const FROM_CLAUSE_ENDS = new Set([
+  'where', 'group', 'having', 'window', 'order', 'limit', 'offset', 'fetch', 'for', 'returning',
+]);
+const SET_OPERATIONS = new Set(['union', 'intersect', 'except']);
+const JOIN_WORDS = new Set(['join', 'inner', 'left', 'right', 'full', 'cross', 'natural', 'outer', 'lateral', 'tablesample']);
+
+function isName(token: Token | undefined): token is Token {
+  return !!token && (token.kind === 'word' || token.kind === 'ident');
+}
+
+/** A word that opens a clause or a join rather than naming a table or alias. */
+function isStructural(token: Token): boolean {
+  return token.kind === 'word' && (FROM_CLAUSE_ENDS.has(token.value) || SET_OPERATIONS.has(token.value) || JOIN_WORDS.has(token.value));
+}
+
+/** The top-level SELECT ... FROM split of a statement, or undefined when it has none. */
+function selectFromSplit(tokens: Token[]): { select: number; from: number } | undefined {
+  let depth = 0;
+  let select = -1;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.text === '(') depth++;
+    else if (token.text === ')') depth--;
+    else if (depth === 0 && token.kind === 'word' && token.value === 'select' && select < 0) select = i;
+    else if (select >= 0 && depth === 0 && token.kind === 'word' && token.value === 'from') return { select, from: i };
+  }
+  return undefined;
+}
+
+/**
+ * Prove that a statement reads exactly one plain table: `SELECT ... FROM
+ * [schema.]table [[AS] alias]` followed by nothing but the tail clauses.
+ * Derived tables, comma joins, JOINs, CTEs and set operations all return
+ * undefined, because the result columns of those cannot be traced back to one
+ * table's rows by name alone.
+ */
+export function singleSourceRelation(sql: string, dialect: DriverId): SourceRelation | undefined {
+  const tokens = significant(tokenize(sql, dialect));
+  if (tokens[0]?.kind !== 'word' || tokens[0].value !== 'select') return undefined;
+  const split = selectFromSplit(tokens);
+  if (!split) return undefined;
+  let i = split.from + 1;
+  const names: Token[] = [];
+  for (;;) {
+    const token = tokens[i];
+    if (!isName(token) || isStructural(token)) return undefined;
+    names.push(token);
+    i++;
+    if (tokens[i]?.text !== '.') break;
+    i++;
+  }
+  if (names.length > 2) return undefined;
+  let alias: string | undefined;
+  const next = tokens[i];
+  if (next?.kind === 'word' && next.value === 'as') {
+    const name = tokens[i + 1];
+    if (!isName(name) || isStructural(name)) return undefined;
+    alias = name.value;
+    i += 2;
+  } else if (isName(next) && !isStructural(next) && !(next.kind === 'word' && SQL_KEYWORDS.has(next.value))) {
+    alias = next.value;
+    i++;
+  }
+  const tail = tokens[i];
+  if (tail && !(tail.text === ';' && i === tokens.length - 1)) {
+    if (tail.kind !== 'word' || !FROM_CLAUSE_ENDS.has(tail.value)) return undefined;
+  }
+  let depth = 0;
+  for (; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.text === '(') depth++;
+    else if (token.text === ')') depth--;
+    else if (depth === 0 && token.kind === 'word' && SET_OPERATIONS.has(token.value)) return undefined;
+  }
+  const table = names[names.length - 1]!;
+  const schema = names.length === 2 ? names[0]!.value : undefined;
+  return { schema, table: table.value, alias };
+}
+
+function sameName(token: Token, name: string): boolean {
+  return token.value.toLowerCase() === name.toLowerCase();
+}
+
+/** Whether `qualifier.column` names the source relation (by alias, table, or schema.table). */
+function qualifierMatches(qualifier: Token[], source: SourceRelation): boolean {
+  if (qualifier.length === 0) return true;
+  if (qualifier.length === 1) {
+    const q = qualifier[0]!;
+    return source.alias ? sameName(q, source.alias) : sameName(q, source.table);
+  }
+  if (qualifier.length === 2 && !source.alias) {
+    return !!source.schema && sameName(qualifier[0]!, source.schema) && sameName(qualifier[1]!, source.table);
+  }
+  return false;
+}
+
+function directProjection(tokens: Token[], source: SourceRelation): string | '*' | undefined {
   let body = tokens;
   const as = body.findIndex((token) => token.kind === 'word' && token.value === 'as');
   if (as >= 0) body = body.slice(0, as);
@@ -125,44 +228,41 @@ function directProjection(tokens: Token[]): string | '*' | undefined {
     const withoutAlias = body.slice(0, -1);
     if (withoutAlias.length % 2 === 1) body = withoutAlias;
   }
-  if (body.length === 1 && body[0]!.text === '*') return '*';
-  if (body.length >= 3 && body[body.length - 2]!.text === '.' && body[body.length - 1]!.text === '*') return '*';
   if (body.length % 2 === 0) return undefined;
   for (let i = 0; i < body.length; i++) {
     if (i % 2 === 0) {
-      if (body[i]!.kind !== 'word' && body[i]!.kind !== 'ident') return undefined;
+      const last = i === body.length - 1;
+      if (body[i]!.kind !== 'word' && body[i]!.kind !== 'ident' && !(last && body[i]!.text === '*')) return undefined;
     } else if (body[i]!.text !== '.') return undefined;
   }
-  return body[body.length - 1]!.value;
+  const qualifier = body.filter((_, i) => i % 2 === 0).slice(0, -1);
+  if (!qualifierMatches(qualifier, source)) return undefined;
+  const last = body[body.length - 1]!;
+  return last.text === '*' ? '*' : last.value;
 }
 
-/** Map result positions to source columns, rejecting expressions even when aliased like a real column. */
+/**
+ * Map result positions to source columns, rejecting expressions even when
+ * aliased like a real column, and qualified names that belong to anything
+ * other than the statement's one source relation.
+ */
 export function resultColumnOrigins(
   sql: string,
   dialect: DriverId,
   tableColumns: ColumnModel[],
   resultColumns: ColumnInfo[],
+  source?: SourceRelation,
 ): (string | undefined)[] {
+  const relation = source ?? singleSourceRelation(sql, dialect);
+  if (!relation) return resultColumns.map(() => undefined);
   const tokens = significant(tokenize(sql, dialect));
-  let depth = 0;
-  let select = -1;
-  let from = -1;
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
-    if (token.text === '(') depth++;
-    else if (token.text === ')') depth--;
-    else if (depth === 0 && token.kind === 'word' && token.value === 'select') select = i;
-    else if (select >= 0 && depth === 0 && token.kind === 'word' && token.value === 'from') {
-      from = i;
-      break;
-    }
-  }
-  if (select < 0 || from < 0) return resultColumns.map(() => undefined);
-  const projection = tokens.slice(select + 1, from);
+  const split = selectFromSplit(tokens);
+  if (!split) return resultColumns.map(() => undefined);
+  const projection = tokens.slice(split.select + 1, split.from);
   if (projection[0]?.kind === 'word' && projection[0].value === 'distinct') projection.shift();
   const items: Token[][] = [];
   let item: Token[] = [];
-  depth = 0;
+  let depth = 0;
   for (const token of projection) {
     if (token.text === '(') depth++;
     else if (token.text === ')') depth--;
@@ -174,7 +274,7 @@ export function resultColumnOrigins(
   if (item.length > 0) items.push(item);
   const origins: (string | undefined)[] = [];
   for (const tokens of items) {
-    const origin = directProjection(tokens);
+    const origin = directProjection(tokens, relation);
     if (origin === '*') origins.push(...tableColumns.map((column) => column.name));
     else origins.push(origin);
   }
