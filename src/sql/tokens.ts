@@ -26,8 +26,15 @@ export interface Token {
 }
 
 const MULTI_CHAR_OPERATORS = [
+  '!~~*',
+  '<<=',
+  '>>=',
+  '<=>',
   '->>',
   '#>>',
+  '!~*',
+  '~~*',
+  '!~~',
   '::',
   '<=',
   '>=',
@@ -45,6 +52,10 @@ const MULTI_CHAR_OPERATORS = [
   '<<',
   '>>',
   ':=',
+  '=>',
+  '!~',
+  '~*',
+  '~~',
 ];
 
 function isWordStart(ch: string): boolean {

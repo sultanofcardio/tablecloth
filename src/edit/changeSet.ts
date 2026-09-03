@@ -1,5 +1,6 @@
 import type { CellValue, ColumnInfo, ColumnModel, DriverId } from '../core/types';
 import { quoteLiteral, sqlName } from '../core/util';
+import { significant, tokenize, type Token } from '../sql/tokens';
 
 /** How literals for a column are written into generated DML. */
 export type ValueKind = 'numeric' | 'boolean' | 'text';
@@ -76,14 +77,16 @@ export function makeEditTarget(
   tableColumns: ColumnModel[],
   pageColumns: ColumnInfo[],
   sourceReadOnly: boolean,
+  requireSourceColumns = false,
 ): EditTarget {
   const byName = new Map(tableColumns.map((c) => [c.name, c]));
   const keyNames = tableColumns.filter((c) => c.primaryKey).map((c) => c.name);
-  const pageNames = new Set(pageColumns.map((c) => c.name));
-  const keyPresent = keyNames.length > 0 && keyNames.every((k) => pageNames.has(k));
+  const pageSources = new Set(pageColumns.map((c) => c.sourceColumn ?? (requireSourceColumns ? undefined : c.name)));
+  const keyPresent = keyNames.length > 0 && keyNames.every((k) => pageSources.has(k));
 
   const columns = pageColumns.map((page): EditColumn => {
-    const model = byName.get(page.name);
+    const sourceName = page.sourceColumn ?? (requireSourceColumns ? undefined : page.name);
+    const model = sourceName ? byName.get(sourceName) : undefined;
     if (!model) {
       return {
         name: page.name,
@@ -112,6 +115,70 @@ export function makeEditTarget(
   if (sourceReadOnly) readOnlyReason = 'The data source is read-only';
   else if (!columns.some((c) => !c.readOnly)) readOnlyReason = 'No editable columns in this result';
   return { dialect, table: qualifiedTable, columns, readOnlyReason, wholeRowKey: !keyPresent };
+}
+
+function directProjection(tokens: Token[]): string | '*' | undefined {
+  let body = tokens;
+  const as = body.findIndex((token) => token.kind === 'word' && token.value === 'as');
+  if (as >= 0) body = body.slice(0, as);
+  else if (body.length >= 2 && ['word', 'ident'].includes(body[body.length - 1]!.kind)) {
+    const withoutAlias = body.slice(0, -1);
+    if (withoutAlias.length % 2 === 1) body = withoutAlias;
+  }
+  if (body.length === 1 && body[0]!.text === '*') return '*';
+  if (body.length >= 3 && body[body.length - 2]!.text === '.' && body[body.length - 1]!.text === '*') return '*';
+  if (body.length % 2 === 0) return undefined;
+  for (let i = 0; i < body.length; i++) {
+    if (i % 2 === 0) {
+      if (body[i]!.kind !== 'word' && body[i]!.kind !== 'ident') return undefined;
+    } else if (body[i]!.text !== '.') return undefined;
+  }
+  return body[body.length - 1]!.value;
+}
+
+/** Map result positions to source columns, rejecting expressions even when aliased like a real column. */
+export function resultColumnOrigins(
+  sql: string,
+  dialect: DriverId,
+  tableColumns: ColumnModel[],
+  resultColumns: ColumnInfo[],
+): (string | undefined)[] {
+  const tokens = significant(tokenize(sql, dialect));
+  let depth = 0;
+  let select = -1;
+  let from = -1;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (token.text === '(') depth++;
+    else if (token.text === ')') depth--;
+    else if (depth === 0 && token.kind === 'word' && token.value === 'select') select = i;
+    else if (select >= 0 && depth === 0 && token.kind === 'word' && token.value === 'from') {
+      from = i;
+      break;
+    }
+  }
+  if (select < 0 || from < 0) return resultColumns.map(() => undefined);
+  const projection = tokens.slice(select + 1, from);
+  if (projection[0]?.kind === 'word' && projection[0].value === 'distinct') projection.shift();
+  const items: Token[][] = [];
+  let item: Token[] = [];
+  depth = 0;
+  for (const token of projection) {
+    if (token.text === '(') depth++;
+    else if (token.text === ')') depth--;
+    if (token.text === ',' && depth === 0) {
+      items.push(item);
+      item = [];
+    } else item.push(token);
+  }
+  if (item.length > 0) items.push(item);
+  const origins: (string | undefined)[] = [];
+  for (const tokens of items) {
+    const origin = directProjection(tokens);
+    if (origin === '*') origins.push(...tableColumns.map((column) => column.name));
+    else origins.push(origin);
+  }
+  return origins.length === resultColumns.length ? origins : resultColumns.map(() => undefined);
 }
 
 const NUMBER_TEXT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;

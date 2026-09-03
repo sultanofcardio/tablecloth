@@ -4,7 +4,7 @@ import { parseTableRefs } from '../complete/refs';
 import type { ConsoleBinding, StoredDataSource, TxIsolation, TxMode } from '../core/types';
 import { ENV_COLOR_HEX, TX_ISOLATION_LABELS } from '../core/types';
 import { errorMessage, formatMillis, qualify, quoteIdent, timestamp, truncate } from '../core/util';
-import { makeEditTarget, type ChangeStatement } from '../edit/changeSet';
+import { makeEditTarget, resultColumnOrigins, type ChangeStatement } from '../edit/changeSet';
 import { findRelation, referencingColumns } from '../edit/relations';
 import type { DbSession } from '../drivers/driver';
 import type { SessionManager } from '../drivers/sessions';
@@ -208,6 +208,7 @@ export class QueryRunner {
 
   /** Schema context applied to each live console session (reconnects reapply). */
   private readonly appliedSchemaContext = new WeakMap<DbSession, string>();
+  private readonly appliedIsolation = new WeakMap<DbSession, TxIsolation>();
 
   /** The console's bound schema becomes the session's effective schema, like IntelliJ. */
   private async ensureSchemaContext(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
@@ -230,6 +231,15 @@ export class QueryRunner {
   /** Open the console's manual transaction if its mode asks for one and none is open. */
   private async ensureManualTransaction(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
     const tx = this.consoles.getTxState(consoleUri);
+    if (tx.isolation !== 'default' && this.appliedIsolation.get(session) !== tx.isolation) {
+      const level = ISOLATION_SQL[tx.isolation];
+      const sql =
+        ds.config.driver === 'postgres'
+          ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
+          : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
+      await session.query(sql);
+      this.appliedIsolation.set(session, tx.isolation);
+    }
     if (tx.mode === 'manual' && !this.consoles.isInTx(consoleUri)) {
       await session.query(this.beginSql(ds));
       this.consoles.setInTx(consoleUri, true);
@@ -368,7 +378,9 @@ export class QueryRunner {
     if (!found || found.relation.kind !== 'table') return undefined;
     const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
     const qualified = qualify(ds.config.driver, schemaForSql, found.relation.name);
-    const target = makeEditTarget(ds.config.driver, qualified, found.relation.columns, columns, ds.config.readOnly);
+    const origins = resultColumnOrigins(sql, ds.config.driver, found.relation.columns, columns);
+    const sourcedColumns = columns.map((column, index) => ({ ...column, sourceColumn: origins[index] }));
+    const target = makeEditTarget(ds.config.driver, qualified, found.relation.columns, sourcedColumns, ds.config.readOnly, true);
     const referencing: ReferencingDto[] = referencingColumns(catalog, found.schema, found.relation).map((r) => ({
       label: `${r.relation.name}.${r.column.name}`,
       schema: r.schema.implicit ? null : r.schema.name,
@@ -632,23 +644,17 @@ export class QueryRunner {
 
     if (group === 'iso' && value && value !== tx.isolation) {
       const isolation = value as TxIsolation;
-      await this.consoles.setTxState(uri, { ...this.consoles.getTxState(uri), isolation });
-      if (isolation !== 'default') {
-        const level = ISOLATION_SQL[isolation];
-        const sql =
-          ds.config.driver === 'postgres'
-            ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
-            : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
-        try {
-          await this.sessions.run(ds.config, (session) => session.query(sql), this.consoles.consoleSuffix(uri));
-          this.services.appendOutput(this.consoles.consoleSuffix(uri), {
-            kind: 'meta',
-            text: `[${timestamp()}] isolation set to ${level}`,
-          });
-        } catch (err) {
-          void vscode.window.showErrorMessage(`Setting isolation failed: ${errorMessage(err)}`);
-        }
+      if (this.consoles.isInTx(uri)) {
+        void vscode.window.showInformationMessage('Finish the open transaction before changing its isolation level.');
+        return;
       }
+      await this.sessions.closeSession(ds.config.id, this.consoles.consoleSuffix(uri));
+      await this.consoles.setTxState(uri, { ...this.consoles.getTxState(uri), isolation });
+      const label = isolation === 'default' ? 'database default' : ISOLATION_SQL[isolation];
+      this.services.appendOutput(this.consoles.consoleSuffix(uri), {
+        kind: 'meta',
+        text: `[${timestamp()}] isolation set to ${label}`,
+      });
     }
   }
 

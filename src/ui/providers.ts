@@ -103,7 +103,7 @@ export async function runChangeBatch(
  * shared main session inside BEGIN/COMMIT; Manual mode moves the editor onto
  * its own session, where submits accumulate until Commit or Roll Back.
  */
-class TableTxControl implements GridTxControl {
+export class TableTxControl implements GridTxControl {
   mode: TxMode = 'auto';
   isolation: TxIsolation = 'default';
   inTx = false;
@@ -151,6 +151,12 @@ class TableTxControl implements GridTxControl {
       return;
     }
     if (group === 'iso' && value && value !== this.isolation) {
+      if (this.inTx) {
+        const vscode = await import('vscode');
+        void vscode.window.showInformationMessage('Finish the open transaction before changing its isolation level.');
+        return;
+      }
+      await this.sessions.closeSession(this.config.id, this.dedicatedSuffix);
       this.isolation = value as TxIsolation;
       this.onChange();
     }

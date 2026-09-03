@@ -84,6 +84,7 @@ export function sortMark(orderBy: string, column: string): SortMark | undefined 
  * the column joins the existing terms.
  */
 export function toggleSort(dialect: DriverId, orderBy: string, column: string, multi: boolean): string {
+  const rawTerms = splitTopLevel(orderBy);
   const terms = parseOrderBy(orderBy);
   const i = terms.findIndex((t) => t.column.toLowerCase() === column.toLowerCase());
   const current = i >= 0 ? terms[i]! : undefined;
@@ -93,12 +94,17 @@ export function toggleSort(dialect: DriverId, orderBy: string, column: string, m
   else next = undefined;
 
   if (!multi) return next ? composeOrderBy(dialect, [next]) : '';
-  const rest = terms.filter((_, idx) => idx !== i);
+  const rest = rawTerms.filter((_, idx) => idx !== i);
   if (next) {
-    if (i >= 0) rest.splice(i, 0, next);
-    else rest.push(next);
+    const existing = i >= 0 ? rawTerms[i] : undefined;
+    const match = existing ? /^(.*?)(?:\s+(?:asc|desc))?(\s+nulls\s+(?:first|last))?$/i.exec(existing) : undefined;
+    const rendered = match
+      ? `${match[1]!.trim()}${next.direction === 'desc' ? ' DESC' : ''}${match[2] ?? ''}`
+      : composeOrderBy(dialect, [next]);
+    if (i >= 0) rest.splice(i, 0, rendered);
+    else rest.push(rendered);
   }
-  return composeOrderBy(dialect, rest);
+  return rest.join(', ');
 }
 
 export function sqlLiteral(dialect: DriverId, value: CellValue): string {
@@ -126,12 +132,14 @@ export function funnelClause(dialect: DriverId, column: string, values: CellValu
 export function mergeWhere(where: string, previous: string | undefined, clause: string): string {
   let base = where;
   if (previous) {
-    const idx = base.indexOf(previous);
+    const wrapped = `(${previous})`;
+    const matched = base.includes(wrapped) ? wrapped : previous;
+    const idx = base.indexOf(matched);
     if (idx >= 0) {
-      base = (base.slice(0, idx) + base.slice(idx + previous.length)).replace(/^\s*AND\s+/i, '');
+      base = (base.slice(0, idx) + base.slice(idx + matched.length)).replace(/^\s*AND\s+/i, '');
       base = base.replace(/\s+AND\s*$/i, '').replace(/\s+AND\s+AND\s+/i, ' AND ').trim();
     }
   }
   if (!clause) return base;
-  return base.trim() ? `${base.trim()} AND ${clause}` : clause;
+  return base.trim() ? `(${base.trim()}) AND (${clause})` : clause;
 }

@@ -68,6 +68,8 @@ export interface ColumnInfo {
   dataType?: string;
   /** Right-align and treat as numeric in the grid. */
   numeric?: boolean;
+  /** Underlying table column when the result expression is a direct projection. */
+  sourceColumn?: string;
 }
 
 /** Cell values are normalized before leaving the driver layer. */

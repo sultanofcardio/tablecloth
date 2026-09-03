@@ -44,14 +44,24 @@ const LOOSE_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /**
  * The number token to emit for a cell, or undefined when it should be written as text.
- * Drivers hand back bigint and decimal columns as strings, so a numeric-column string
- * that already reads as a JSON number is passed through verbatim to keep its precision.
+ * Drivers hand back bigint and decimal columns as strings. Values Excel cannot
+ * represent safely are kept as text instead of being silently rounded.
  */
 export function numericLiteral(column: ColumnInfo, value: CellValue): string | undefined {
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : undefined;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) return undefined;
+    return String(value);
+  }
   if (typeof value !== 'string' || !column.numeric) return undefined;
-  if (JSON_NUMBER.test(value)) return value;
-  return LOOSE_NUMBER.test(value) && Number.isFinite(Number(value)) ? String(Number(value)) : undefined;
+  if (!LOOSE_NUMBER.test(value) || !Number.isFinite(Number(value))) return undefined;
+  if (/^[+-]?\d+$/.test(value)) {
+    const integer = BigInt(value);
+    if (integer < BigInt(Number.MIN_SAFE_INTEGER) || integer > BigInt(Number.MAX_SAFE_INTEGER)) return undefined;
+  }
+  const mantissa = value.replace(/^[+-]/, '').split(/[eE]/)[0] ?? '';
+  const significantDigits = mantissa.replace('.', '').replace(/^0+/, '').replace(/0+$/, '').length;
+  if (significantDigits > 15) return undefined;
+  return JSON_NUMBER.test(value) ? value : String(Number(value));
 }
 
 export function escapeXmlText(text: string): string {

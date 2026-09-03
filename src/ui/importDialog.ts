@@ -14,7 +14,8 @@ import {
   valueKindForSqlType,
   type InferredType,
 } from '../import/infer';
-import { buildCreateTable, buildInsertBatches, buildRowInsert, type ImportColumn, type ImportPlanInput } from '../import/plan';
+import { executeImport } from '../import/execute';
+import { buildCreateTable, buildDropTable, buildInsertBatches, buildRowInsert, type ImportColumn, type ImportPlanInput } from '../import/plan';
 import { detachActiveEditor, getSurfacePresentation, openEmptyFloatingWindow } from './floatingWindow';
 
 export interface ImportTarget {
@@ -247,52 +248,32 @@ export class ImportDialog {
     const started = Date.now();
     let inserted = 0;
     let skipped = 0;
-    const errors: string[] = [];
+    let errors: string[] = [];
 
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Importing into ${tableName}`, cancellable: true },
       async (report, notificationToken) => {
         const cancelled = () => token.isCancellationRequested || notificationToken.isCancellationRequested;
+        let lastProgress = 0;
         await this.sessions.run(ds.config, async (session) => {
-          await session.query(dialect === 'mysql' ? 'START TRANSACTION' : 'BEGIN');
-          try {
-            if (createSql) await session.query(createSql);
-            for (const [i, batch] of batches.entries()) {
-              if (cancelled()) throw new Error('Import cancelled; nothing was written.');
-              const batchRows = parsed.rows.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
-              try {
-                if (request.onError === 'skip') await session.query('SAVEPOINT tablecloth_batch');
-                await session.query(batch);
-                if (request.onError === 'skip') await session.query('RELEASE SAVEPOINT tablecloth_batch');
-                inserted += batchRows.length;
-              } catch (err) {
-                if (request.onError === 'stop') throw err;
-                // retry the batch row by row so only the bad rows are lost
-                await session.query('ROLLBACK TO SAVEPOINT tablecloth_batch').catch(() => undefined);
-                await session.query('RELEASE SAVEPOINT tablecloth_batch').catch(() => undefined);
-                for (const [j, row] of batchRows.entries()) {
-                  try {
-                    await session.query('SAVEPOINT tablecloth_row');
-                    await session.query(buildRowInsert(plan, row));
-                    await session.query('RELEASE SAVEPOINT tablecloth_row');
-                    inserted++;
-                  } catch (rowErr) {
-                    await session.query('ROLLBACK TO SAVEPOINT tablecloth_row').catch(() => undefined);
-                    await session.query('RELEASE SAVEPOINT tablecloth_row').catch(() => undefined);
-                    skipped++;
-                    if (errors.length < 20) errors.push(`row ${i * BATCH_SIZE + j + 1}: ${errorMessage(rowErr)}`);
-                  }
-                }
-              }
-              const done = Math.min(total, (i + 1) * BATCH_SIZE);
+          const result = await executeImport(session, {
+            dialect,
+            createSql,
+            dropSql: createSql ? buildDropTable(dialect, schemaName, tableName) : undefined,
+            batches,
+            batchRows: batches.map((_, i) => parsed.rows.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE)),
+            rowSql: (row) => buildRowInsert(plan, row),
+            onError: request.onError,
+            cancelled,
+            progressed: (done) => {
               progress(done, total);
-              report.report({ increment: (batchRows.length / Math.max(1, total)) * 100, message: `${done} of ${total} rows` });
-            }
-            await session.query('COMMIT');
-          } catch (err) {
-            await session.query('ROLLBACK').catch(() => undefined);
-            throw err;
-          }
+              report.report({ increment: ((done - lastProgress) / Math.max(1, total)) * 100, message: `${done} of ${total} rows` });
+              lastProgress = done;
+            },
+          });
+          inserted = result.inserted;
+          skipped = result.skipped;
+          errors = result.errors;
         });
       },
     );

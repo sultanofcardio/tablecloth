@@ -26,6 +26,11 @@ test('words, identifiers, strings, numbers, operators', () => {
   ]);
 });
 
+test('dialect multi-character operators stay atomic', () => {
+  assert.ok(kinds('SELECT a <=> b', 'mysql').includes('punct:<=>'));
+  assert.ok(kinds('SELECT f(a => 1)', 'postgres').includes('punct:=>'));
+});
+
 test('comments are trivia and round-trip', () => {
   const sql = '-- hi\nSELECT /* nested /* deep */ */ 1 # not a comment in pg';
   const all = tokenize(sql, 'postgres');

@@ -4,6 +4,7 @@ import {
   buildChangeStatements,
   countChanges,
   makeEditTarget,
+  resultColumnOrigins,
   typedLiteral,
   valueKind,
   type ChangeSet,
@@ -71,6 +72,30 @@ test('makeEditTarget: read-only source, alias columns, missing key falls back to
   assert.deepEqual(aliased.columns.map((c) => [c.key, c.readOnly]), [[true, false], [false, true]]);
   const nothing = makeEditTarget('postgres', 'orders', tableColumns, [{ name: 'n' }], false);
   assert.equal(nothing.readOnlyReason, 'No editable columns in this result');
+});
+
+test('computed projections cannot impersonate source columns', () => {
+  const result: ColumnInfo[] = [{ name: 'id', numeric: true }, { name: 'status' }];
+  const origins = resultColumnOrigins('SELECT id + 1 AS id, status FROM orders', 'postgres', tableColumns, result);
+  assert.deepEqual(origins, [undefined, 'status']);
+  const sourced = result.map((column, i) => ({ ...column, sourceColumn: origins[i] }));
+  const editable = makeEditTarget('postgres', 'orders', tableColumns, sourced, false, true);
+  assert.deepEqual(editable.columns.map((column) => [column.name, column.readOnly, column.key]), [
+    ['id', true, false],
+    ['status', false, true],
+  ]);
+  assert.throws(
+    () => buildChangeStatements(editable, [[2, 'new']], { updates: { 0: { 0: { kind: 'value', text: '3' } } }, deletes: [], inserts: [] }),
+    /Column "id" cannot be edited/,
+  );
+});
+
+test('direct aliases and stars retain their real source-column identities', () => {
+  assert.deepEqual(
+    resultColumnOrigins('SELECT id AS order_id, orders.status FROM orders', 'postgres', tableColumns, [{ name: 'order_id' }, { name: 'status' }]),
+    ['id', 'status'],
+  );
+  assert.deepEqual(resultColumnOrigins('SELECT * FROM orders', 'postgres', tableColumns, pageColumns), tableColumns.map((column) => column.name));
 });
 
 test('the mock-up change set previews the four IntelliJ statements in order', () => {

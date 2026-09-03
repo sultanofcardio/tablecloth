@@ -60,6 +60,10 @@ export function buildCreateTable(
   return `CREATE TABLE ${qualify(dialect, schema, table)}\n(\n${body}\n);`;
 }
 
+export function buildDropTable(dialect: DriverId, schema: string | undefined, table: string): string {
+  return `DROP TABLE ${qualify(dialect, schema, table)};`;
+}
+
 function insertHead(input: ImportPlanInput): string {
   if (input.columns.length === 0) throw new Error('Cannot insert without any mapped columns.');
   const target = qualify(input.dialect, input.schema, input.table);

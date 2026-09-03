@@ -147,6 +147,15 @@ test('non-numeric text in a numeric column stays text and XML-invalid control ch
   assert.ok(sheet.includes('<c r="B2" t="inlineStr"><is><t>ab\tc</t></is></c>'));
 });
 
+test('numeric strings beyond Excel precision are written as text', () => {
+  const sheet = part(
+    buildXlsx({ columns: [{ name: 'bigint', numeric: true }, { name: 'decimal', numeric: true }], rows: [['9007199254740993', '123456789012345.1']] }),
+    'xl/worksheets/sheet1.xml',
+  );
+  assert.ok(sheet.includes('<c r="A2" t="inlineStr"><is><t>9007199254740993</t></is></c>'));
+  assert.ok(sheet.includes('<c r="B2" t="inlineStr"><is><t>123456789012345.1</t></is></c>'));
+});
+
 test('cell references continue past column Z', () => {
   const wide = Array.from({ length: 28 }, (_, i) => ({ name: `c${i}` }));
   const sheet = part(buildXlsx({ columns: wide, rows: [wide.map((c) => c.name)] }), 'xl/worksheets/sheet1.xml');

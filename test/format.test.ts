@@ -127,6 +127,11 @@ test('keyword case options', () => {
   assert.equal(formatSql('Select a From t', 'postgres', { keywordCase: 'preserve' }), 'Select a\nFrom t');
 });
 
+test('formatting preserves MySQL null-safe equality and PostgreSQL named arguments', () => {
+  assert.equal(formatSql('select a <=> b from t', 'mysql'), 'SELECT a <=> b\nFROM t');
+  assert.equal(formatSql('select f(a => 1)', 'postgres'), 'SELECT f(a => 1)');
+});
+
 test('a trailing newline in the input is kept, statements end with their own semicolons', () => {
   assert.equal(formatSql('select 1;\nselect 2\n', 'postgres'), 'SELECT 1;\n\nSELECT 2\n');
   assert.equal(formatSql('', 'postgres'), '');

@@ -26,6 +26,11 @@ test('Alt-click adds and updates a column in a multi-column sort', () => {
   assert.deepEqual(sortMark('created_at DESC, id', 'id'), { direction: 'asc', index: 2 });
   assert.deepEqual(sortMark('id', 'id'), { direction: 'asc', index: 0 });
   assert.equal(sortMark('id', 'total'), undefined);
+  assert.equal(
+    toggleSort('postgres', 'coalesce(a, b) DESC NULLS LAST', 'id', true),
+    'coalesce(a, b) DESC NULLS LAST, id',
+  );
+  assert.equal(toggleSort('postgres', 'id ASC NULLS LAST, coalesce(a, b) DESC', 'id', true), 'id DESC NULLS LAST, coalesce(a, b) DESC');
 });
 
 test('names are quoted only when the dialect would fold or reject them', () => {
@@ -47,8 +52,14 @@ test('funnel clauses: =, IN, IS NULL, and their combination', () => {
 
 test('mergeWhere ANDs new clauses and replaces the previous clause of the same column', () => {
   assert.equal(mergeWhere('', undefined, "status = 'a'"), "status = 'a'");
-  assert.equal(mergeWhere('total > 10', undefined, "status = 'a'"), "total > 10 AND status = 'a'");
-  assert.equal(mergeWhere("total > 10 AND status = 'a'", "status = 'a'", "status = 'b'"), "total > 10 AND status = 'b'");
+  assert.equal(mergeWhere('total > 10', undefined, "status = 'a'"), "(total > 10) AND (status = 'a')");
+  assert.equal(mergeWhere("total > 10 AND status = 'a'", "status = 'a'", "status = 'b'"), "(total > 10) AND (status = 'b')");
   assert.equal(mergeWhere("status = 'a' AND total > 10", "status = 'a'", ''), 'total > 10');
   assert.equal(mergeWhere("status = 'a'", "status = 'a'", ''), '');
+  assert.equal(
+    mergeWhere("status = 'new' OR status = 'held'", undefined, 'customer_id = 7'),
+    "(status = 'new' OR status = 'held') AND (customer_id = 7)",
+  );
+  const first = mergeWhere('total > 10', undefined, "status = 'a'");
+  assert.equal(mergeWhere(first, "status = 'a'", "status = 'b'"), "((total > 10)) AND (status = 'b')");
 });

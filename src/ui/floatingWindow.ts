@@ -15,7 +15,18 @@ export const LEGACY_OPEN_IN_SETTING = 'tablecloth.dataSourceDialog.openIn';
  */
 export function getSurfacePresentation(): SurfacePresentation {
   const config = vscode.workspace.getConfiguration();
-  const configured = config.get<string>(OPEN_IN_SETTING) ?? config.get<string>(LEGACY_OPEN_IN_SETTING);
+  const inspected = config.inspect<string>(OPEN_IN_SETTING);
+  const explicitlyConfigured = !!inspected && [
+    inspected.globalValue,
+    inspected.workspaceValue,
+    inspected.workspaceFolderValue,
+    inspected.globalLanguageValue,
+    inspected.workspaceLanguageValue,
+    inspected.workspaceFolderLanguageValue,
+  ].some((value) => value !== undefined);
+  const configured = explicitlyConfigured
+    ? config.get<string>(OPEN_IN_SETTING)
+    : config.get<string>(LEGACY_OPEN_IN_SETTING);
   return configured === 'editorTab' ? 'editorTab' : 'floatingWindow';
 }
 

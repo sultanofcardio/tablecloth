@@ -15,6 +15,8 @@ import {
   valueKindForInferred,
   valueKindForSqlType,
 } from '../src/import/infer';
+import { executeImport } from '../src/import/execute';
+import type { DbSession } from '../src/drivers/driver';
 import {
   buildCreateTable,
   buildInsertBatches,
@@ -24,6 +26,24 @@ import {
 } from '../src/import/plan';
 
 const csv: DelimitedOptions = { delimiter: ',', quote: '"', hasHeader: true, trim: false };
+
+function fakeSession(dialect: DbSession['dialect'], failOn: string): { session: DbSession; statements: string[] } {
+  const statements: string[] = [];
+  const session: DbSession = {
+    dialect,
+    serverVersion: 'test',
+    async query(sql) {
+      statements.push(sql);
+      if (sql === failOn) throw new Error('bad row');
+      return { columns: [], rows: [], affectedRows: 0, hasRows: false };
+    },
+    async queryRaw() {
+      return { columns: [], rows: [] };
+    },
+    async close() {},
+  };
+  return { session, statements };
+}
 
 // ---------------------------------------------------------------------------
 // parseDelimited
@@ -36,6 +56,31 @@ test('parseDelimited handles RFC 4180 quoting, doubled quotes and embedded newli
   assert.deepEqual(table.rows, [
     ['1', 'says "hi", then\nleaves'],
     ['2', 'plain'],
+  ]);
+});
+
+test('MySQL create imports start a fresh insert transaction and remove the table on failure', async () => {
+  const { session, statements } = fakeSession('mysql', 'INSERT batch');
+  await assert.rejects(
+    () => executeImport(session, {
+      dialect: 'mysql',
+      createSql: 'CREATE TABLE imported (id int);',
+      dropSql: 'DROP TABLE imported;',
+      batches: ['INSERT batch'],
+      batchRows: [[['1']]],
+      rowSql: () => 'INSERT row',
+      onError: 'stop',
+      cancelled: () => false,
+      progressed: () => undefined,
+    }),
+    /bad row/,
+  );
+  assert.deepEqual(statements, [
+    'CREATE TABLE imported (id int);',
+    'START TRANSACTION',
+    'INSERT batch',
+    'ROLLBACK',
+    'DROP TABLE imported;',
   ]);
 });
 
