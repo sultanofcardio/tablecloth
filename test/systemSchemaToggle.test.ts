@@ -102,6 +102,9 @@ test('showSystemSchemas toggle re-introspects only sources that had a catalog, k
       onDidGrantWorkspaceTrust: () => disposable(),
       onDidCloseTextDocument: () => disposable(),
       onDidChangeTextDocument: () => disposable(),
+      onDidOpenTextDocument: () => disposable(),
+      registerTextDocumentContentProvider: () => disposable(),
+      textDocuments: [],
       workspaceFolders: [],
       fs: {
         readDirectory: async () => [],
@@ -127,7 +130,13 @@ test('showSystemSchemas toggle re-introspects only sources that had a catalog, k
       registerCommand: () => disposable(),
       executeCommand: async () => undefined,
     },
-    languages: { registerCompletionItemProvider: () => disposable() },
+    languages: {
+      registerCompletionItemProvider: () => disposable(),
+      registerDocumentFormattingEditProvider: () => disposable(),
+      registerCodeActionsProvider: () => disposable(),
+      createDiagnosticCollection: () => ({ set: () => undefined, delete: () => undefined, dispose: () => undefined }),
+    },
+    CodeActionKind: { QuickFix: 'quickfix' },
     env: { clipboard: { writeText: async () => undefined } },
   };
   const vscodeStub = new Proxy(base, { get: (t, p: string) => (p in t ? t[p] : flexi()) });

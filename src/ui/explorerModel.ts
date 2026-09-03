@@ -55,6 +55,18 @@ export interface ExplorerDeps {
 
 const GROUPS = ['tables', 'views', 'sequences', 'routines', 'object types'] as const;
 
+/** Node ids, shared with Go to Object so a search hit can be revealed in the tree. */
+export const nodeIds = {
+  database: (dsId: string, db: string) => `db:${dsId}:${db}`,
+  schema: (dsId: string, db: string, schema: string) => `schema:${dsId}:${db}:${schema}`,
+  relation: (dsId: string, db: string, schema: string, name: string) => `obj:${dsId}:${db}:${schema}:rel:${name}`,
+  column: (dsId: string, db: string, schema: string, rel: string, name: string) =>
+    `obj:${dsId}:${db}:${schema}:col:${rel}:${name}`,
+  routine: (dsId: string, db: string, schema: string, name: string) => `obj:${dsId}:${db}:${schema}:fn:${name}`,
+  sequence: (dsId: string, db: string, schema: string, name: string) => `obj:${dsId}:${db}:${schema}:seq:${name}`,
+  enumType: (dsId: string, db: string, schema: string, name: string) => `obj:${dsId}:${db}:${schema}:enum:${name}`,
+};
+
 /** Serialize the explorer tree for the webview from store + session state. */
 export function buildExplorerTree(sources: StoredDataSource[], deps: ExplorerDeps): ExplorerNode[] {
   if (sources.length === 0) {
@@ -103,7 +115,7 @@ function databaseNode(dsId: string, db: DatabaseModel): ExplorerNode {
   const introspected = db.schemas.length;
   const total = db.allSchemaNames.length;
   const node: ExplorerNode = {
-    id: `db:${dsId}:${db.name}`,
+    id: nodeIds.database(dsId, db.name),
     kind: 'database',
     label: db.name,
     chip: !implicit && total > introspected ? `${introspected} of ${total}` : undefined,
@@ -112,7 +124,7 @@ function databaseNode(dsId: string, db: DatabaseModel): ExplorerNode {
   node.children = implicit
     ? schemaChildren(dsId, db.name, db.schemas[0]!)
     : db.schemas.map((schema) => ({
-        id: `schema:${dsId}:${db.name}:${schema.name}`,
+        id: nodeIds.schema(dsId, db.name, schema.name),
         kind: 'schema' as const,
         label: schema.name,
         ref: { dsId, db: db.name, schema: schema.name },
@@ -156,7 +168,7 @@ function groupChildren(
       return schema.relations
         .filter((r) => (group === 'tables' ? r.kind === 'table' : r.kind === 'view'))
         .map((rel) => ({
-          id: `${base}:rel:${rel.name}`,
+          id: nodeIds.relation(dsId, dbName, schema.name, rel.name),
           kind: kind as 'table' | 'view',
           label: rel.name,
           ref: { dsId, db: dbName, schema: schemaRef, name: rel.name },
@@ -167,7 +179,7 @@ function groupChildren(
               if (col.foreignKeyTarget) parts.push(`FK → ${col.foreignKeyTarget}`);
               if (!col.nullable && !col.primaryKey) parts.push('not null');
               return {
-                id: `${base}:col:${rel.name}:${col.name}`,
+                id: nodeIds.column(dsId, dbName, schema.name, rel.name, col.name),
                 kind: 'column',
                 label: col.name,
                 meta: parts.join(' · '),
@@ -188,14 +200,14 @@ function groupChildren(
     }
     case 'sequences':
       return schema.sequences.map((seq) => ({
-        id: `${base}:seq:${seq.name}`,
+        id: nodeIds.sequence(dsId, dbName, schema.name, seq.name),
         kind: 'sequence',
         label: seq.name,
         ref: { dsId, db: dbName, schema: schemaRef, name: seq.name },
       }));
     case 'routines':
       return schema.routines.map((routine) => ({
-        id: `${base}:fn:${routine.name}`,
+        id: nodeIds.routine(dsId, dbName, schema.name, routine.name),
         kind: 'routine',
         label: routine.name,
         meta: `${routine.args ?? ''} · ${routine.kind}`.replace(/^ · /, ''),
@@ -203,7 +215,7 @@ function groupChildren(
       }));
     case 'object types':
       return schema.enums.map((enumType) => ({
-        id: `${base}:enum:${enumType.name}`,
+        id: nodeIds.enumType(dsId, dbName, schema.name, enumType.name),
         kind: 'enum',
         label: enumType.name,
         ref: { dsId, db: dbName, schema: schemaRef, name: enumType.name },

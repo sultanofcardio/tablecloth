@@ -44,10 +44,9 @@ cands = [
     for w in code_windows()
     if w["id"] not in baseline and w["bounds"].get("Height", 0) > 150 and w["bounds"].get("Width", 0) > 300
 ]
-if mode == "dialog":
-    prefer = [w for w in cands if "Data Source" in w["name"]]
-else:
-    prefer = [w for w in cands if "Extension Development Host" in w["name"]]
+TITLE_PREFERENCE = {"dialog": "Data Source", "import": "Import Data"}
+wanted = TITLE_PREFERENCE.get(mode, "Extension Development Host")
+prefer = [w for w in cands if wanted in w["name"]]
 pool = prefer or cands
 if not pool:
     print("NOWIN")

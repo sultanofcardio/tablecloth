@@ -4,6 +4,8 @@ import { computeCompletions } from '../complete/core';
 import { ENV_COLOR_HEX, type StoredDataSource } from '../core/types';
 import type { DataSourceStore } from '../data/store';
 import type { SessionManager } from '../drivers/sessions';
+import { inspectSql } from '../inspect/core';
+import { inspectionsEnabled } from '../inspect/provider';
 import type { ConsoleManager } from './consoles';
 import type { QueryHistory } from './history';
 import type { QueryRunner } from './runner';
@@ -18,6 +20,8 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
 
   /** True once any console webview reported Monaco up (test hook). */
   booted = false;
+
+  private readonly panels = new Map<string, vscode.WebviewPanel>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -34,6 +38,12 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
       webviewOptions: { retainContextWhenHidden: true },
       supportsMultipleEditorsPerDocument: false,
     });
+  }
+
+  /** The console whose editor tab is active, if any. */
+  activeConsoleUri(): vscode.Uri | undefined {
+    for (const [key, panel] of this.panels) if (panel.active) return vscode.Uri.parse(key);
+    return undefined;
   }
 
   private dataSource(uri: vscode.Uri): StoredDataSource | undefined {
@@ -53,11 +63,25 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
       txMode: tx.mode,
       inTx: this.consoles.isInTx(uri),
       readOnly: !!ds?.config.readOnly,
+      running: this.runner.isRunning(uri.toString()),
+      canCancel: ds ? this.sessions.canCancel(ds.config) : false,
     };
+  }
+
+  /** Inspection markers for the console text, or none when there is nothing to check against. */
+  private markersFor(uri: vscode.Uri, text: string) {
+    const binding = this.consoles.getBinding(uri);
+    const ds = binding ? this.store.get(binding.dataSourceId) : undefined;
+    const catalog = ds ? this.sessions.getCatalog(ds.config.id) : undefined;
+    if (!ds || !catalog || !inspectionsEnabled()) return [];
+    const schema = ds.config.driver === 'mysql' ? binding?.database : binding?.schema;
+    return inspectSql(catalog, ds.config.driver, text, schema);
   }
 
   resolveCustomTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     const uri = document.uri;
+    const key = uri.toString();
+    this.panels.set(key, panel);
     panel.webview.options = {
       enableScripts: true,
       localResourceRoots: [
@@ -75,23 +99,59 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
     let editQueue: Promise<void> = Promise.resolve();
     const pushState = () => void panel.webview.postMessage({ type: 'state', state: this.stateFor(uri) });
 
+    let markerTimer: ReturnType<typeof setTimeout> | undefined;
+    const pushMarkers = () => {
+      if (markerTimer) clearTimeout(markerTimer);
+      markerTimer = setTimeout(() => {
+        markerTimer = undefined;
+        void panel.webview.postMessage({ type: 'markers', markers: this.markersFor(uri, document.getText()) });
+      }, 300);
+    };
+
+    // parameter prompts answered by the webview's dialog
+    let promptSeq = 0;
+    const pendingPrompts = new Map<number, (values: Record<string, string | null> | undefined) => void>();
+
     const subscriptions: vscode.Disposable[] = [
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (e.document !== document) return;
         const text = document.getText();
+        pushMarkers();
         if (text === lastWebviewText) return;
         void panel.webview.postMessage({ type: 'setText', text });
       }),
-      this.consoles.onDidChangeState(() => pushState()),
+      this.consoles.onDidChangeState(() => {
+        pushState();
+        pushMarkers();
+      }),
+      { dispose: this.sessions.onDidChange(() => pushMarkers()) },
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('tablecloth.inspections')) pushMarkers();
+      }),
+      this.runner.onDidChangeRunning((e) => {
+        if (e.key === key) pushState();
+      }),
+      this.runner.registerParameterPrompt(uri, (names, previous) => {
+        const id = ++promptSeq;
+        return new Promise((resolve) => {
+          pendingPrompts.set(id, resolve);
+          panel.reveal(undefined, false);
+          void panel.webview.postMessage({ type: 'askParameters', id, names, previous });
+        });
+      }),
     ];
     panel.onDidDispose(() => {
+      if (markerTimer) clearTimeout(markerTimer);
+      for (const resolve of pendingPrompts.values()) resolve(undefined);
       for (const d of subscriptions) d.dispose();
+      if (this.panels.get(key) === panel) this.panels.delete(key);
     });
 
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message?.type) {
         case 'ready':
           void panel.webview.postMessage({ type: 'init', text: document.getText(), state: this.stateFor(uri) });
+          pushMarkers();
           break;
         case 'booted':
           this.booted = true;
@@ -126,6 +186,14 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
         case 'runScript':
           await this.runner.runScriptFor(uri, document.getText(), 'console');
           break;
+        case 'parameters': {
+          const resolve = pendingPrompts.get(Number(message.id));
+          if (resolve) {
+            pendingPrompts.delete(Number(message.id));
+            resolve(message.values && typeof message.values === 'object' ? message.values : undefined);
+          }
+          break;
+        }
         case 'completions': {
           const ds = this.dataSource(uri);
           const catalog = ds ? this.sessions.getCatalog(ds.config.id) : undefined;
@@ -163,6 +231,9 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
         break;
       case 'rollback':
         await this.runner.rollback(uri);
+        break;
+      case 'cancel':
+        await this.runner.cancel(uri.toString());
         break;
     }
   }
@@ -247,6 +318,9 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
     </button>
     <button id="tb-runscript" class="tbtn" title="Run the whole console">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5v13l9-6.5z" fill="currentColor" stroke="none"/><path d="M15 5.5v13l6-6.5z" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button id="tb-stop" class="tbtn stop" title="Cancel running statement (⌘F2)" disabled>
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
     </button>
     <span class="sep"></span>
     <button id="tb-history" class="tbtn" title="Query history">

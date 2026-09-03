@@ -252,12 +252,47 @@ function openContextMenu(node: ExplorerNode, at: { x: number; y: number }): void
       vscode.postMessage({ type: 'openTable', ref: node.ref }),
     );
   }
+  if (ddlKind(node)) {
+    add('ddl', { label: 'Go to DDL' }, () => vscode.postMessage({ type: 'openDdl', ref: node.ref, kind: ddlKind(node) }));
+  }
+  if (node.kind === 'table' || (node.kind === 'group' && node.label === 'tables') || node.kind === 'schema' || (node.kind === 'database' && node.ref?.schema === undefined)) {
+    items.push({ kind: 'separator' });
+    add('import', { label: node.kind === 'table' ? 'Import Data from File…' : 'Import File as New Table…' }, () =>
+      vscode.postMessage({ type: 'importData', ref: node.ref }),
+    );
+  }
   if (node.ref?.name || node.kind === 'table' || node.kind === 'view' || node.kind === 'dataSource') {
     items.push({ kind: 'separator' });
     add('copy', { label: 'Copy Name' }, () => pick('copyName'));
   }
 
   showMenu(at, { items, onPick: (id) => handlers.get(id)?.() });
+}
+
+/** Which DDL a node has, if any. */
+function ddlKind(node: ExplorerNode): string | undefined {
+  switch (node.kind) {
+    case 'table':
+    case 'view':
+    case 'routine':
+    case 'sequence':
+    case 'enum':
+      return node.kind;
+    default:
+      return undefined;
+  }
+}
+
+/** Expand every ancestor of a node so it becomes visible. */
+function expandTo(id: string, nodes: ExplorerNode[] = tree, path: string[] = []): boolean {
+  for (const node of nodes) {
+    if (node.id === id) {
+      for (const ancestor of path) expanded.add(ancestor);
+      return true;
+    }
+    if (node.children && expandTo(id, node.children, [...path, node.id])) return true;
+  }
+  return false;
 }
 
 // keyboard navigation over visible rows
@@ -315,6 +350,7 @@ function selectedRef(): ExplorerRef | undefined {
 function updateToolbar(): void {
   const node = selectedId ? findNode(selectedId) : undefined;
   (el('tb-table') as HTMLButtonElement).disabled = !(node && (node.kind === 'table' || node.kind === 'view'));
+  (el('tb-ddl') as HTMLButtonElement).disabled = !(node && ddlKind(node));
   el('tb-eye').classList.toggle('active', showSystem);
 }
 
@@ -334,6 +370,10 @@ el('tb-table').addEventListener('click', () => {
   }
 });
 el('tb-eye').addEventListener('click', () => vscode.postMessage({ type: 'action', name: 'toggleSystem' }));
+el('tb-ddl').addEventListener('click', () => {
+  const node = selectedId ? findNode(selectedId) : undefined;
+  if (node && ddlKind(node)) vscode.postMessage({ type: 'openDdl', ref: node.ref, kind: ddlKind(node) });
+});
 
 // ------------------------------------------------------------ host messages
 window.addEventListener('message', (event) => {
@@ -391,6 +431,14 @@ window.addEventListener('message', (event) => {
     case 'closeMenus':
       closeMenus();
       break;
+    case 'reveal': {
+      const id = String(msg.id ?? '');
+      if (expandTo(id)) {
+        select(id);
+        treeEl.querySelector('.trow.sel')?.scrollIntoView({ block: 'center' });
+      }
+      break;
+    }
   }
 });
 

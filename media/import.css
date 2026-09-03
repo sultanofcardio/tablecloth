@@ -1,0 +1,124 @@
+/* Import Data dialog, in the IntelliJ New UI palette used by the other dialogs. */
+:root {
+  --ij-dlg: #2b2d30;
+  --ij-bg: #1e1f22;
+  --ij-input-bg: #1e1f22;
+  --ij-border: #393b40;
+  --ij-border-strong: #43454a;
+  --ij-fg: #dfe1e5;
+  --ij-fg-cell: #bcbec4;
+  --ij-label: #bfc2c9;
+  --ij-fg-dim: #9da0a8;
+  --ij-hint: #82858c;
+  --ij-gutter: #4b5059;
+  --ij-blue: #3574f0;
+  --ij-hover: #393b40;
+  --ij-green: #4ec9a0;
+  --ij-error: #f75464;
+  --ij-edited-bg: rgba(53, 116, 240, 0.2);
+  --ij-edited-fg: #cfe0ff;
+  --ij-mono: var(--vscode-editor-font-family, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace);
+}
+body.vscode-light {
+  --ij-dlg: #f2f3f5;
+  --ij-bg: #ffffff;
+  --ij-input-bg: #ffffff;
+  --ij-border: #d3d5db;
+  --ij-border-strong: #c9ccd6;
+  --ij-fg: #000000;
+  --ij-fg-cell: #080808;
+  --ij-label: #333a45;
+  --ij-fg-dim: #6c707e;
+  --ij-hint: #818594;
+  --ij-gutter: #a8adbd;
+  --ij-hover: #e6e8ec;
+  --ij-green: #208a3c;
+  --ij-error: #db3b4b;
+  --ij-edited-bg: rgba(53, 116, 240, 0.14);
+  --ij-edited-fg: #0b3a91;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--ij-dlg);
+  color: var(--ij-fg);
+  font-family: var(--vscode-font-family, -apple-system, 'Segoe UI', sans-serif);
+  font-size: 12.5px;
+}
+.dlg { display: flex; flex-direction: column; height: 100vh; max-width: 900px; margin: 0 auto; }
+.dlg-title { padding: 12px 20px 10px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--ij-border); flex: none; }
+.dlg-body { flex: 1; overflow: auto; padding: 14px 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.dlg-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--ij-border);
+}
+.spacer { flex: 1; }
+.inline { color: var(--ij-label); white-space: nowrap; }
+.summary { color: var(--ij-hint); font-size: 12px; }
+
+.frm { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 14px; align-items: center; }
+.frm > label { text-align: right; color: var(--ij-label); }
+.frm .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.frm .check { display: inline-flex; align-items: center; gap: 6px; text-align: left; }
+input[type="text"], select {
+  background: var(--ij-input-bg);
+  color: var(--ij-fg);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  min-width: 0;
+}
+input.short { width: 180px; }
+input:focus, select:focus { outline: 1px solid var(--ij-blue); outline-offset: -1px; }
+input[type="checkbox"] { accent-color: var(--ij-blue); margin: 0; }
+
+.mapwrap, .previewwrap { border: 1px solid var(--ij-border-strong); border-radius: 8px; overflow: auto; background: var(--ij-bg); max-height: 320px; flex: none; }
+.previewwrap { max-height: 260px; }
+table.dgrid { border-collapse: collapse; width: 100%; font-family: var(--ij-mono); font-size: 12px; }
+.dgrid th, .dgrid td { border: 1px solid var(--ij-dlg); padding: 3px 10px; text-align: left; white-space: nowrap; height: 26px; }
+.dgrid thead th { background: var(--ij-dlg); color: var(--ij-fg); font-weight: 600; position: sticky; top: 0; font-family: var(--vscode-font-family, sans-serif); }
+.dgrid td { color: var(--ij-fg-cell); }
+.dgrid td.dim { color: var(--ij-fg-dim); }
+.dgrid td.arrow, .dgrid th.arrow { color: var(--ij-hint); text-align: center; width: 30px; }
+.dgrid td.sample { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.dgrid td.gut, .dgrid th.gut { color: var(--ij-gutter); background: var(--ij-dlg); text-align: right; width: 34px; font-size: 11px; }
+.dgrid td.null { color: #6e7076; font-style: italic; }
+.dgrid tr.skipped td { color: var(--ij-hint); }
+.dgrid td select, .dgrid td input { width: 100%; font-family: var(--ij-mono); font-size: 12px; padding: 2px 8px; }
+.dgrid td select.target, .dgrid td input.target { background: var(--ij-edited-bg); color: var(--ij-edited-fg); border-color: transparent; }
+.dgrid tr.skipped td select.target { background: transparent; color: var(--ij-hint); }
+
+.btn {
+  white-space: nowrap;
+  background: var(--ij-dlg);
+  color: var(--ij-fg);
+  border: 1px solid var(--ij-border-strong);
+  border-radius: 6px;
+  padding: 4px 16px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+}
+.btn:hover { background: var(--ij-hover); }
+.btn.primary { background: var(--ij-blue); color: #fff; border-color: var(--ij-blue); }
+.btn.primary:hover { background: #3f7df2; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.progress { display: flex; align-items: center; gap: 12px; color: var(--ij-fg-dim); font-size: 12px; }
+.progress .bar { flex: 1; height: 6px; background: var(--ij-border); border-radius: 3px; overflow: hidden; }
+.progress .bar div { height: 100%; width: 0; background: var(--ij-blue); transition: width 120ms linear; }
+.result { font-size: 12.5px; white-space: pre-wrap; }
+.result.ok { color: var(--ij-green); }
+.result.fail { color: var(--ij-error); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--ij-border-strong); border-radius: 5px; border: 2px solid var(--ij-bg); }
+[hidden] { display: none !important; }

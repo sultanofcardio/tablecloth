@@ -1,9 +1,13 @@
 // The console editor webview: IntelliJ-style toolbar over a Monaco editor.
-// Shares the statement splitter with the extension host, so the green frame,
-// ⌘⏎ resolution, and completion all agree on statement boundaries.
+// Shares the statement splitter, formatter, and inspections with the extension
+// host, so the green frame, ⌘⏎ resolution, completion, squiggles, and
+// formatting all agree with the host.
 import * as monaco from 'monaco-editor/editor/editor.main.js';
 import type { CompletionEntry, CompletionKind } from '../complete/core';
+import { completionReplacement } from '../complete/match';
 import type { DriverId, TxMode } from '../core/types';
+import type { Inspection } from '../inspect/core';
+import { formatSql } from '../sql/format';
 import { splitStatements, statementAt } from '../sql/splitter';
 import { showMenu } from './menu';
 
@@ -20,6 +24,8 @@ interface ConsoleState {
   txMode: TxMode;
   inTx: boolean;
   readOnly: boolean;
+  running: boolean;
+  canCancel: boolean;
 }
 
 const vscode = acquireVsCodeApi();
@@ -32,6 +38,8 @@ let state: ConsoleState = {
   txMode: 'auto',
   inTx: false,
   readOnly: false,
+  running: false,
+  canCancel: false,
 };
 let editor: monaco.editor.IStandaloneCodeEditor | undefined;
 let suppressEdits = false;
@@ -84,6 +92,8 @@ function defineThemes(): void {
           'editorSuggestWidget.background': '#2b2d30',
           'editorSuggestWidget.border': '#43454a',
           'editorSuggestWidget.selectedBackground': '#2e436e',
+          'editorWarning.foreground': '#d6ae58',
+          'editorError.foreground': '#f75464',
         }
       : {
           'editor.background': '#ffffff',
@@ -174,10 +184,15 @@ const COMPLETION_KINDS: Record<CompletionKind, monaco.languages.CompletionItemKi
   view: monaco.languages.CompletionItemKind.Interface,
   schema: monaco.languages.CompletionItemKind.Module,
   routine: monaco.languages.CompletionItemKind.Function,
+  keyword: monaco.languages.CompletionItemKind.Keyword,
+  function: monaco.languages.CompletionItemKind.Function,
+  template: monaco.languages.CompletionItemKind.Snippet,
+  join: monaco.languages.CompletionItemKind.Reference,
+  alias: monaco.languages.CompletionItemKind.Variable,
 };
 
 monaco.languages.registerCompletionItemProvider('sql', {
-  triggerCharacters: ['.', '"', '`'],
+  triggerCharacters: ['.', '"', '`', ' '],
   provideCompletionItems: async (model, position) => {
     const id = ++completionSeq;
     const entries = await new Promise<CompletionEntry[]>((resolve) => {
@@ -193,19 +208,184 @@ monaco.languages.registerCompletionItemProvider('sql', {
       }, 2000);
     });
     const word = model.getWordUntilPosition(position);
-    const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+    const line = model.getLineContent(position.lineNumber);
+    const before = line.slice(0, word.startColumn - 1);
+    const after = line.slice(position.column - 1);
     return {
-      suggestions: entries.map((entry) => ({
-        label: entry.label,
-        kind: COMPLETION_KINDS[entry.kind],
-        detail: entry.detail,
-        insertText: entry.insertText ?? entry.label,
-        sortText: entry.sortText,
-        range,
-      })),
+      suggestions: entries.map((entry) => {
+        // a quote the user already typed (and its auto-closed partner) is part of the replaced range
+        const landing = completionReplacement(entry, before, after);
+        return {
+          label: entry.label,
+          kind: COMPLETION_KINDS[entry.kind],
+          detail: entry.detail,
+          documentation: entry.documentation,
+          insertText: landing.insertText,
+          insertTextRules: entry.snippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+          sortText: entry.sortText,
+          filterText: landing.filterText,
+          range: new monaco.Range(
+            position.lineNumber,
+            word.startColumn - landing.extendStart,
+            position.lineNumber,
+            word.endColumn + landing.extendEnd,
+          ),
+        };
+      }),
     };
   },
 });
+
+// ------------------------------------------------------------ inspections
+const MARKER_OWNER = 'tablecloth';
+/** Quick fixes by "start:end" offset, for the code action provider. */
+let fixes = new Map<string, { title: string; replacement: string }>();
+
+function applyMarkers(markers: Inspection[]): void {
+  const model = editor?.getModel();
+  if (!model) return;
+  fixes = new Map();
+  const data: monaco.editor.IMarkerData[] = markers.map((m) => {
+    const start = model.getPositionAt(m.start);
+    const end = model.getPositionAt(m.end);
+    if (m.fix) fixes.set(`${m.start}:${m.end}`, m.fix);
+    return {
+      severity: m.severity === 'error' ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+      message: m.message,
+      startLineNumber: start.lineNumber,
+      startColumn: start.column,
+      endLineNumber: end.lineNumber,
+      endColumn: end.column,
+      source: 'Tablecloth',
+    };
+  });
+  monaco.editor.setModelMarkers(model, MARKER_OWNER, data);
+}
+
+monaco.languages.registerCodeActionProvider('sql', {
+  provideCodeActions: (model, _range, context) => {
+    const actions: monaco.languages.CodeAction[] = [];
+    for (const marker of context.markers) {
+      const start = model.getOffsetAt({ lineNumber: marker.startLineNumber, column: marker.startColumn });
+      const end = model.getOffsetAt({ lineNumber: marker.endLineNumber, column: marker.endColumn });
+      const fix = fixes.get(`${start}:${end}`);
+      if (!fix) continue;
+      actions.push({
+        title: fix.title,
+        kind: 'quickfix',
+        diagnostics: [marker],
+        isPreferred: true,
+        edit: {
+          edits: [
+            {
+              resource: model.uri,
+              versionId: model.getVersionId(),
+              textEdit: {
+                range: new monaco.Range(marker.startLineNumber, marker.startColumn, marker.endLineNumber, marker.endColumn),
+                text: fix.replacement,
+              },
+            },
+          ],
+        },
+      });
+    }
+    return { actions, dispose: () => undefined };
+  },
+});
+
+// ------------------------------------------------------------ formatting
+monaco.languages.registerDocumentFormattingEditProvider('sql', {
+  provideDocumentFormattingEdits: (model) => {
+    const text = model.getValue();
+    const formatted = formatSql(text, state.dialect);
+    if (formatted === text) return [];
+    return [{ range: model.getFullModelRange(), text: formatted }];
+  },
+});
+
+// ------------------------------------------------------------ parameters dialog
+function askParameters(msg: { id: number; names: string[]; previous: Record<string, string> }): void {
+  const overlay = document.createElement('div');
+  overlay.className = 'tc-overlay';
+  const dialog = document.createElement('div');
+  dialog.className = 'tc-dialog';
+  dialog.innerHTML = '<div class="tc-dialog-title">Parameters</div>';
+  const body = document.createElement('div');
+  body.className = 'tc-dialog-body';
+  const table = document.createElement('table');
+  table.className = 'params';
+  table.innerHTML = '<thead><tr><th>Name</th><th>Value</th><th class="nullcol">NULL</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  const inputs = new Map<string, { value: HTMLInputElement; isNull: HTMLInputElement }>();
+  for (const name of msg.names) {
+    const tr = document.createElement('tr');
+    const nameCell = document.createElement('td');
+    nameCell.className = 'pname';
+    nameCell.textContent = name;
+    const valueCell = document.createElement('td');
+    const value = document.createElement('input');
+    value.type = 'text';
+    value.spellcheck = false;
+    value.value = msg.previous[name] ?? '';
+    valueCell.appendChild(value);
+    const nullCell = document.createElement('td');
+    nullCell.className = 'nullcol';
+    const isNull = document.createElement('input');
+    isNull.type = 'checkbox';
+    isNull.checked = !(name in msg.previous) && false;
+    isNull.addEventListener('change', () => (value.disabled = isNull.checked));
+    nullCell.appendChild(isNull);
+    tr.append(nameCell, valueCell, nullCell);
+    tbody.appendChild(tr);
+    inputs.set(name, { value, isNull });
+  }
+  table.appendChild(tbody);
+  body.appendChild(table);
+  dialog.appendChild(body);
+  const actions = document.createElement('div');
+  actions.className = 'tc-dialog-actions';
+  const cancel = document.createElement('button');
+  cancel.className = 'tc-button';
+  cancel.textContent = 'Cancel';
+  const ok = document.createElement('button');
+  ok.className = 'tc-button primary';
+  ok.textContent = 'OK';
+  actions.append(cancel, ok);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const finish = (values: Record<string, string | null> | null) => {
+    document.removeEventListener('keydown', onKey, true);
+    overlay.remove();
+    vscode.postMessage({ type: 'parameters', id: msg.id, values });
+    editor?.focus();
+  };
+  const submit = () => {
+    const values: Record<string, string | null> = {};
+    for (const [name, { value, isNull }] of inputs) values[name] = isNull.checked ? null : value.value;
+    finish(values);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      finish(null);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      submit();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+  cancel.addEventListener('click', () => finish(null));
+  ok.addEventListener('click', submit);
+  const first = inputs.values().next().value;
+  setTimeout(() => {
+    first?.value.focus();
+    first?.value.select();
+  }, 0);
+}
 
 // ------------------------------------------------------------ toolbar
 function renderToolbar(): void {
@@ -222,13 +402,19 @@ function renderToolbar(): void {
     env.hidden = true;
   }
   el('tb-readonly').hidden = !state.readOnly;
+  const stop = el('tb-stop') as HTMLButtonElement;
+  stop.disabled = !(state.running && state.canCancel);
+  stop.classList.toggle('live', state.running && state.canCancel);
+  stop.title = state.canCancel ? 'Cancel running statement (⌘F2)' : 'This database cannot cancel a running statement';
+  (el('tb-run') as HTMLButtonElement).classList.toggle('busy', state.running);
 }
 
 function wireToolbar(): void {
   el('tb-run').addEventListener('click', () => vscode.postMessage({ type: 'run', sql: currentSql() }));
   el('tb-runscript').addEventListener('click', () => vscode.postMessage({ type: 'runScript' }));
-  for (const name of ['settings', 'commit', 'rollback'] as const) {
-    el(`tb-${name}`).addEventListener('click', () => vscode.postMessage({ type: 'action', name }));
+  for (const name of ['settings', 'commit', 'rollback', 'cancel'] as const) {
+    const id = name === 'cancel' ? 'tb-stop' : `tb-${name}`;
+    el(id).addEventListener('click', () => vscode.postMessage({ type: 'action', name }));
   }
   // dropdowns: the host answers with showMenu, anchored back to the button
   for (const name of ['tx', 'schema', 'history'] as const) {
@@ -244,11 +430,13 @@ const MENU_ANCHORS: Record<string, string> = {
 };
 
 // ------------------------------------------------------------ host messages
+let pendingMarkers: Inspection[] | undefined;
+
 window.addEventListener('message', (event) => {
   const msg = event.data;
   switch (msg?.type) {
     case 'init': {
-      state = msg.state;
+      state = { ...state, ...msg.state };
       renderToolbar();
       const text = String(msg.text ?? '');
       // the editor still opens (degraded) if the worker cannot be prepared
@@ -281,6 +469,13 @@ window.addEventListener('message', (event) => {
       }
       break;
     }
+    case 'markers':
+      if (editor) applyMarkers(msg.markers ?? []);
+      else pendingMarkers = msg.markers ?? [];
+      break;
+    case 'askParameters':
+      askParameters(msg);
+      break;
     case 'showMenu': {
       const anchor = el(MENU_ANCHORS[msg.name as string] ?? 'tb-schema');
       showMenu(anchor, {
@@ -321,10 +516,19 @@ function createEditor(initialText: string): void {
     padding: { top: 6 },
     stickyScroll: { enabled: false },
     fixedOverflowWidgets: true,
+    lightbulb: { enabled: monaco.editor.ShowLightbulbIconMode.OnCode },
+    formatOnType: false,
   });
 
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
     vscode.postMessage({ type: 'run', sql: currentSql() });
+  });
+  // IntelliJ's Reformat Code shortcut, on top of VS Code's Format Document
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyL, () => {
+    void editor?.getAction('editor.action.formatDocument')?.run();
+  });
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.F2, () => {
+    if (state.running) vscode.postMessage({ type: 'action', name: 'cancel' });
   });
 
   // Webviews cannot read the OS clipboard directly, so ⌘V round-trips through
@@ -341,6 +545,10 @@ function createEditor(initialText: string): void {
   });
   editor.onDidChangeCursorSelection(() => updateFrame());
   updateFrame();
+  if (pendingMarkers) {
+    applyMarkers(pendingMarkers);
+    pendingMarkers = undefined;
+  }
   editor.focus();
   vscode.postMessage({ type: 'booted' });
 }

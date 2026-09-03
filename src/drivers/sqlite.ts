@@ -91,24 +91,34 @@ export const sqliteDriver: Driver = {
       const rel: RelationModel = { name, kind: type === 'view' ? 'view' : 'table', columns: [], indexes: [] };
       schema.relations.push(rel);
 
-      const cols = await session.queryRaw(`PRAGMA table_info(${quoteIdent('sqlite', name)})`);
+      // table_xinfo adds the hidden flag (2/3 = generated column) to table_info
+      const cols = await session.queryRaw(`PRAGMA table_xinfo(${quoteIdent('sqlite', name)})`);
       const colIdx = indexColumns(cols.columns);
       for (const row of cols.rows) {
+        const hidden = colIdx.hidden === undefined ? 0 : Number(row[colIdx.hidden] ?? 0);
+        if (hidden === 1) continue; // virtual-table hidden columns
         rel.columns.push({
           name: String(row[colIdx.name!]),
           dataType: String(row[colIdx.type!] ?? '') || 'any',
           nullable: !row[colIdx.notnull!],
           primaryKey: Number(row[colIdx.pk!] ?? 0) > 0,
           default: row[colIdx.dflt_value!] === null ? undefined : String(row[colIdx.dflt_value!]),
+          ...(hidden >= 2 ? { generated: true } : {}),
         });
       }
+      // a lone INTEGER PRIMARY KEY is the rowid alias: the engine assigns it
+      const pkColumns = rel.columns.filter((c) => c.primaryKey);
+      if (pkColumns.length === 1 && /^integer$/i.test(pkColumns[0]!.dataType)) pkColumns[0]!.autoIncrement = true;
 
       if (rel.kind === 'table') {
         const fks = await session.queryRaw(`PRAGMA foreign_key_list(${quoteIdent('sqlite', name)})`);
         const fkIdx = indexColumns(fks.columns);
         for (const row of fks.rows) {
           const col = rel.columns.find((c) => c.name === String(row[fkIdx.from!]));
-          if (col) col.foreignKeyTarget = String(row[fkIdx.table!]);
+          if (!col) continue;
+          col.foreignKeyTarget = String(row[fkIdx.table!]);
+          const to = fkIdx.to === undefined ? null : row[fkIdx.to];
+          if (to !== null && to !== undefined) col.foreignKeyColumn = String(to);
         }
 
         const idxList = await session.queryRaw(`PRAGMA index_list(${quoteIdent('sqlite', name)})`);

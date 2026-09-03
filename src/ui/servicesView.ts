@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
-import { GridController, type GridMeta, type GridPage, type GridProvider } from './grid';
+import { GridController, type GridHost, type GridMeta, type GridPage, type GridProvider, type GridViewState } from './grid';
 import { gridHtml } from './gridHtml';
 
 export interface OutputEntry {
@@ -27,6 +27,8 @@ export interface DataSourceActions {
   disconnect(dsId: string): Promise<void>;
   /** Open a listed console's editor (key is the console file uri). */
   openConsoleFile(dsId: string, key: string): Promise<void>;
+  /** Cancel the statement a console is running. */
+  cancelConsole(key: string): Promise<void>;
 }
 
 export interface ConsoleSyncEntry {
@@ -46,6 +48,8 @@ interface ResultTab {
   provider: GridProvider;
   meta: GridMeta;
   page: GridPage;
+  /** Paging and filter state, so switching tabs restores the view as it was. */
+  state?: GridViewState;
 }
 
 interface ConsoleEntry {
@@ -67,6 +71,7 @@ interface ConsoleEntry {
 }
 
 const OUTPUT_CAP = 500;
+const RUNNING_STATUS = 'running…';
 
 /**
  * The Tablecloth view in the bottom panel, shaped like IntelliJ's Services
@@ -76,7 +81,7 @@ const OUTPUT_CAP = 500;
 export class ServicesViewProvider implements vscode.WebviewViewProvider {
   static readonly viewId = 'tablecloth.services';
 
-  readonly grid = new GridController();
+  readonly grid: GridController;
   private readonly consoles = new Map<string, ConsoleEntry>();
   private activeConsoleKey: string | undefined;
   /** Set when the data source row (not a console) is selected in the tree. */
@@ -85,10 +90,17 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private viewReady = false;
 
-  constructor(private readonly extensionUri: vscode.Uri) {
-    this.grid.onDidRender = (page) => {
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    host: GridHost,
+  ) {
+    this.grid = new GridController(host);
+    this.grid.onDidRender = (page, state) => {
       const tab = this.activeTab();
-      if (tab) tab.page = page;
+      if (tab) {
+        tab.page = page;
+        tab.state = state;
+      }
     };
   }
 
@@ -135,6 +147,9 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
           }
           return;
         }
+        case 'cancelConsole':
+          void this.actions?.cancelConsole(String(message.key));
+          return;
         case 'selectDataSource':
           void this.selectDataSource(String(message.dsId));
           return;
@@ -176,7 +191,10 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
 
   /** Push the tree + tab chrome to the webview. */
   private postChrome(): void {
-    const groups = new Map<string, { dsId: string; dsName: string; vendor: string; envColor: string | null; selected: boolean; consoles: any[] }>();
+    const groups = new Map<
+      string,
+      { dsId: string; dsName: string; vendor: string; envColor: string | null; selected: boolean; consoles: any[] }
+    >();
     for (const entry of this.consoles.values()) {
       let group = groups.get(entry.dsId);
       if (!group) {
@@ -194,6 +212,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
         key: entry.key,
         label: entry.label,
         status: entry.status,
+        running: entry.status === RUNNING_STATUS,
         active: !this.selectedDsId && entry.key === this.activeConsoleKey,
       });
     }
@@ -315,7 +334,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     if (this.activeConsoleKey === key) {
       this.activeConsoleKey = [...this.consoles.keys()].pop();
       const next = this.activeTab();
-      if (next) void this.grid.show(next.provider, next.meta, next.page);
+      if (next) void this.grid.show(next.provider, next.meta, { page: next.page, state: next.state });
       this.postOutputReset();
     }
     this.postChrome();
@@ -339,6 +358,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
       tab.provider = provider;
       tab.meta = meta;
       tab.page = page;
+      tab.state = undefined;
     } else {
       tab = { id: randomBytes(6).toString('hex'), sqlKey, title: titleFactory(), provider, meta, page };
       entry.tabs.push(tab);
@@ -348,7 +368,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     const consoleChanged = this.activeConsoleKey !== key;
     this.activeConsoleKey = key;
     this.selectedDsId = undefined;
-    await this.grid.show(provider, meta, page);
+    await this.grid.show(provider, meta, { page });
     this.postChrome();
     if (consoleChanged) this.postOutputReset();
   }
@@ -373,7 +393,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     this.selectedDsId = undefined;
     this.activeConsoleKey = key;
     const tab = this.activeTab();
-    if (tab) await this.grid.show(tab.provider, tab.meta, tab.page);
+    if (tab) await this.grid.show(tab.provider, tab.meta, { page: tab.page, state: tab.state });
     this.postChrome();
     if (consoleChanged) this.postOutputReset();
   }
@@ -413,7 +433,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     entry.showingError = false;
     if (id !== OUTPUT_TAB) {
       const tab = entry.tabs.find((t) => t.id === id);
-      if (tab) await this.grid.show(tab.provider, tab.meta, tab.page);
+      if (tab) await this.grid.show(tab.provider, tab.meta, { page: tab.page, state: tab.state });
     }
     this.postChrome();
   }
@@ -427,7 +447,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     if (entry.activeTabId === id) {
       const next = entry.tabs[index] ?? entry.tabs[index - 1];
       entry.activeTabId = next?.id ?? OUTPUT_TAB;
-      if (next) await this.grid.show(next.provider, next.meta, next.page);
+      if (next) await this.grid.show(next.provider, next.meta, { page: next.page, state: next.state });
     }
     this.postChrome();
   }

@@ -196,6 +196,29 @@
         "title": "Show/Hide System Schemas",
         "category": "Tablecloth",
         "icon": "$(eye)"
+      },
+      {
+        "command": "tablecloth.cancelStatement",
+        "title": "Cancel Running Statement",
+        "category": "Tablecloth",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "tablecloth.formatSql",
+        "title": "Format SQL",
+        "category": "Tablecloth"
+      },
+      {
+        "command": "tablecloth.gotoObject",
+        "title": "Go to Database Object…",
+        "category": "Tablecloth",
+        "icon": "$(search)"
+      },
+      {
+        "command": "tablecloth.importData",
+        "title": "Import Data from File…",
+        "category": "Tablecloth",
+        "icon": "$(cloud-upload)"
       }
     ],
     "menus": {
@@ -257,6 +280,24 @@
         "key": "ctrl+enter",
         "mac": "cmd+enter",
         "when": "editorTextFocus && editorLangId == sql"
+      },
+      {
+        "command": "tablecloth.formatSql",
+        "key": "ctrl+alt+l",
+        "mac": "cmd+alt+l",
+        "when": "editorTextFocus && editorLangId == sql"
+      },
+      {
+        "command": "tablecloth.cancelStatement",
+        "key": "ctrl+f2",
+        "mac": "cmd+f2",
+        "when": "activeCustomEditorId == tablecloth.console || editorLangId == sql"
+      },
+      {
+        "command": "tablecloth.gotoObject",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o",
+        "when": "focusedView == tablecloth.explorer || focusedView == tablecloth.services || activeCustomEditorId == tablecloth.console || activeWebviewPanelId == tablecloth.table"
       }
     ],
     "configuration": {
@@ -271,7 +312,7 @@
             "type": "object"
           }
         },
-        "tablecloth.dataSourceDialog.openIn": {
+        "tablecloth.dialogs.openIn": {
           "type": "string",
           "enum": [
             "floatingWindow",
@@ -282,7 +323,21 @@
             "Open as a tab in the main window."
           ],
           "default": "floatingWindow",
-          "markdownDescription": "Where Tablecloth shows the Data Sources dialog. Separate windows open compact, stripped back to their content. Falls back to an editor tab when the editor build cannot open a separate window."
+          "markdownDescription": "Where Tablecloth shows its dialogs (Data Sources, Import Data). Separate windows open compact, stripped back to their content. Falls back to an editor tab when the editor build cannot open a separate window."
+        },
+        "tablecloth.dataSourceDialog.openIn": {
+          "type": "string",
+          "enum": [
+            "floatingWindow",
+            "editorTab"
+          ],
+          "default": "floatingWindow",
+          "markdownDeprecationMessage": "Replaced by `#tablecloth.dialogs.openIn#`, which covers every Tablecloth dialog. Still honored when the new setting is unset."
+        },
+        "tablecloth.inspections.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Flag unresolved tables and columns in consoles and attached SQL files, with Change-to quick fixes."
         },
         "tablecloth.grid.pageSize": {
           "type": "number",

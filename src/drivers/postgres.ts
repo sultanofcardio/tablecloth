@@ -69,6 +69,7 @@ class PostgresSession implements DbSession {
   constructor(
     private readonly client: pg.Client,
     readonly serverVersion: string,
+    readonly backendId: number | undefined,
     private readonly tunnel?: SshTunnel,
   ) {}
 
@@ -175,7 +176,9 @@ export const postgresDriver: Driver = {
       if (config.readOnly) {
         await client.query('SET default_transaction_read_only = on');
       }
-      return new PostgresSession(client, `PostgreSQL ${version}`, tunnel);
+      const pidRes = await client.query('SELECT pg_backend_pid() AS pid');
+      const pid = Number(pidRes.rows[0]?.pid);
+      return new PostgresSession(client, `PostgreSQL ${version}`, Number.isFinite(pid) ? pid : undefined, tunnel);
     } catch (err) {
       tunnel?.dispose();
       void client.end().catch(() => undefined);
@@ -235,7 +238,8 @@ export const postgresDriver: Driver = {
     const cols = await session.queryRaw(
       `SELECT n.nspname, c.relname, a.attname,
               format_type(a.atttypid, a.atttypmod) AS dtype,
-              a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS default
+              a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS default,
+              a.attidentity <> '' AS identity, a.attgenerated <> '' AS generated
        FROM pg_attribute a
        JOIN pg_class c ON c.oid = a.attrelid
        JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -246,27 +250,34 @@ export const postgresDriver: Driver = {
       [selected],
     );
     for (const row of cols.rows) {
-      const [schemaName, relName, colName, dtype, notNull, def] = row as [
+      const [schemaName, relName, colName, dtype, notNull, def, identity, generated] = row as [
         string,
         string,
         string,
         string,
         boolean,
         string | null,
+        boolean,
+        boolean,
       ];
       const rel = relations.get(relKey(schemaName, relName));
       if (!rel) continue;
-      rel.columns.push({
+      const column: ColumnModel = {
         name: colName,
         dataType: dtype,
         nullable: !notNull,
         primaryKey: false,
         default: def ?? undefined,
-      } satisfies ColumnModel);
+      };
+      // serial columns are plain columns whose default pulls from a sequence
+      if (identity || (def && /^nextval\(/i.test(def))) column.autoIncrement = true;
+      if (generated) column.generated = true;
+      rel.columns.push(column);
     }
 
     const cons = await session.queryRaw(
-      `SELECT n.nspname, c.relname, con.contype, a.attname, fn.nspname AS fschema, fc.relname AS ftable
+      `SELECT n.nspname, c.relname, con.contype, a.attname, fn.nspname AS fschema, fc.relname AS ftable,
+              fa.attname AS fcolumn
        FROM pg_constraint con
        JOIN pg_class c ON c.oid = con.conrelid
        JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -274,16 +285,18 @@ export const postgresDriver: Driver = {
        JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
        LEFT JOIN pg_class fc ON fc.oid = con.confrelid
        LEFT JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+       LEFT JOIN pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = con.confkey[k.ord::int]
        WHERE n.nspname = ANY($1) AND con.contype IN ('p','f')
        ORDER BY con.oid, k.ord`,
       [selected],
     );
     for (const row of cons.rows) {
-      const [schemaName, relName, contype, colName, fSchema, fTable] = row as [
+      const [schemaName, relName, contype, colName, fSchema, fTable, fColumn] = row as [
         string,
         string,
         string,
         string,
+        string | null,
         string | null,
         string | null,
       ];
@@ -294,6 +307,7 @@ export const postgresDriver: Driver = {
         col.primaryKey = true;
       } else if (contype === 'f' && fTable) {
         col.foreignKeyTarget = fSchema && fSchema !== schemaName ? `${fSchema}.${fTable}` : fTable;
+        if (fColumn) col.foreignKeyColumn = fColumn;
       }
     }
 

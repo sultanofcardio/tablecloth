@@ -95,7 +95,13 @@ export interface ColumnModel {
   primaryKey: boolean;
   /** Present when the column is part of a foreign key; target is "table" or "schema.table". */
   foreignKeyTarget?: string;
+  /** The referenced column of that foreign key (single-column keys). */
+  foreignKeyColumn?: string;
   default?: string;
+  /** The database produces the value on insert (identity, serial, auto_increment, rowid alias). */
+  autoIncrement?: boolean;
+  /** Computed by the database from other columns; never writable. */
+  generated?: boolean;
 }
 
 export interface IndexModel {

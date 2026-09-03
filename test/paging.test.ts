@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tableCountQuery, tablePageQuery, wrapCount, wrapPaged } from '../src/sql/paging';
+import { tableCountQuery, tableDistinctQuery, tablePageQuery, tableViewQuery, wrapCount, wrapDistinct, wrapPaged } from '../src/sql/paging';
 
 test('wrapPaged wraps and pages', () => {
   const sql = wrapPaged('postgres', 'SELECT * FROM orders;', { limit: 501, offset: 0 });
@@ -39,4 +39,29 @@ test('tablePageQuery quotes per dialect', () => {
 
 test('tableCountQuery', () => {
   assert.equal(tableCountQuery('postgres', 'public', 'x'), 'SELECT COUNT(*) FROM "public"."x"');
+});
+
+test('WHERE and ORDER BY text apply to table pages, counts, and distinct lists', () => {
+  assert.equal(
+    tablePageQuery('postgres', 'public', 'orders', { limit: 501, offset: 0, where: "status = 'shipped'", orderBy: 'created_at DESC' }),
+    `SELECT * FROM "public"."orders" WHERE status = 'shipped' ORDER BY created_at DESC LIMIT 501`,
+  );
+  assert.equal(tableCountQuery('sqlite', undefined, 'orders', 'total > 1'), 'SELECT COUNT(*) FROM "orders" WHERE total > 1');
+  assert.equal(
+    tableDistinctQuery('postgres', 'public', 'orders', 'status', "total > 1", 201),
+    `SELECT DISTINCT status FROM "public"."orders" WHERE total > 1 ORDER BY status LIMIT 201`,
+  );
+  assert.equal(tableViewQuery('mysql', 'acme', 'orders', { where: '', orderBy: 'id' }), 'SELECT * FROM `acme`.`orders` ORDER BY id');
+});
+
+test('console wrappers carry the filter text on the wrapper, and ORDER BY text beats the legacy sort', () => {
+  assert.equal(
+    wrapPaged('postgres', 'SELECT * FROM t;', { limit: 11, offset: 0, where: 'a = 1', orderBy: 'b DESC', sort: { column: 'z', direction: 'asc' } }),
+    'SELECT * FROM (\nSELECT * FROM t\n) AS _tablecloth_q WHERE a = 1 ORDER BY b DESC LIMIT 11 OFFSET 0',
+  );
+  assert.equal(wrapCount('postgres', 'SELECT * FROM t', 'a = 1'), 'SELECT COUNT(*) FROM (\nSELECT * FROM t\n) AS _tablecloth_q WHERE a = 1');
+  assert.equal(
+    wrapDistinct('postgres', 'SELECT * FROM t', 'Display Name', undefined, 5),
+    'SELECT DISTINCT "Display Name" FROM (\nSELECT * FROM t\n) AS _tablecloth_q ORDER BY "Display Name" LIMIT 5',
+  );
 });

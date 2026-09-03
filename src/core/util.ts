@@ -1,4 +1,5 @@
 import type { DriverId, StorageScope } from './types';
+import { SQL_KEYWORDS } from '../sql/tokens';
 
 /**
  * Where a new data source is stored when the user has not chosen. Project
@@ -25,6 +26,17 @@ export function qualify(dialect: DriverId, schema: string | undefined, name: str
 /** A conservative check for names that can be used bare inside generated SQL. */
 export function isPlainIdentifier(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+}
+
+/**
+ * An identifier as generated SQL must spell it: bare when the dialect resolves
+ * the bare form to the same object (Postgres and SQLite fold unquoted names to
+ * lowercase, MySQL keeps case), quoted for reserved words and anything else.
+ */
+export function sqlName(dialect: DriverId, name: string): string {
+  const plain = dialect === 'mysql' ? /^[A-Za-z_$][A-Za-z0-9_$]*$/ : /^[a-z_][a-z0-9_]*$/;
+  if (plain.test(name) && !SQL_KEYWORDS.has(name.toLowerCase())) return name;
+  return quoteIdent(dialect, name);
 }
 
 /** Escape a string literal for SQL ('' doubling; safe for all three dialects with backslash doubling for MySQL). */

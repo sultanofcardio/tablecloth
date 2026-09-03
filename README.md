@@ -15,9 +15,9 @@
 
 </div>
 
-Tablecloth brings the IntelliJ Ultimate **Database Tools** experience to VS Code: connect to PostgreSQL, MySQL/MariaDB, and SQLite, explore schemas in a real tool window, write SQL in consoles with transactions and completion, and read results in a DataGrip-style grid. Free, open source, and built by someone who did not want to relearn ten years of muscle memory.
+Tablecloth brings the IntelliJ Ultimate **Database Tools** experience to VS Code: connect to PostgreSQL, MySQL/MariaDB, and SQLite, explore schemas in a real tool window, write SQL in consoles with transactions, completion, and inspections, and edit data in a DataGrip-style grid that previews its DML before it runs. Free, open source, and built by someone who did not want to relearn ten years of muscle memory.
 
-> **Preview.** Tablecloth is pre-1.0. Phase 1 of three has shipped and is used daily, but the grid is still read-only, some rough edges remain, and the settings format may change in a minor version before 1.0. See [what works today](#what-works-today), the [known limits](#known-limits), and the [roadmap](https://github.com/sultanofcardio/tablecloth/blob/main/ROADMAP.md).
+> **Preview.** Tablecloth is pre-1.0. Phases 1 and 2 of three have shipped and are used daily, but some rough edges remain and the settings format may change in a minor version before 1.0. See [what works today](#what-works-today), the [known limits](#known-limits), and the [roadmap](https://github.com/sultanofcardio/tablecloth/blob/main/ROADMAP.md).
 
 > Tablecloth is an independent open-source project and is not affiliated with or endorsed by JetBrains or Microsoft. It uses none of JetBrains' code; the running product serves purely as the behavioral spec.
 
@@ -38,8 +38,9 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 1. Open the **Database** view in the activity bar and choose **New Data Source…**.
 2. Pick a driver, fill in the connection, and use **Test Connection**. Passwords go to the OS keychain, never to settings.
 3. Expand the source in the explorer to browse schemas, tables, keys, indexes, views, sequences, routines, and enum types.
-4. Open a **Query Console…** on the source and run the statement at the caret with <kbd>⌘⏎</kbd> / <kbd>Ctrl+Enter</kbd>. Results land in the **Tablecloth** panel, one tab per statement.
-5. Double-click a table to open its data in the grid, or right-click any `.sql` file and choose **Run File on Data Source…**.
+4. Open a **Query Console…** on the source and run the statement at the caret with <kbd>⌘⏎</kbd> / <kbd>Ctrl+Enter</kbd>. Results land in the **Tablecloth** panel, one tab per statement. Statements with `:name` parameters ask for values first.
+5. Double-click a table to open its data. Type into cells, add or delete rows, then **Submit** (<kbd>⌘⏎</kbd>) to review the exact DML before it runs. Use the WHERE and ORDER BY fields, the header funnels, and the ↗ on foreign-key cells to move around.
+6. <kbd>⌘⇧O</kbd> jumps to any table, column, or routine; right-click any `.sql` file and choose **Run File on Data Source…** to run a script.
 
 ## What it looks like
 
@@ -52,9 +53,25 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 <br />
 
 <div align="center">
-  <img src="./assets/screenshot-grid.png" width="920" alt="The table data editor: a full-window DataGrip-style grid of the orders table with typed column headers, right-aligned numerics, italic nulls, and the floating pager reading 1-500 of 500+, with the exact count one click away." />
+  <img src="./assets/screenshot-grid.png" width="920" alt="The table data editor: a DataGrip-style grid of the orders table with a WHERE field, key icons and funnels in the headers, two edited cells in blue, a deleted row struck through, a green added row with auto and default placeholders, and the Submit Changes dialog previewing the four statements that will run." />
   <br />
-  <sub>Table data: 500-row pages, the floating pager (the range is the page-size menu; <code>500+</code> resolves the exact count on click), sorting, row selection, and extractors in the toolbar.</sub>
+  <sub>The data editor: edits accumulate as a change set (blue cells, green added rows, struck-through deletions) and <b>Submit</b> shows the exact UPDATE, DELETE, and INSERT statements before they run, atomically.</sub>
+</div>
+
+<br />
+
+<div align="center">
+  <img src="./assets/screenshot-console-intel.png" width="920" alt="A console with an unresolved column marked by a warning squiggle, a statement using a :min_total parameter, and the Parameters dialog asking for its value before the run." />
+  <br />
+  <sub>Console intelligence: inspections flag unresolved columns with a Change-to quick fix, and <code>:name</code> parameters get an IntelliJ-style values dialog on run.</sub>
+</div>
+
+<br />
+
+<div align="center">
+  <img src="./assets/screenshot-import.png" width="720" alt="The Import Data dialog in its own window: format settings, a mapping table from file columns to table columns with types and sample values, and an Import button with the row count." />
+  <br />
+  <sub>Import Data from File: delimiter detection, column mapping (or a new table from the file), and batched inserts with stop-or-skip on error.</sub>
 </div>
 
 <br />
@@ -71,15 +88,18 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 | --- | --- |
 | Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, no-auth · read-only sources (enforced server-side) · env color labels · Project (workspace, the default) and Global (user) scopes · passwords only in the OS keychain |
 | Explorer | Tree in the IntelliJ design language: vendor marks, introspection badges, schemas, tables with PK/FK keys, indexes, views, sequences, routines, enum types · toolbar row · context menus · schema selection and system-schema toggle · auto-sync per source |
-| Consoles | Monaco-based editor under an IntelliJ toolbar · run statement with the statement frame · run script · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · object completion with dialect-correct identifier quoting · consoles persist, rename, and reopen |
+| Consoles | Monaco-based editor under an IntelliJ toolbar · run statement with the statement frame · run script · cancel a running statement (⌘F2) · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · `:name` parameters with a values dialog · consoles persist, rename, and reopen |
+| SQL intelligence | Object completion with dialect-correct quoting · keywords and functions · FK-based JOIN clauses and ON conditions · live templates (`sel`, `selw`, `ins`, `upd`, `del`, `tab`, …) · inspections for unresolved tables and columns with Change-to quick fixes · Format SQL (⌘⌥L or Format Document) · Go to Database Object (⌘⇧O) · Go to DDL |
 | Results | Tablecloth panel shaped like IntelliJ's Services window: Database → source → console tree, per-console result tabs and Output logs, a data source Information tab · multi-statement runs, one tab per query |
-| Grid | Read-only DataGrip-style grid: 500-row pages, floating pager, count on demand, sorting, row selection |
-| Export | SQL Inserts / SQL Updates / Where Clause · CSV, TSV, pipe, semicolon (configurable null text and quoting) · copy or export, selection-aware |
+| Data editor | Cell editing with a change set and a DML preview on Submit · add, clone, delete rows · Set NULL / DEFAULT · revert selected or all · Tx mode per data editor with commit and roll back · WHERE and ORDER BY fields with completion · header sort and funnels · FK navigation and referencing rows · value editor (⇧⏎) · transpose, Table / Tree / Text views · column list (⌘F12) · find in page (⌘F) · 500-row pages, floating pager, count on demand |
+| Import & export | Import Data from File with column mapping or create-table-from-file · extractors: SQL Inserts / Updates / Where Clause · CSV, TSV, pipe, semicolon · HTML, JSON, Markdown, One-row, Pretty, Python-DataFrame, SQL-Insert-Multirow, XML · Excel (xlsx) through Export Data · copy or export, selection-aware |
 | Files | Run any `.sql` file against a chosen source from the explorer context menu |
 
 ## Known limits
 
-- The grid is read-only. Editing with change sets and a DML preview is the headline of Phase 2.
+- Console result grids are editable only for single-table SELECTs whose key columns are in the result; table data editors always are.
+- Header funnels list the first 200 distinct values.
+- Cancelling a running statement is unavailable for SQLite, which runs in-process.
 - MySQL `DELIMITER` blocks are not understood by the statement splitter.
 - SQLite empty results lose their column headers.
 - An isolation level is not reapplied after a silent reconnect.
@@ -92,8 +112,9 @@ Found something else? [Open an issue](https://github.com/sultanofcardio/tableclo
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `tablecloth.dataSources` | `[]` | Data source definitions, managed through the dialog. Workspace settings hold Project sources (the default when a trusted folder is open); user settings hold Global sources. Passwords are never stored here. |
-| `tablecloth.dataSourceDialog.openIn` | `floatingWindow` | Open the Data Sources dialog in a separate compact window or as an editor tab. |
-| `tablecloth.grid.pageSize` | `500` | Rows per data grid page. |
+| `tablecloth.dialogs.openIn` | `floatingWindow` | Open the Data Sources and Import Data dialogs in a separate compact window or as an editor tab. (`tablecloth.dataSourceDialog.openIn` from Phase 1 is still honored.) |
+| `tablecloth.grid.pageSize` | `500` | Rows per data grid page; "Set as Default" in the pager menu writes it. |
+| `tablecloth.inspections.enabled` | `true` | Flag unresolved tables and columns in consoles and attached SQL files. |
 | `tablecloth.explorer.showSystemSchemas` | `false` | Show `pg_catalog`, `information_schema`, `mysql`, `sys`, and friends in the explorer. |
 | `tablecloth.export.nullText` | `""` | Text used for NULL values in CSV-family exports. |
 | `tablecloth.export.csvQuoteAll` | `false` | Quote every value in CSV-family exports. |
@@ -102,7 +123,7 @@ Found something else? [Open an issue](https://github.com/sultanofcardio/tableclo
 
 ## Why not SQLTools or Database Client?
 
-Because the parts of Database Tools that matter day-to-day do not exist in any VS Code extension: transaction control per console, result tabs per statement, and a schema-aware editor in the IntelliJ look. The [roadmap](https://github.com/sultanofcardio/tablecloth/blob/main/ROADMAP.md) has a feature-by-feature comparison and the phases still to come: editable grid with change sets, filters and FK navigation, visual explain plans, and the object editors.
+Because the parts of Database Tools that matter day-to-day do not exist in any VS Code extension: a reviewable change set with DML preview, transaction control per console and per data editor, result tabs per statement, and a schema-aware editor with FK JOIN inference and inspections, all in the IntelliJ look. The [roadmap](https://github.com/sultanofcardio/tablecloth/blob/main/ROADMAP.md) has a feature-by-feature comparison and what Phase 3 adds: object editors, visual explain plans, dump and restore, and full-text search in data.
 
 ## Development
 
@@ -116,7 +137,7 @@ npm run lint
 npm run package          # build the .vsix
 ```
 
-Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`.
+Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/` (`SHOT_SUITE=phase2.cjs` stages the data editor, console, and import shots).
 
 **Releasing.** CI runs on every push and pull request. To release, move the `Unreleased` section of [CHANGELOG.md](./CHANGELOG.md) under the new version, run `npm version <patch|minor|major>`, and `git push --follow-tags`. The `v*` tag triggers the release workflow, which tests, packages, publishes to the Marketplace, and creates the GitHub release with the `.vsix` attached. The workflow needs a `VSCE_PAT` repository secret.
 
