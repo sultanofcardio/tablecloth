@@ -1,6 +1,9 @@
 .vscode/**
+.vscode-test/**
+.github/**
 .gitignore
 .lavish/**
+.no-mistakes.yaml
 intellij-screenshots/**
 docs/**
 node_modules/**
@@ -12,4 +15,7 @@ esbuild.mjs
 eslint.config.mjs
 tsconfig.json
 tsconfig.test.json
+ROADMAP.md
+assets/screenshot-*.png
 **/*.map
+**/*.vsix

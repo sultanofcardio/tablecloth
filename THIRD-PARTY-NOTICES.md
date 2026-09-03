@@ -23,6 +23,7 @@ The packaged extension bundles these npm dependencies (see `package.json` for ve
 | [node-sqlite3-wasm](https://github.com/tndrle/node-sqlite3-wasm) | MIT | Tobias Enderle (SQLite itself is public domain) |
 | [ssh2](https://github.com/mscdex/ssh2) | MIT | Brian White |
 | [monaco-editor](https://github.com/microsoft/monaco-editor) (console editor webview) | MIT | Microsoft Corporation |
+| [DOMPurify](https://github.com/cure53/DOMPurify) (Monaco's HTML sanitizer, bundled from the npm package in place of Monaco's vendored copy) | Apache-2.0 OR MPL-2.0 | Cure53 and other contributors |
 
 ## IntelliJ Platform icons (planned)
 

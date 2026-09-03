@@ -53,9 +53,13 @@ export class DataSourceStore implements vscode.Disposable {
   private readonly watcher: vscode.Disposable;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.watcher = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration(SETTING)) this.emitter.fire();
-    });
+    this.watcher = vscode.Disposable.from(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration(SETTING)) this.emitter.fire();
+      }),
+      // Project data sources become visible once the workspace is trusted.
+      vscode.workspace.onDidGrantWorkspaceTrust(() => this.emitter.fire()),
+    );
   }
 
   dispose(): void {
@@ -70,9 +74,14 @@ export class DataSourceStore implements vscode.Disposable {
       const config = normalize(raw);
       if (config) result.push({ config, scope: 'global' });
     }
-    for (const raw of info?.workspaceValue ?? []) {
-      const config = normalize(raw);
-      if (config) result.push({ config, scope: 'project' });
+    // Workspace values are declared as a restricted configuration, so VS Code
+    // already withholds them in Restricted Mode; the explicit check keeps that
+    // guarantee independent of the manifest.
+    if (vscode.workspace.isTrusted) {
+      for (const raw of info?.workspaceValue ?? []) {
+        const config = normalize(raw);
+        if (config) result.push({ config, scope: 'project' });
+      }
     }
     return result;
   }
@@ -95,6 +104,9 @@ export class DataSourceStore implements vscode.Disposable {
   }
 
   async save(config: DataSourceConfig, scope: StorageScope): Promise<void> {
+    if (scope === 'project' && !vscode.workspace.isTrusted) {
+      throw new Error('Project data sources are unavailable in Restricted Mode. Trust the workspace, or save it as a Global data source.');
+    }
     const existing = this.get(config.id);
     if (existing && existing.scope !== scope) {
       // moved between global and project: remove from the old scope first

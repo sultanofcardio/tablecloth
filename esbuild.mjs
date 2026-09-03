@@ -23,6 +23,22 @@ const extensionOptions = {
 };
 
 /**
+ * Monaco ships a vendored copy of DOMPurify (base/browser/dompurify/dompurify.js)
+ * that lags behind the npm package and its security releases. Both export the
+ * same default DOMPurify instance, so the bundle takes the npm package instead;
+ * package.json pins that to a patched version.
+ * @type {import('esbuild').Plugin}
+ */
+const currentDomPurify = {
+  name: 'current-dompurify',
+  setup(build) {
+    build.onResolve({ filter: /\/dompurify\/dompurify\.js$/ }, () => ({
+      path: require.resolve('dompurify'),
+    }));
+  },
+};
+
+/**
  * The console editor webview: our app plus the whole Monaco editor, bundled
  * from its ESM build. esbuild also emits console.css (Monaco's styles plus the
  * codicon font it references).
@@ -38,6 +54,7 @@ const consoleWebviewOptions = {
   minify: !watch,
   loader: { '.ttf': 'file' },
   assetNames: '[name]-[hash]',
+  plugins: [currentDomPurify],
   logLevel: 'info',
 };
 

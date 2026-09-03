@@ -98,6 +98,8 @@ test('showSystemSchemas toggle re-introspects only sources that had a catalog, k
         configListeners.push(h);
         return disposable();
       },
+      isTrusted: true,
+      onDidGrantWorkspaceTrust: () => disposable(),
       onDidCloseTextDocument: () => disposable(),
       onDidChangeTextDocument: () => disposable(),
       workspaceFolders: [],

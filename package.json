@@ -9,8 +9,31 @@
     "type": "git",
     "url": "https://github.com/sultanofcardio/tablecloth.git"
   },
+  "homepage": "https://github.com/sultanofcardio/tablecloth#readme",
+  "bugs": {
+    "url": "https://github.com/sultanofcardio/tablecloth/issues"
+  },
+  "preview": true,
+  "pricing": "Free",
+  "galleryBanner": {
+    "color": "#2b3a55",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.95.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode, Project (workspace) data sources are hidden and cannot be created; Global data sources, consoles, and the grid work as usual.",
+      "restrictedConfigurations": [
+        "tablecloth.dataSources"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "SQLite database files, SSH private keys, and CA certificates must live on the local file system. Running .sql files from a virtual workspace works."
+    }
   },
   "categories": [
     "Other",
@@ -22,8 +45,7 @@
     "postgresql",
     "mysql",
     "mariadb",
-    "sqlite",
-    "datagrip"
+    "sqlite"
   ],
   "icon": "assets/icon.png",
   "main": "./dist/extension.js",
@@ -80,13 +102,13 @@
     "commands": [
       {
         "command": "tablecloth.addDataSource",
-        "title": "New Data Source\u2026",
+        "title": "New Data Source…",
         "category": "Tablecloth",
         "icon": "$(add)"
       },
       {
         "command": "tablecloth.editDataSource",
-        "title": "Data Source Properties\u2026",
+        "title": "Data Source Properties…",
         "category": "Tablecloth",
         "icon": "$(settings-gear)"
       },
@@ -97,7 +119,7 @@
       },
       {
         "command": "tablecloth.removeDataSource",
-        "title": "Remove Data Source\u2026",
+        "title": "Remove Data Source…",
         "category": "Tablecloth"
       },
       {
@@ -113,7 +135,7 @@
       },
       {
         "command": "tablecloth.newConsole",
-        "title": "Query Console\u2026",
+        "title": "Query Console…",
         "category": "Tablecloth",
         "icon": "$(terminal)"
       },
@@ -130,12 +152,12 @@
       },
       {
         "command": "tablecloth.runFileOnDataSource",
-        "title": "Run File on Data Source\u2026",
+        "title": "Run File on Data Source…",
         "category": "Tablecloth"
       },
       {
         "command": "tablecloth.attachFile",
-        "title": "Attach File to Data Source\u2026",
+        "title": "Attach File to Data Source…",
         "category": "Tablecloth",
         "icon": "$(plug)"
       },
@@ -147,7 +169,7 @@
       },
       {
         "command": "tablecloth.txMode",
-        "title": "Transaction Mode\u2026",
+        "title": "Transaction Mode…",
         "category": "Tablecloth",
         "icon": "$(arrow-swap)"
       },
@@ -165,7 +187,7 @@
       },
       {
         "command": "tablecloth.selectSchema",
-        "title": "Select Schema\u2026",
+        "title": "Select Schema…",
         "category": "Tablecloth",
         "icon": "$(symbol-namespace)"
       },
@@ -271,7 +293,7 @@
         "tablecloth.explorer.showSystemSchemas": {
           "type": "boolean",
           "default": false,
-          "description": "Show system schemas and databases (pg_catalog, information_schema, mysql, sys, \u2026) in the explorer tree."
+          "description": "Show system schemas and databases (pg_catalog, information_schema, mysql, sys, …) in the explorer tree."
         },
         "tablecloth.export.nullText": {
           "type": "string",
@@ -295,7 +317,8 @@
     "test": "npm run pretest && node --test \"out-test/test/*.test.js\"",
     "test:integration": "npm run pretest && node --test \"out-test/test/integration/*.test.js\"",
     "test:vscode": "npm run build && node test/vscode/runTest.mjs",
-    "package": "npm run build && vsce package --no-dependencies"
+    "package": "npm run build && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
   },
   "dependencies": {
     "mysql2": "^3.15.0",
@@ -307,13 +330,17 @@
     "@types/node": "^22.10.0",
     "@types/pg": "^8.15.0",
     "@types/ssh2": "^1.15.0",
-    "@types/vscode": "^1.95.0",
+    "@types/vscode": "~1.95.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.6.0",
+    "dompurify": "^3.4.14",
     "esbuild": "^0.25.0",
     "eslint": "^9.30.0",
     "monaco-editor": "^0.56.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.40.0"
+  },
+  "overrides": {
+    "dompurify": "^3.4.14"
   }
 }

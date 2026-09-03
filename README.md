@@ -1,5 +1,3 @@
-<a name="readme-top"></a>
-
 <div align="center">
 
 <img src="./assets/icon.png" width="96" alt="Tablecloth icon: a gingham-clothed table standing on a database-column pedestal" />
@@ -8,29 +6,40 @@
 
 **IntelliJ-grade database tools, laid over VS Code.**
 
-![Version](https://img.shields.io/badge/version-0.0.1-3574f0)
-![Phase](https://img.shields.io/badge/phase%201-shipped-4ec9a0)
-![Price](https://img.shields.io/badge/price-free%2C%20forever-4ec9a0)
+[![Open in VS Code](https://img.shields.io/static/v1?label=&message=Open%20in%20VS%20Code&color=007acc&labelColor=2c2c32)](https://vscode.dev/redirect?url=vscode%3Aextension%2Fsultanofcardio.tablecloth)
+[![Marketplace](https://vsmarketplacebadges.dev/version/sultanofcardio.tablecloth.svg?label=marketplace&color=3574f0)](https://marketplace.visualstudio.com/items?itemName=sultanofcardio.tablecloth)
+[![Installs](https://vsmarketplacebadges.dev/installs-short/sultanofcardio.tablecloth.svg?color=3574f0)](https://marketplace.visualstudio.com/items?itemName=sultanofcardio.tablecloth)
+![Status](https://img.shields.io/badge/status-preview%20%C2%B7%20pre--1.0-e5a50a)
 ![Databases](https://img.shields.io/badge/databases-PostgreSQL%20·%20MySQL%2FMariaDB%20·%20SQLite-3574f0)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 </div>
 
----
+Tablecloth brings the IntelliJ Ultimate **Database Tools** experience to VS Code: connect to PostgreSQL, MySQL/MariaDB, and SQLite, explore schemas in a real tool window, write SQL in consoles with transactions and completion, and read results in a DataGrip-style grid. Free, open source, and built by someone who did not want to relearn ten years of muscle memory.
 
-Tablecloth is a personal port of the IntelliJ Ultimate **Database Tools** experience to VS Code. One place to connect to your databases, explore their schemas, write SQL in real consoles, and read results in a DataGrip-style grid, without leaving the editor or relearning ten years of muscle memory. Phase 1 is built and released; the [interactive plan](./docs/plan.html) remains the map for what comes next.
+> **Preview.** Tablecloth is pre-1.0. Phase 1 of three has shipped and is used daily, but the grid is still read-only, some rough edges remain, and the settings format may change in a minor version before 1.0. See [what works today](#what-works-today), the [known limits](#known-limits), and the [roadmap](https://github.com/sultanofcardio/tablecloth/blob/main/ROADMAP.md).
 
 > Tablecloth is an independent open-source project and is not affiliated with or endorsed by JetBrains or Microsoft. It uses none of JetBrains' code; the running product serves purely as the behavioral spec.
 
 ## Installing
 
-Grab `tablecloth-<version>.vsix` from the [latest GitHub release](https://github.com/sultanofcardio/tablecloth/releases/latest), then:
+[![Open in VS Code](https://img.shields.io/static/v1?label=&message=Open%20Tablecloth%20in%20VS%20Code&color=007acc&labelColor=2c2c32&style=for-the-badge)](https://vscode.dev/redirect?url=vscode%3Aextension%2Fsultanofcardio.tablecloth)
+
+The button opens Tablecloth's page inside VS Code; press **Install** there. You can also install from the [Marketplace listing](https://marketplace.visualstudio.com/items?itemName=sultanofcardio.tablecloth) or from a terminal:
 
 ```sh
-code --install-extension tablecloth-0.0.1.vsix
+code --install-extension sultanofcardio.tablecloth
 ```
 
-(or Extensions view → `…` → *Install from VSIX…*). Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing to download.
+Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing to download. A `.vsix` for offline installs is attached to every [GitHub release](https://github.com/sultanofcardio/tablecloth/releases/latest).
+
+## Getting started
+
+1. Open the **Database** view in the activity bar and choose **New Data Source…**.
+2. Pick a driver, fill in the connection, and use **Test Connection**. Passwords go to the OS keychain, never to settings.
+3. Expand the source in the explorer to browse schemas, tables, keys, indexes, views, sequences, routines, and enum types.
+4. Open a **Query Console…** on the source and run the statement at the caret with <kbd>⌘⏎</kbd> / <kbd>Ctrl+Enter</kbd>. Results land in the **Tablecloth** panel, one tab per statement.
+5. Double-click a table to open its data in the grid, or right-click any `.sql` file and choose **Run File on Data Source…**.
 
 ## What it looks like
 
@@ -56,49 +65,44 @@ code --install-extension tablecloth-0.0.1.vsix
   <sub>The Data Sources dialog opens in its own floating window, IntelliJ-style: env colors, Global/Project scope, SSH/SSL tabs, schema selection, Test Connection.</sub>
 </div>
 
-## What's in Phase 1
+## What works today
 
 | Area | Shipped |
 | --- | --- |
 | Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, no-auth · read-only sources (enforced server-side) · env color labels · Global (user) and Project (workspace) scopes · passwords only in the OS keychain |
-| Explorer | Webview tree in the IntelliJ design language: vendor marks, introspection badges, schemas, tables with PK/FK keys, indexes, views, sequences, routines, enum types · toolbar row · anchored context menus · schema selection and system-schema toggle · auto-sync per source (off = introspect only on explicit Refresh) |
-| Consoles | Monaco-based console editor under an IntelliJ toolbar · run statement (⌘⏎) with the statement frame · run script · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · object completion with dialect-correct identifier quoting · consoles persist, rename, and reopen from the console dropdown |
-| Results | Tablecloth panel shaped like IntelliJ's Services window: Database → source → console tree, per-console result tabs (comment/table-derived names) and Output logs, a data source Information tab · multi-statement runs, one tab per query |
-| Grid | Read-only DataGrip grid: 500-row pages, two-state floating pager, count on demand, sorting, row selection, select-all corner |
+| Explorer | Tree in the IntelliJ design language: vendor marks, introspection badges, schemas, tables with PK/FK keys, indexes, views, sequences, routines, enum types · toolbar row · context menus · schema selection and system-schema toggle · auto-sync per source |
+| Consoles | Monaco-based editor under an IntelliJ toolbar · run statement with the statement frame · run script · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · object completion with dialect-correct identifier quoting · consoles persist, rename, and reopen |
+| Results | Tablecloth panel shaped like IntelliJ's Services window: Database → source → console tree, per-console result tabs and Output logs, a data source Information tab · multi-statement runs, one tab per query |
+| Grid | Read-only DataGrip-style grid: 500-row pages, floating pager, count on demand, sorting, row selection |
 | Export | SQL Inserts / SQL Updates / Where Clause · CSV, TSV, pipe, semicolon (configurable null text and quoting) · copy or export, selection-aware |
 | Files | Run any `.sql` file against a chosen source from the explorer context menu |
 
-Known Phase 1 limits: the grid is read-only (change sets with DML preview land in Phase 2); MySQL `DELIMITER` blocks are not understood by the statement splitter; SQLite empty results lose column headers; an isolation level is not reapplied after a silent reconnect; paste in the console uses the keyboard (Monaco's context-menu Paste is inert inside webviews).
+## Known limits
+
+- The grid is read-only. Editing with change sets and a DML preview is the headline of Phase 2.
+- MySQL `DELIMITER` blocks are not understood by the statement splitter.
+- SQLite empty results lose their column headers.
+- An isolation level is not reapplied after a silent reconnect.
+- Paste in the console uses the keyboard; Monaco's context-menu Paste is inert inside webviews.
+
+Found something else? [Open an issue](https://github.com/sultanofcardio/tablecloth/issues).
+
+## Settings
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `tablecloth.dataSources` | `[]` | Data source definitions, managed through the dialog. User settings hold Global sources; workspace settings hold Project sources. Passwords are never stored here. |
+| `tablecloth.dataSourceDialog.openIn` | `floatingWindow` | Open the Data Sources dialog in a separate compact window or as an editor tab. |
+| `tablecloth.grid.pageSize` | `500` | Rows per data grid page. |
+| `tablecloth.explorer.showSystemSchemas` | `false` | Show `pg_catalog`, `information_schema`, `mysql`, `sys`, and friends in the explorer. |
+| `tablecloth.export.nullText` | `""` | Text used for NULL values in CSV-family exports. |
+| `tablecloth.export.csvQuoteAll` | `false` | Quote every value in CSV-family exports. |
+
+**Workspace trust.** In Restricted Mode, Project data sources are hidden and cannot be created until you trust the workspace. Global data sources, consoles, and the grid work as usual. In virtual workspaces, SQLite files, SSH keys, and CA certificates must live on the local disk.
 
 ## Why not SQLTools or Database Client?
 
-Because the parts of Database Tools that matter day-to-day don't exist in any VS Code extension:
-
-| Capability | SQLTools | Database Client | Tablecloth |
-| --- | :-: | :-: | :-: |
-| Connections & explorer tree | ✅ | ✅ | ✅ deep tree, env colors, read-only mode |
-| Schema-aware SQL completion | 🟡 basic | 🟡 basic | ✅ live schema, quoted identifiers (JOIN inference in Phase 2) |
-| Transaction control | ❌ | ❌ | ✅ Tx mode + isolation per console |
-| Result tabs per statement | ❌ | ❌ | ✅ IntelliJ-style named tabs |
-| Editable data grid | ❌ | 🟡 immediate edits | 🔜 Phase 2: batched change set + DML preview |
-| Explain plan visualization | ❌ | ❌ | 🔜 Phase 3 |
-| IntelliJ look & feel | ❌ | ❌ | ✅ styled after the New UI, down to the pager |
-
-## Roadmap
-
-```mermaid
-flowchart LR
-    P1["Phase 1 · MVP ✅\nConnect, explore, query"] --> P2["Phase 2 · Daily driver\nEdit data, trust the SQL"] --> P3["Phase 3 · Parity\nThe IntelliJ feel, completed"] -.-> L["Later · nice to have\nER diagrams, schema diff"]
-```
-
-| Phase | Scope | Exit test |
-| --- | --- | --- |
-| **1 · MVP** ✅ | Connections, explorer, consoles (with transactions, history, and schema switching pulled forward), read-only grid, extractors, run `.sql` files | A normal day of database work happens in VS Code; the JetBrains icon stays in the dock, unclicked |
-| **2 · Daily driver** | Editable grid with change sets and DML preview, WHERE/ORDER BY + header filters, FK navigation, deep completion and inspections, import wizard | IntelliJ muscle memory mostly works; nothing used weekly is missing |
-| **3 · Parity** | Object editor dialogs, dump/restore, visual explain plan + EXPLAIN ANALYZE, sessions viewer, full-text data search, find usages, rename refactor, CSV file viewer/editor ("Edit as Table…") | Nothing left that makes you reinstall IntelliJ |
-| **Later** | ER diagrams, schema diff + migration scripts, extra drivers | Only if a real need appears; nothing depends on these |
-
-The [interactive plan](./docs/plan.html) carries the full 55+ item parity checklist and the mock-ups that Phase 1 was built against.
+Because the parts of Database Tools that matter day-to-day do not exist in any VS Code extension: transaction control per console, result tabs per statement, and a schema-aware editor in the IntelliJ look. The [roadmap](https://github.com/sultanofcardio/tablecloth/blob/main/ROADMAP.md) has a feature-by-feature comparison and the phases still to come: editable grid with change sets, filters and FK navigation, visual explain plans, and the object editors.
 
 ## Development
 
@@ -113,6 +117,8 @@ npm run package          # build the .vsix
 ```
 
 Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`.
+
+**Releasing.** CI runs on every push and pull request. To release, move the `Unreleased` section of [CHANGELOG.md](./CHANGELOG.md) under the new version, run `npm version <patch|minor|major>`, and `git push --follow-tags`. The `v*` tag triggers the release workflow, which tests, packages, publishes to the Marketplace, and creates the GitHub release with the `.vsix` attached. The workflow needs a `VSCE_PAT` repository secret.
 
 ## Identity
 
