@@ -2,7 +2,7 @@
 
 All notable changes to Tablecloth are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may change the settings format.
 
-## [Unreleased]
+## [0.1.0] - 2026-09-04
 
 Phase 2 (daily driver) of [the plan](./docs/plan.html): edit data in the grid, and trust the SQL the console writes for you.
 
@@ -81,5 +81,7 @@ First release: Phase 1 (MVP) of [the plan](./docs/plan.html).
 - An isolation level is not reapplied after a silent reconnect.
 - Paste in the console uses the keyboard; Monaco's context-menu Paste is inert inside webviews.
 
+[0.1.0]: https://github.com/sultanofcardio/tablecloth/compare/v0.0.3...v0.1.0
+[0.0.3]: https://github.com/sultanofcardio/tablecloth/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/sultanofcardio/tablecloth/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/sultanofcardio/tablecloth/releases/tag/v0.0.1
