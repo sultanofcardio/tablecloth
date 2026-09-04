@@ -209,9 +209,9 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
       }
     }
 
-    // quoted identifiers: "name" on PostgreSQL and SQLite, `name` in MySQL,
-    // whose "name" is a string literal and was lexed above
-    if ((ch === '"' && dialect !== 'mysql') || (ch === '`' && dialect === 'mysql')) {
+    // quoted identifiers: "name" on PostgreSQL and SQLite, `name` on MySQL and
+    // SQLite; MySQL's "name" is a string literal and was lexed above
+    if ((ch === '"' && dialect !== 'mysql') || (ch === '`' && dialect !== 'postgres')) {
       const { end, closed } = skipQuoted(sql, i, ch, false);
       const inner = sql.slice(i + 1, end - (closed ? 1 : 0));
       push('ident', i, end, inner.replaceAll(ch + ch, ch), !closed);

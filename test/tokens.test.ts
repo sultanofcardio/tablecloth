@@ -56,6 +56,8 @@ test('parameters per dialect', () => {
 test('dollar quotes and backticks', () => {
   assert.deepEqual(kinds('SELECT $$a;b$$, $fn$x$fn$'), ['word:select', 'string:$$a;b$$', 'punct:,', 'string:$fn$x$fn$']);
   assert.deepEqual(kinds('SELECT `a``b` FROM `t`', 'mysql'), ['word:select', 'ident:a`b', 'word:from', 'ident:t']);
+  assert.deepEqual(kinds('SELECT `a` FROM "t"', 'sqlite'), ['word:select', 'ident:a', 'word:from', 'ident:t'], 'SQLite takes both quotes');
+  assert.deepEqual(kinds('SELECT `a` FROM t', 'postgres').slice(0, 2), ['word:select', 'punct:`'], 'PostgreSQL has no backtick quote');
 });
 
 test('mysql reads a double-quoted token as a string, other dialects as an identifier', () => {

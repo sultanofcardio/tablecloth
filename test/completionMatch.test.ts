@@ -76,6 +76,48 @@ test('completionReplacement sees the quote through comments and escapes', () => 
   }, 'the backtick is still inside the MySQL literal');
 });
 
+test('sqlite backticks quote an identifier, postgres backticks do not', () => {
+  const programs = entry('Programs', '1Programs', { kind: 'table', insertText: '"Programs"' });
+  assert.deepEqual(wordBeforeCaret('SELECT * FROM `Prog', 19, 'sqlite'), { start: 14, prefix: '`Prog', inString: false });
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM `', '`', 'sqlite'), {
+    insertText: '`Programs`',
+    extendStart: 1,
+    extendEnd: 1,
+    filterText: '`Programs',
+  });
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', '"', 'sqlite'), {
+    insertText: '"Programs"',
+    extendStart: 1,
+    extendEnd: 1,
+    filterText: '"Programs',
+  });
+  assert.deepEqual(wordBeforeCaret('SELECT * FROM `Prog', 19, 'postgres'), { start: 15, prefix: 'Prog', inString: false });
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM `', '', 'postgres'), {
+    insertText: '"Programs"',
+    extendStart: 0,
+    extendEnd: 0,
+  });
+});
+
+test('a quoted name with a space is replaced from its opening quote', () => {
+  const details = entry('Order Details', '1Order Details', { kind: 'table', insertText: '"Order Details"' });
+  assert.deepEqual(completionReplacement(details, 'SELECT * FROM "Order ', '', 'postgres'), {
+    insertText: '"Order Details"',
+    extendStart: 7,
+    extendEnd: 0,
+    filterText: '"Order Details',
+  });
+  assert.deepEqual(completionReplacement(details, 'SELECT * FROM `Order ', '`', 'mysql'), {
+    insertText: '`Order Details`',
+    extendStart: 7,
+    extendEnd: 1,
+    filterText: '`Order Details',
+  });
+  const word = wordBeforeCaret('name = "Order Det', 17, 'postgres');
+  assert.deepEqual(word, { start: 7, prefix: '"Order Det', inString: false });
+  assert.deepEqual(applyCompletion('name = "Order Det', 17, word, details), { text: 'name = "Order Details"', caret: 22 });
+});
+
 test('rankEntries puts prefix matches first, then word starts, then substrings', () => {
   const entries = [entry('account_id'), entry('customer_id'), entry('created_at'), entry('id'), entry('DISTINCT', '4DISTINCT', { kind: 'keyword' })];
   assert.deepEqual(

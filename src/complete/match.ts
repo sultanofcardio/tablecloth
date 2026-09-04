@@ -42,8 +42,8 @@ export function wordBeforeCaret(text: string, offset: number, dialect: DriverId)
   const { inString, identAt } = quoteState(before, dialect);
   let start = offset;
   while (start > 0 && WORD_CHAR.test(before[start - 1]!)) start--;
-  // a quoted identifier being typed ("Disp or `Disp) keeps its opening quote in the prefix
-  if (identAt >= 0 && identAt === start - 1) start--;
+  // a quoted identifier being typed ("Disp or `Order Det) starts at its opening quote
+  if (identAt >= 0 && identAt < start) start = identAt;
   return { start, prefix: before.slice(start), inString };
 }
 
@@ -136,7 +136,7 @@ function wordStartMatch(hay: string, needle: string): number[] | null {
 /** What to insert and how far past the typed word the replacement reaches. */
 export interface CompletionReplacement {
   insertText: string;
-  /** Characters before the word start the replacement also covers (an opening quote). */
+  /** Characters before the word start the replacement also covers (the opening quote and anything typed inside it). */
   extendStart: number;
   /** Characters after the caret the replacement also covers (a closing quote). */
   extendEnd: number;
@@ -159,13 +159,13 @@ export function completionReplacement(
   dialect: DriverId,
 ): CompletionReplacement {
   const { identAt } = quoteState(before, dialect);
-  const quote = identAt === before.length - 1 ? before[identAt] : undefined;
+  const quote = identAt >= 0 ? before[identAt]! : undefined;
   if (!quote || !IDENTIFIER_KINDS.has(entry.kind)) {
     return { insertText: entry.insertText ?? entry.label, extendStart: 0, extendEnd: 0 };
   }
   return {
     insertText: quote + entry.label.replaceAll(quote, quote + quote) + quote,
-    extendStart: 1,
+    extendStart: before.length - identAt,
     extendEnd: after.startsWith(quote) ? 1 : 0,
     filterText: quote + entry.label,
   };
