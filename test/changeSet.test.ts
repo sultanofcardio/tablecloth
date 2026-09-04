@@ -402,3 +402,41 @@ test('quoted references fold case on MySQL and SQLite, where quoting does not ma
     'on PostgreSQL a quoted name means exactly what it spells',
   );
 });
+
+test('a MySQL double-quoted projection is a string literal, never a column origin', () => {
+  const cols: ColumnModel[] = [
+    { name: 'id', dataType: 'int', nullable: false, primaryKey: true },
+    { name: 'status', dataType: 'varchar(20)', nullable: true, primaryKey: false },
+  ];
+  const result: ColumnInfo[] = [{ name: 'id', numeric: true }, { name: 'status' }];
+  const sourced = (origins: (string | undefined)[]) => result.map((c, i) => ({ ...c, sourceColumn: origins[i] }));
+
+  const constant = resultColumnOrigins('SELECT id, "status" FROM orders', 'mysql', cols, result);
+  assert.deepEqual(constant, ['id', undefined], 'the literal column does not map onto orders.status');
+  const target = makeEditTarget('mysql', '`orders`', cols, sourced(constant), false, true);
+  assert.deepEqual(target.columns.map((c) => [c.name, c.readOnly]), [['id', false], ['status', true]]);
+  assert.throws(
+    () => buildChangeStatements(target, [[1, 'status']], { updates: { 0: { 1: { kind: 'value', text: 'shipped' } } }, deletes: [], inserts: [] }),
+    /Column "status" cannot be edited/,
+  );
+  assert.deepEqual(
+    resultColumnOrigins('SELECT id, "Status" FROM orders', 'mysql', cols, result),
+    ['id', undefined],
+    'a differing case must not reach the catalog through the case fold either',
+  );
+
+  const quotedKey = resultColumnOrigins('SELECT "id", status FROM orders', 'mysql', cols, result);
+  assert.deepEqual(quotedKey, [undefined, 'status']);
+  const keyless = makeEditTarget('mysql', '`orders`', cols, sourced(quotedKey), false, true);
+  assert.equal(
+    keyless.readOnlyReason,
+    "This result cannot be edited: the table's key columns are not in it",
+    'the row identity cannot come from a constant',
+  );
+
+  assert.deepEqual(resultColumnOrigins('SELECT `id`, `status` FROM orders', 'mysql', cols, result), ['id', 'status'], 'backticks still name columns');
+  assert.deepEqual(resultColumnOrigins('SELECT "id", "status" FROM orders', 'sqlite', cols, result), ['id', 'status']);
+  assert.deepEqual(resultColumnOrigins('SELECT "id", "status" FROM orders', 'postgres', cols, result), ['id', 'status']);
+  assert.equal(singleSourceRelation('SELECT id FROM "orders"', 'mysql'), undefined, 'a quoted table name is a literal on MySQL too');
+  assert.deepEqual(singleSourceRelation('SELECT id FROM "orders"', 'postgres'), { schema: undefined, table: 'orders', alias: undefined });
+});

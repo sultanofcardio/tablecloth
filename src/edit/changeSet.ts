@@ -139,6 +139,16 @@ function isName(token: Token | undefined): token is Token {
   return !!token && (token.kind === 'word' || token.kind === 'ident');
 }
 
+/**
+ * A token that names a column, table or schema. MySQL without ANSI_QUOTES
+ * reads "..." as a string literal, so there such a token names nothing even
+ * though the tokenizer lexes it like the quoted identifier it is elsewhere.
+ */
+function namesObject(token: Token | undefined, dialect: DriverId): token is Token {
+  if (!isName(token)) return false;
+  return !(dialect === 'mysql' && token.kind === 'ident' && token.text.startsWith('"'));
+}
+
 /** A word that opens a clause or a join rather than naming a table or alias. */
 function isStructural(token: Token): boolean {
   return token.kind === 'word' && (FROM_CLAUSE_ENDS.has(token.value) || SET_OPERATIONS.has(token.value) || JOIN_WORDS.has(token.value));
@@ -174,7 +184,7 @@ export function singleSourceRelation(sql: string, dialect: DriverId): SourceRela
   const names: Token[] = [];
   for (;;) {
     const token = tokens[i];
-    if (!isName(token) || isStructural(token)) return undefined;
+    if (!namesObject(token, dialect) || isStructural(token)) return undefined;
     names.push(token);
     i++;
     if (tokens[i]?.text !== '.') break;
@@ -226,7 +236,7 @@ function qualifierMatches(qualifier: Token[], source: SourceRelation): boolean {
 }
 
 /** The token naming the projected column, `'*'` for a star, undefined for anything else. */
-function directProjection(tokens: Token[], source: SourceRelation): Token | '*' | undefined {
+function directProjection(tokens: Token[], source: SourceRelation, dialect: DriverId): Token | '*' | undefined {
   let body = tokens;
   const as = body.findIndex((token) => token.kind === 'word' && token.value === 'as');
   if (as >= 0) body = body.slice(0, as);
@@ -238,7 +248,7 @@ function directProjection(tokens: Token[], source: SourceRelation): Token | '*' 
   for (let i = 0; i < body.length; i++) {
     if (i % 2 === 0) {
       const last = i === body.length - 1;
-      if (body[i]!.kind !== 'word' && body[i]!.kind !== 'ident' && !(last && body[i]!.text === '*')) return undefined;
+      if (!namesObject(body[i], dialect) && !(last && body[i]!.text === '*')) return undefined;
     } else if (body[i]!.text !== '.') return undefined;
   }
   const qualifier = body.filter((_, i) => i % 2 === 0).slice(0, -1);
@@ -296,7 +306,7 @@ export function resultColumnOrigins(
   }
   if (item.length > 0) items.push(item);
   const folds = CASE_INSENSITIVE_NAMES[dialect];
-  const projected = items.map((tokens) => directProjection(tokens, relation));
+  const projected = items.map((tokens) => directProjection(tokens, relation, dialect));
   // a star stands for the columns the driver reported at those positions, which
   // are the live table's; the catalog's order may be stale after DDL
   const stars = projected.filter((origin) => origin === '*').length;
