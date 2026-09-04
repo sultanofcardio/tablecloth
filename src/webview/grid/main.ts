@@ -237,8 +237,9 @@ function wireToolbar(): void {
   const orderField = el<HTMLInputElement>('f-order');
   const applyFilters = () => guarded(() => post({ type: 'filter', where: whereField.value, orderBy: orderField.value }));
   // IntelliJ-style lookup in both fields: the host resolves columns, keywords, and functions
-  attachLookup(whereField, { request: (text, offset) => requestCompletions('where', text, offset) });
-  attachLookup(orderField, { request: (text, offset) => requestCompletions('orderBy', text, offset) });
+  const lookupDialect = () => S.data?.meta.dialect ?? 'postgres';
+  attachLookup(whereField, { request: (text, offset) => requestCompletions('where', text, offset), dialect: lookupDialect });
+  attachLookup(orderField, { request: (text, offset) => requestCompletions('orderBy', text, offset), dialect: lookupDialect });
   for (const field of [whereField, orderField]) {
     field.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {

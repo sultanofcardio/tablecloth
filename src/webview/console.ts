@@ -214,7 +214,7 @@ monaco.languages.registerCompletionItemProvider('sql', {
     return {
       suggestions: entries.map((entry) => {
         // a quote the user already typed (and its auto-closed partner) is part of the replaced range
-        const landing = completionReplacement(entry, before, after);
+        const landing = completionReplacement(entry, before, after, state.dialect);
         return {
           label: entry.label,
           kind: COMPLETION_KINDS[entry.kind],

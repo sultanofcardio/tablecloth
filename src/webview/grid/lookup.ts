@@ -1,6 +1,7 @@
 // IntelliJ-style completion lookup for a plain text input (the WHERE and
 // ORDER BY fields): pops up while an identifier is typed or on ⌃Space,
 // narrows by the word before the caret, inserts on Enter, Tab, or click.
+import type { DriverId } from '../../core/types';
 import type { CompletionEntry, CompletionKind } from '../../complete/core';
 import { applyCompletion, matchedIndexes, rankEntries, wordBeforeCaret, type WordAt } from '../../complete/match';
 import { ICONS } from './icons';
@@ -8,6 +9,8 @@ import { h } from './widgets';
 
 export interface LookupOptions {
   request(text: string, offset: number): Promise<CompletionEntry[]>;
+  /** The grid's dialect, read on demand because the first page has not arrived yet. */
+  dialect(): DriverId;
 }
 
 export interface Lookup {
@@ -49,7 +52,7 @@ export function attachLookup(input: HTMLInputElement, options: LookupOptions): L
     shown = [];
   };
   const caretPos = () => input.selectionStart ?? input.value.length;
-  const currentWord = () => wordBeforeCaret(input.value, caretPos());
+  const currentWord = () => wordBeforeCaret(input.value, caretPos(), options.dialect());
 
   const textWidth = (text: string): number => {
     measureCanvas ??= document.createElement('canvas');

@@ -1,6 +1,7 @@
 // Prefix matching and text replacement for completion lookups outside Monaco
 // (the grid's WHERE / ORDER BY fields). Pure, so the webview bundle and the
 // unit tests share it.
+import type { DriverId } from '../core/types';
 import type { CompletionEntry } from './core';
 
 export interface WordAt {
@@ -13,21 +14,64 @@ export interface WordAt {
 
 const WORD_CHAR = /[A-Za-z0-9_$]/;
 
+/**
+ * MySQL without ANSI_QUOTES reads "..." as a string literal, so there a double
+ * quote opens a string and only a backtick quotes an identifier.
+ */
+function stringQuotes(dialect: DriverId): string[] {
+  return dialect === 'mysql' ? ["'", '"'] : ["'"];
+}
+
+function identifierQuotes(dialect: DriverId): string[] {
+  return dialect === 'mysql' ? ['`'] : ['"', '`'];
+}
+
+interface QuoteState {
+  /** The caret sits inside an unterminated string literal. */
+  inString: boolean;
+  /** Offset of the identifier quote still open at the caret, or -1. */
+  identAt: number;
+}
+
+/** Walk the text before the caret, tracking which quote (if any) is still open. */
+function quoteState(before: string, dialect: DriverId): QuoteState {
+  const strings = stringQuotes(dialect);
+  const idents = identifierQuotes(dialect);
+  let open: string | undefined;
+  let openAt = -1;
+  let isIdent = false;
+  for (let i = 0; i < before.length; i++) {
+    const ch = before[i]!;
+    if (open) {
+      if (ch !== open) continue;
+      if (before[i + 1] === open) i++;
+      else {
+        open = undefined;
+        openAt = -1;
+      }
+      continue;
+    }
+    if (strings.includes(ch)) {
+      open = ch;
+      openAt = i;
+      isIdent = false;
+    } else if (idents.includes(ch)) {
+      open = ch;
+      openAt = i;
+      isIdent = true;
+    }
+  }
+  return { inString: open !== undefined && !isIdent, identAt: open !== undefined && isIdent ? openAt : -1 };
+}
+
 /** The identifier fragment before the caret, IntelliJ's completion prefix. */
-export function wordBeforeCaret(text: string, offset: number): WordAt {
+export function wordBeforeCaret(text: string, offset: number, dialect: DriverId): WordAt {
   const before = text.slice(0, offset);
-  let quotes = 0;
-  for (const ch of before) if (ch === "'") quotes++;
-  const inString = quotes % 2 === 1;
+  const { inString, identAt } = quoteState(before, dialect);
   let start = offset;
   while (start > 0 && WORD_CHAR.test(before[start - 1]!)) start--;
   // a quoted identifier being typed ("Disp or `Disp) keeps its opening quote in the prefix
-  const quote = before[start - 1];
-  if (quote === '"' || quote === '`') {
-    let count = 0;
-    for (let i = 0; i < start; i++) if (before[i] === quote) count++;
-    if (count % 2 === 1) start--;
-  }
+  if (identAt >= 0 && identAt === start - 1) start--;
   return { start, prefix: before.slice(start), inString };
 }
 
@@ -136,9 +180,14 @@ const IDENTIFIER_KINDS: ReadonlySet<string> = new Set(['column', 'table', 'view'
  * auto-closing leaves behind) joins the replaced range and the name goes in
  * quoted, so `"Prog|"` becomes `"Programs"` rather than `""Programs""`.
  */
-export function completionReplacement(entry: CompletionEntry, before: string, after: string): CompletionReplacement {
-  const last = before.endsWith('"') ? '"' : before.endsWith('`') ? '`' : undefined;
-  const quote = last && isOpeningQuote(before, last) ? last : undefined;
+export function completionReplacement(
+  entry: CompletionEntry,
+  before: string,
+  after: string,
+  dialect: DriverId,
+): CompletionReplacement {
+  const { identAt } = quoteState(before, dialect);
+  const quote = identAt === before.length - 1 ? before[identAt] : undefined;
   if (!quote || !IDENTIFIER_KINDS.has(entry.kind)) {
     return { insertText: entry.insertText ?? entry.label, extendStart: 0, extendEnd: 0 };
   }
@@ -150,9 +199,3 @@ export function completionReplacement(entry: CompletionEntry, before: string, af
   };
 }
 
-/** The quote ending `before` opens an identifier when it is unpaired, as in wordBeforeCaret. */
-function isOpeningQuote(before: string, quote: string): boolean {
-  let count = 0;
-  for (const ch of before) if (ch === quote) count++;
-  return count % 2 === 1;
-}

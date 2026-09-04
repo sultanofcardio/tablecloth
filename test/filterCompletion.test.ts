@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeFilterCompletions, type CompletionEntry, type CompletionKind } from '../src/complete/core';
+import { applyCompletion, rankEntries, wordBeforeCaret } from '../src/complete/match';
 import type { CatalogModel } from '../src/core/types';
 
 const catalog: CatalogModel = {
@@ -69,6 +70,22 @@ test('after a comparison the columns come back; after a value the clause keyword
 test('the caret position, not the end of the text, decides the context', () => {
   const entries = computeFilterCompletions(orders, 'postgres', 'where', 'cust AND id > 1', 4);
   assert.deepEqual(labels(entries).slice(0, 4), ['id', 'customer_id', 'status', 'Display Name']);
+});
+
+test('a mysql double-quoted literal being typed neither opens the lookup nor is rewritten', () => {
+  const source = { catalog, table: 'orders' };
+  for (const text of ['status = "an', 'status = "n', 'status = "or']) {
+    const word = wordBeforeCaret(text, text.length, 'mysql');
+    assert.equal(word.inString, true, `${text} is inside a literal`);
+    const shown = rankEntries(computeFilterCompletions(source, 'mysql', 'where', text, text.length), word.prefix);
+    assert.ok(applyCompletion(text, text.length, word, shown[0]!).text.startsWith('status = "'), 'the opening quote survives an accept');
+  }
+  const postgres = 'status = "Disp';
+  const word = wordBeforeCaret(postgres, postgres.length, 'postgres');
+  assert.deepEqual({ prefix: word.prefix, inString: word.inString }, { prefix: '"Disp', inString: false });
+  const shown = rankEntries(computeFilterCompletions(orders, 'postgres', 'where', postgres, postgres.length), word.prefix);
+  assert.equal(shown[0]?.label, 'Display Name');
+  assert.equal(applyCompletion(postgres, postgres.length, word, shown[0]!).text, 'status = "Display Name"');
 });
 
 test('a qualifier lists that table', () => {

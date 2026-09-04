@@ -55,7 +55,7 @@ export class SqlCompletionProvider implements vscode.CompletionItemProvider {
     return entries.map((entry) => {
       const item = new vscode.CompletionItem(entry.label, KIND_MAP[entry.kind]);
       // a quote the user already typed (and its auto-closed partner) is part of the replaced range
-      const landing = completionReplacement(entry, before, after);
+      const landing = completionReplacement(entry, before, after, ds.config.driver);
       item.detail = entry.detail;
       item.sortText = entry.sortText;
       item.insertText = entry.snippet ? new vscode.SnippetString(landing.insertText) : landing.insertText;

@@ -11,13 +11,38 @@ const entry = (label: string, sortText = '0' + label, extra: Partial<CompletionE
 });
 
 test('wordBeforeCaret finds the identifier fragment, a qualifier, and string literals', () => {
-  assert.deepEqual(wordBeforeCaret('status = cust', 13), { start: 9, prefix: 'cust', inString: false });
-  assert.deepEqual(wordBeforeCaret('o.cu', 4), { start: 2, prefix: 'cu', inString: false });
-  assert.deepEqual(wordBeforeCaret('total > 10 ', 11), { start: 11, prefix: '', inString: false });
-  assert.equal(wordBeforeCaret("status = 'sh", 12).inString, true, 'inside a string literal');
-  assert.equal(wordBeforeCaret("status = 'shipped' AND to", 25).inString, false, 'after a closed string');
-  assert.deepEqual(wordBeforeCaret('"Disp', 5), { start: 0, prefix: '"Disp', inString: false }, 'opening quote belongs to the word');
-  assert.deepEqual(wordBeforeCaret('"Display Name" = x', 18), { start: 17, prefix: 'x', inString: false });
+  assert.deepEqual(wordBeforeCaret('status = cust', 13, 'postgres'), { start: 9, prefix: 'cust', inString: false });
+  assert.deepEqual(wordBeforeCaret('o.cu', 4, 'postgres'), { start: 2, prefix: 'cu', inString: false });
+  assert.deepEqual(wordBeforeCaret('total > 10 ', 11, 'postgres'), { start: 11, prefix: '', inString: false });
+  assert.equal(wordBeforeCaret("status = 'sh", 12, 'postgres').inString, true, 'inside a string literal');
+  assert.equal(wordBeforeCaret("status = 'shipped' AND to", 25, 'postgres').inString, false, 'after a closed string');
+  assert.deepEqual(wordBeforeCaret('"Disp', 5, 'postgres'), { start: 0, prefix: '"Disp', inString: false }, 'opening quote belongs to the word');
+  assert.deepEqual(wordBeforeCaret('"Display Name" = x', 18, 'postgres'), { start: 17, prefix: 'x', inString: false });
+});
+
+test('on mysql a double quote opens a string literal, not an identifier', () => {
+  assert.deepEqual(wordBeforeCaret('status = "an', 12, 'mysql'), { start: 10, prefix: 'an', inString: true });
+  assert.deepEqual(wordBeforeCaret('status = "or', 12, 'mysql'), { start: 10, prefix: 'or', inString: true });
+  assert.equal(wordBeforeCaret('status = "shipped" AND to', 25, 'mysql').inString, false, 'after a closed literal');
+  assert.deepEqual(wordBeforeCaret('`Disp', 5, 'mysql'), { start: 0, prefix: '`Disp', inString: false }, 'backticks still quote a name');
+  assert.deepEqual(wordBeforeCaret('status = "an', 12, 'postgres'), { start: 9, prefix: '"an', inString: false });
+  assert.deepEqual(wordBeforeCaret('status = "an', 12, 'sqlite'), { start: 9, prefix: '"an', inString: false });
+});
+
+test('completionReplacement never extends over a mysql double quote', () => {
+  const programs = entry('Programs', '1Programs', { kind: 'table' });
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', '"', 'mysql'), {
+    insertText: 'Programs',
+    extendStart: 0,
+    extendEnd: 0,
+  });
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM `', '`', 'mysql'), {
+    insertText: '`Programs`',
+    extendStart: 1,
+    extendEnd: 1,
+    filterText: '`Programs',
+  });
+  assert.equal(completionReplacement(programs, 'SELECT * FROM "', '"', 'postgres').extendStart, 1);
 });
 
 test('rankEntries puts prefix matches first, then word starts, then substrings', () => {
@@ -47,63 +72,63 @@ test('matchedIndexes highlights the characters the prefix matched', () => {
 });
 
 test('applyCompletion replaces the word and expands snippets', () => {
-  const word = wordBeforeCaret('status = cust', 13);
+  const word = wordBeforeCaret('status = cust', 13, 'postgres');
   assert.deepEqual(applyCompletion('status = cust', 13, word, entry('customer_id')), { text: 'status = customer_id', caret: 20 });
-  const quoted = wordBeforeCaret('"Disp', 5);
+  const quoted = wordBeforeCaret('"Disp', 5, 'postgres');
   assert.deepEqual(applyCompletion('"Disp', 5, quoted, entry('Display Name', '0', { insertText: '"Display Name"' })), {
     text: '"Display Name"',
     caret: 14,
   });
   const fn = entry('count', '5count', { kind: 'function', insertText: 'count($1)', snippet: true });
-  assert.deepEqual(applyCompletion('cou > 1', 3, wordBeforeCaret('cou > 1', 3), fn), { text: 'count() > 1', caret: 6 });
+  assert.deepEqual(applyCompletion('cou > 1', 3, wordBeforeCaret('cou > 1', 3, 'postgres'), fn), { text: 'count() > 1', caret: 6 });
   const template = entry('sel', '0tsel', { kind: 'template', insertText: 'SELECT * FROM ${1:table}', snippet: true });
-  assert.deepEqual(applyCompletion('sel', 3, wordBeforeCaret('sel', 3), template), { text: 'SELECT * FROM table', caret: 14 });
+  assert.deepEqual(applyCompletion('sel', 3, wordBeforeCaret('sel', 3, 'postgres'), template), { text: 'SELECT * FROM table', caret: 14 });
 });
 
 test('completionReplacement keeps a quote the user already typed instead of doubling it', () => {
   const programs = entry('Programs', '1Programs', { kind: 'table', insertText: '"Programs"' });
-  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', '"'), {
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', '"', 'postgres'), {
     insertText: '"Programs"',
     extendStart: 1,
     extendEnd: 1,
     filterText: '"Programs',
   });
-  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', ' WHERE 1'), {
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', ' WHERE 1', 'postgres'), {
     insertText: '"Programs"',
     extendStart: 1,
     extendEnd: 0,
     filterText: '"Programs',
   });
-  assert.deepEqual(completionReplacement(entry('customers', '1', { kind: 'table' }), 'FROM "', '"'), {
+  assert.deepEqual(completionReplacement(entry('customers', '1', { kind: 'table' }), 'FROM "', '"', 'postgres'), {
     insertText: '"customers"',
     extendStart: 1,
     extendEnd: 1,
     filterText: '"customers',
   });
-  assert.deepEqual(completionReplacement(entry('orders', '1', { kind: 'table' }), 'FROM `', '`').insertText, '`orders`');
-  assert.equal(completionReplacement(entry('Odd"Name', '1', { kind: 'table' }), 'FROM "', '').insertText, '"Odd""Name"');
-  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM ', ''), { insertText: '"Programs"', extendStart: 0, extendEnd: 0 });
+  assert.deepEqual(completionReplacement(entry('orders', '1', { kind: 'table' }), 'FROM `', '`', 'postgres').insertText, '`orders`');
+  assert.equal(completionReplacement(entry('Odd"Name', '1', { kind: 'table' }), 'FROM "', '', 'postgres').insertText, '"Odd""Name"');
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM ', '', 'postgres'), { insertText: '"Programs"', extendStart: 0, extendEnd: 0 });
   const keyword = entry('WHERE', '4WHERE', { kind: 'keyword' });
-  assert.deepEqual(completionReplacement(keyword, 'x = "', '"'), { insertText: 'WHERE', extendStart: 0, extendEnd: 0 });
+  assert.deepEqual(completionReplacement(keyword, 'x = "', '"', 'postgres'), { insertText: 'WHERE', extendStart: 0, extendEnd: 0 });
 });
 
 test('completionReplacement tells a closing quote from an opening one', () => {
   const programs = entry('Programs', '1Programs', { kind: 'table', insertText: '"Programs"' });
-  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "Programs"', ''), {
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "Programs"', '', 'postgres'), {
     insertText: '"Programs"',
     extendStart: 0,
     extendEnd: 0,
   });
-  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', '"'), {
+  assert.deepEqual(completionReplacement(programs, 'SELECT * FROM "', '"', 'postgres'), {
     insertText: '"Programs"',
     extendStart: 1,
     extendEnd: 1,
     filterText: '"Programs',
   });
-  assert.deepEqual(completionReplacement(programs, 'SELECT "a", "b" FROM "', '"').extendStart, 1, 'earlier closed pairs do not count');
+  assert.deepEqual(completionReplacement(programs, 'SELECT "a", "b" FROM "', '"', 'postgres').extendStart, 1, 'earlier closed pairs do not count');
   const orders = entry('orders', '1orders', { kind: 'table' });
-  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `orders`', ''), { insertText: 'orders', extendStart: 0, extendEnd: 0 });
-  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `', '`'), {
+  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `orders`', '', 'postgres'), { insertText: 'orders', extendStart: 0, extendEnd: 0 });
+  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `', '`', 'postgres'), {
     insertText: '`orders`',
     extendStart: 1,
     extendEnd: 1,
