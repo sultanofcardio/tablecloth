@@ -337,9 +337,9 @@ test('unquoted console references find the catalog column whatever case it is st
     ["UPDATE `users` SET firstName = 'Grace' WHERE ID = 7;"],
   );
   assert.deepEqual(
-    resultColumnOrigins('SELECT "ID" FROM users', 'sqlite', cols, [{ name: 'ID' }]),
+    resultColumnOrigins('SELECT "id" FROM users', 'sqlite', cols, [{ name: 'id' }]),
     ['ID'],
-    'a quoted identifier still matches exactly',
+    'a quoted name resolves the same way where the dialect ignores case',
   );
   assert.deepEqual(
     resultColumnOrigins('SELECT ID FROM users', 'postgres', cols, [{ name: 'ID' }]),
@@ -379,4 +379,26 @@ test('a console result without the table key is read-only, as the documented lim
   const tableEditor = makeEditTarget('postgres', 'orders', tableColumns, result, false);
   assert.equal(tableEditor.readOnlyReason, undefined, 'the table editor keeps its whole-row fallback');
   assert.equal(tableEditor.wholeRowKey, true);
+});
+
+test('quoted references fold case on MySQL and SQLite, where quoting does not make it significant', () => {
+  const cols: ColumnModel[] = [
+    { name: 'id', dataType: 'int', nullable: false, primaryKey: true },
+    { name: 'name', dataType: 'varchar(50)', nullable: true, primaryKey: false },
+  ];
+  const result: ColumnInfo[] = [{ name: 'ID', numeric: true }, { name: 'Name' }];
+  const origins = resultColumnOrigins('SELECT `ID`, `Name` FROM users', 'mysql', cols, result);
+  assert.deepEqual(origins, ['id', 'name']);
+  const target = makeEditTarget('mysql', '`users`', cols, result.map((c, i) => ({ ...c, sourceColumn: origins[i] })), false, true);
+  assert.equal(target.readOnlyReason, undefined);
+  assert.deepEqual(
+    buildChangeStatements(target, [[7, 'Ada']], { updates: { 0: { 1: { kind: 'value', text: 'Grace' } } }, deletes: [], inserts: [] }).map((s) => s.sql),
+    ["UPDATE `users` SET name = 'Grace' WHERE id = 7;"],
+  );
+  assert.deepEqual(resultColumnOrigins('SELECT "ID", "Name" FROM users', 'sqlite', cols, result), ['id', 'name']);
+  assert.deepEqual(
+    resultColumnOrigins('SELECT id, "Name" FROM users', 'postgres', cols, result),
+    ['id', 'Name'],
+    'on PostgreSQL a quoted name means exactly what it spells',
+  );
 });

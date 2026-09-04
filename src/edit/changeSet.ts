@@ -248,11 +248,12 @@ function directProjection(tokens: Token[], source: SourceRelation): Token | '*' 
 }
 
 /**
- * Dialects where an unquoted reference finds a column whatever case it is
- * stored in. PostgreSQL folds unquoted words to lower case instead, so there
- * the tokenizer's lowercased value is already the name the server resolves.
+ * Dialects where a column reference finds its column whatever case the name is
+ * stored in, quoted or not. PostgreSQL instead folds unquoted words to lower
+ * case, so there the tokenizer's lowercased value is already the name the
+ * server resolves and a quoted name means exactly what it spells.
  */
-const FOLDS_UNQUOTED_CASE: Record<DriverId, boolean> = { postgres: false, mysql: true, sqlite: true };
+const CASE_INSENSITIVE_NAMES: Record<DriverId, boolean> = { postgres: false, mysql: true, sqlite: true };
 
 /** The catalog column a reference names, as the catalog spells it. */
 function catalogName(tableColumns: ColumnModel[], name: string, caseInsensitive: boolean): string {
@@ -294,7 +295,7 @@ export function resultColumnOrigins(
     } else item.push(token);
   }
   if (item.length > 0) items.push(item);
-  const folds = FOLDS_UNQUOTED_CASE[dialect];
+  const folds = CASE_INSENSITIVE_NAMES[dialect];
   const projected = items.map((tokens) => directProjection(tokens, relation));
   // a star stands for the columns the driver reported at those positions, which
   // are the live table's; the catalog's order may be stale after DDL
@@ -309,7 +310,7 @@ export function resultColumnOrigins(
         origins.push(name === undefined ? undefined : catalogName(tableColumns, name, folds));
       }
     } else if (origin) {
-      origins.push(catalogName(tableColumns, origin.value, folds && origin.kind === 'word'));
+      origins.push(catalogName(tableColumns, origin.value, folds));
     } else origins.push(undefined);
   }
   return origins.length === resultColumns.length ? origins : resultColumns.map(() => undefined);

@@ -162,7 +162,10 @@ export class GridController {
   private meta?: GridMeta;
   private state: GridViewState = { offset: 0, pageSize: 500, where: '', orderBy: '' };
   private current?: GridPage;
+  /** Identifies the page the webview holds; only a posted page advances it. */
   private generation = 0;
+  /** In-flight load, so a superseded fetch cannot post over a newer one. */
+  private loadToken = 0;
   private ready = false;
   private busy = false;
   /** Last full render, replayed when a fresh webview signals ready (views reload when re-shown). */
@@ -341,7 +344,7 @@ export class GridController {
   private async load(): Promise<void> {
     const provider = this.provider;
     if (!provider) return;
-    const generation = ++this.generation;
+    const token = ++this.loadToken;
     this.setBusy(true);
     try {
       const page = await provider.fetchPage({
@@ -350,11 +353,12 @@ export class GridController {
         where: this.state.where,
         orderBy: this.state.orderBy,
       });
-      if (generation !== this.generation) return;
+      if (token !== this.loadToken) return;
       this.current = page;
+      this.generation++;
       this.postResult(page);
     } catch (err) {
-      if (generation !== this.generation) return;
+      if (token !== this.loadToken) return;
       if (this.current && (this.state.where || this.state.orderBy)) {
         // a bad filter keeps the last good page on screen with the error under it
         this.notice(errorMessage(err), 'error');
@@ -364,7 +368,7 @@ export class GridController {
         this.post(message);
       }
     } finally {
-      if (generation === this.generation) this.setBusy(false);
+      if (token === this.loadToken) this.setBusy(false);
     }
   }
 
@@ -456,10 +460,10 @@ export class GridController {
         break;
       case 'count': {
         if (!provider) return;
-        const generation = this.generation;
+        const token = this.loadToken;
         try {
           const total = await provider.fetchCount(this.state.where);
-          if (generation !== this.generation) return;
+          if (token !== this.loadToken) return;
           if (total !== undefined) {
             this.state.total = total;
             // only the total changed; a full re-render would wipe the grid's

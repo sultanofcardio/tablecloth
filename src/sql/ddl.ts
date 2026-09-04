@@ -3,6 +3,7 @@
 import type { DriverId } from '../core/types';
 import { quoteIdent } from '../core/util';
 import type { DbSession } from '../drivers/driver';
+import { pgCatalogSupport } from '../drivers/pgVersion';
 
 export type DdlKind = 'table' | 'view' | 'routine' | 'sequence' | 'enum';
 
@@ -38,6 +39,7 @@ function pgName(schema: string | undefined, name: string): string {
 
 async function postgresDdl(session: DbSession, ref: DdlRef): Promise<string> {
   const schema = ref.schema ?? 'public';
+  const support = pgCatalogSupport(session.serverVersion);
   switch (ref.kind) {
     case 'table':
       return postgresTableDdl(session, schema, ref.name);
@@ -57,7 +59,8 @@ async function postgresDdl(session: DbSession, ref: DdlRef): Promise<string> {
       const res = await session.queryRaw(
         `SELECT pg_get_functiondef(p.oid)
          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-         WHERE n.nspname = $1 AND p.proname = $2 AND p.prokind IN ('f','p')
+         WHERE n.nspname = $1 AND p.proname = $2
+           AND ${support.prokind ? `p.prokind IN ('f','p')` : 'NOT p.proisagg AND NOT p.proiswindow'}
          ORDER BY p.oid`,
         [schema, ref.name],
       );
@@ -65,11 +68,18 @@ async function postgresDdl(session: DbSession, ref: DdlRef): Promise<string> {
       return res.rows.map((r) => str(r[0]).trim() + ';').join('\n\n') + '\n';
     }
     case 'sequence': {
-      const res = await session.queryRaw(
-        `SELECT start_value, increment_by, min_value, max_value, cache_size, cycle, data_type::text
-         FROM pg_sequences WHERE schemaname = $1 AND sequencename = $2`,
-        [schema, ref.name],
-      );
+      // before the pg_sequences view the parameters lived in the sequence
+      // relation itself, and every sequence was a bigint
+      const res = support.pgSequences
+        ? await session.queryRaw(
+            `SELECT start_value, increment_by, min_value, max_value, cache_size, cycle, data_type::text
+             FROM pg_sequences WHERE schemaname = $1 AND sequencename = $2`,
+            [schema, ref.name],
+          )
+        : await session.queryRaw(
+            `SELECT start_value, increment_by, min_value, max_value, cache_value, is_cycled, 'bigint'
+             FROM ${pgName(schema, ref.name)}`,
+          );
       const row = res.rows[0];
       if (!row) throw new Error(`Sequence ${schema}.${ref.name} was not found.`);
       const [start, increment, min, max, cache, cycle, dataType] = row;
@@ -97,9 +107,11 @@ async function postgresDdl(session: DbSession, ref: DdlRef): Promise<string> {
 
 async function postgresTableDdl(session: DbSession, schema: string, table: string): Promise<string> {
   const target = pgName(schema, table);
+  const support = pgCatalogSupport(session.serverVersion);
   const cols = await session.queryRaw(
     `SELECT a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull,
-            pg_get_expr(d.adbin, d.adrelid), a.attidentity, a.attgenerated,
+            pg_get_expr(d.adbin, d.adrelid),
+            ${support.identity ? 'a.attidentity' : `''`}, ${support.generated ? 'a.attgenerated' : `''`},
             col_description(c.oid, a.attnum)
      FROM pg_attribute a
      JOIN pg_class c ON c.oid = a.attrelid

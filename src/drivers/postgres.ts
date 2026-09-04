@@ -15,6 +15,7 @@ import type {
 } from '../core/types';
 import type { ConnectContext, DbSession, Driver } from './driver';
 import { makeResult, normalizeRows } from './driver';
+import { pgCatalogSupport } from './pgVersion';
 import { openSshTunnel, type SshTunnel } from './ssh';
 
 /** OIDs whose default pg parsers mangle display (dates/times shift time zones); keep the wire text. */
@@ -48,12 +49,6 @@ const OID_NAMES: Record<number, string> = {
 };
 
 const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema']);
-
-/** Major release number of a "PostgreSQL 16.2" style version, 0 when unreadable. */
-function majorVersion(serverVersion: string): number {
-  const match = /(\d+)/.exec(serverVersion);
-  return match ? Number(match[1]) : 0;
-}
 
 /**
  * pg resolves multi-statement text to an ARRAY of results. Statements are
@@ -241,11 +236,11 @@ export const postgresDriver: Driver = {
       relations.set(relKey(schemaName, relName), rel);
     }
 
-    // pg_attribute grew attidentity in 10 and attgenerated in 12; older servers
-    // introspect without them rather than failing the whole catalog
-    const major = majorVersion(session.serverVersion);
-    const identityExpr = major >= 10 ? `a.attidentity <> ''` : 'false';
-    const generatedExpr = major >= 12 ? `a.attgenerated <> ''` : 'false';
+    // older servers introspect without the columns they lack rather than
+    // failing the whole catalog
+    const support = pgCatalogSupport(session.serverVersion);
+    const identityExpr = support.identity ? `a.attidentity <> ''` : 'false';
+    const generatedExpr = support.generated ? `a.attgenerated <> ''` : 'false';
     const cols = await session.queryRaw(
       `SELECT n.nspname, c.relname, a.attname,
               format_type(a.atttypid, a.atttypmod) AS dtype,
@@ -350,9 +345,10 @@ export const postgresDriver: Driver = {
     }
 
     const routines = await session.queryRaw(
-      `SELECT n.nspname, p.proname, p.prokind, pg_get_function_identity_arguments(p.oid) AS args
+      `SELECT n.nspname, p.proname, ${support.prokind ? 'p.prokind' : `'f'`} AS prokind,
+              pg_get_function_identity_arguments(p.oid) AS args
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-       WHERE n.nspname = ANY($1) AND p.prokind IN ('f','p')
+       WHERE n.nspname = ANY($1) AND ${support.prokind ? `p.prokind IN ('f','p')` : 'NOT p.proisagg AND NOT p.proiswindow'}
        ORDER BY n.nspname, p.proname`,
       [selected],
     );
