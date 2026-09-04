@@ -45,6 +45,37 @@ test('completionReplacement never extends over a mysql double quote', () => {
   assert.equal(completionReplacement(programs, 'SELECT * FROM "', '"', 'postgres').extendStart, 1);
 });
 
+test('the lookup reads quotes the way the tokenizer does', () => {
+  assert.equal(wordBeforeCaret("name = 'O\\'Br", 13, 'mysql').inString, true, 'MySQL backslash escapes keep the literal open');
+  assert.equal(wordBeforeCaret("path = 'C:\\' AND stat", 21, 'mysql').inString, true);
+  assert.deepEqual(wordBeforeCaret("note = 'it\\'s ord", 17, 'mysql'), { start: 14, prefix: 'ord', inString: true });
+  assert.equal(wordBeforeCaret("name = 'O\\'Br", 13, 'postgres').inString, false, 'PostgreSQL closes the literal at the quote');
+  assert.equal(wordBeforeCaret("name = 'O''Br", 13, 'postgres').inString, true, 'a doubled quote does not close it');
+  assert.equal(wordBeforeCaret("id > 1 /* customer's */ AND st", 30, 'postgres').inString, false, 'an apostrophe inside a comment is not a literal');
+  assert.equal(wordBeforeCaret('id > 1 /* open ', 15, 'postgres').inString, true, 'nothing completes inside an unterminated comment');
+});
+
+test('completionReplacement sees the quote through comments and escapes', () => {
+  const programs = entry('Programs', '1Programs', { kind: 'table' });
+  assert.deepEqual(completionReplacement(programs, 'SELECT /* customer\'s */ * FROM "', '"', 'postgres'), {
+    insertText: '"Programs"',
+    extendStart: 1,
+    extendEnd: 1,
+    filterText: '"Programs',
+  });
+  assert.deepEqual(completionReplacement(programs, "SELECT 'a''b' FROM \"", '"', 'postgres'), {
+    insertText: '"Programs"',
+    extendStart: 1,
+    extendEnd: 1,
+    filterText: '"Programs',
+  });
+  assert.deepEqual(completionReplacement(programs, "SELECT 'C:\\' FROM `", '`', 'mysql'), {
+    insertText: 'Programs',
+    extendStart: 0,
+    extendEnd: 0,
+  }, 'the backtick is still inside the MySQL literal');
+});
+
 test('rankEntries puts prefix matches first, then word starts, then substrings', () => {
   const entries = [entry('account_id'), entry('customer_id'), entry('created_at'), entry('id'), entry('DISTINCT', '4DISTINCT', { kind: 'keyword' })];
   assert.deepEqual(
@@ -105,7 +136,7 @@ test('completionReplacement keeps a quote the user already typed instead of doub
     extendEnd: 1,
     filterText: '"customers',
   });
-  assert.deepEqual(completionReplacement(entry('orders', '1', { kind: 'table' }), 'FROM `', '`', 'postgres').insertText, '`orders`');
+  assert.deepEqual(completionReplacement(entry('orders', '1', { kind: 'table' }), 'FROM `', '`', 'mysql').insertText, '`orders`');
   assert.equal(completionReplacement(entry('Odd"Name', '1', { kind: 'table' }), 'FROM "', '', 'postgres').insertText, '"Odd""Name"');
   assert.deepEqual(completionReplacement(programs, 'SELECT * FROM ', '', 'postgres'), { insertText: '"Programs"', extendStart: 0, extendEnd: 0 });
   const keyword = entry('WHERE', '4WHERE', { kind: 'keyword' });
@@ -127,8 +158,8 @@ test('completionReplacement tells a closing quote from an opening one', () => {
   });
   assert.deepEqual(completionReplacement(programs, 'SELECT "a", "b" FROM "', '"', 'postgres').extendStart, 1, 'earlier closed pairs do not count');
   const orders = entry('orders', '1orders', { kind: 'table' });
-  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `orders`', '', 'postgres'), { insertText: 'orders', extendStart: 0, extendEnd: 0 });
-  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `', '`', 'postgres'), {
+  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `orders`', '', 'mysql'), { insertText: 'orders', extendStart: 0, extendEnd: 0 });
+  assert.deepEqual(completionReplacement(orders, 'SELECT * FROM `', '`', 'mysql'), {
     insertText: '`orders`',
     extendStart: 1,
     extendEnd: 1,

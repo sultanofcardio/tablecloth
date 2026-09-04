@@ -1,7 +1,7 @@
 // Text helpers for the WHERE and ORDER BY fields. The fields hold free text
 // the user may edit by hand; header clicks and funnels compose into them.
 import type { CellValue, DriverId } from '../../core/types';
-import { sqlName } from '../../core/util';
+import { quoteLiteral, sqlName } from '../../core/util';
 
 export interface OrderTerm {
   /** Column name (unquoted) or the raw expression text. */
@@ -109,9 +109,7 @@ export function sqlLiteral(dialect: DriverId, value: CellValue): string {
   if (value === null) return 'NULL';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'boolean') return dialect === 'sqlite' ? (value ? '1' : '0') : value ? 'TRUE' : 'FALSE';
-  let escaped = value.replaceAll("'", "''");
-  if (dialect === 'mysql') escaped = escaped.replaceAll('\\', '\\\\');
-  return `'${escaped}'`;
+  return quoteLiteral(dialect, value);
 }
 
 /** `col IN (...)`, `col = x`, `col IS NULL`, or a combination, for a funnel selection. */

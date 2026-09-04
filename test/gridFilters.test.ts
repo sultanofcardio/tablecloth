@@ -76,6 +76,8 @@ test('funnel clauses: =, IN, IS NULL, and their combination', () => {
   assert.equal(funnelClause('sqlite', 'paid', [true, null]), '(paid = 1 OR paid IS NULL)');
   assert.equal(funnelClause('mysql', 'total', [1, 2.5]), 'total IN (1, 2.5)');
   assert.equal(funnelClause('postgres', 'name', ["O'Hara"]), "name = 'O''Hara'");
+  assert.equal(funnelClause('mysql', 'path', ['C:\\tmp']), "path = 'C:\\\\tmp'", 'MySQL doubles the backslash');
+  assert.equal(funnelClause('postgres', 'path', ['C:\\tmp']), "path = 'C:\\tmp'", 'PostgreSQL leaves it alone');
 });
 
 test('composeWhere ANDs the manual text and the funnel clauses without nesting', () => {

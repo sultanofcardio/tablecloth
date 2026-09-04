@@ -2,6 +2,7 @@
 // (the grid's WHERE / ORDER BY fields). Pure, so the webview bundle and the
 // unit tests share it.
 import type { DriverId } from '../core/types';
+import { tokenize } from '../sql/tokens';
 import type { CompletionEntry } from './core';
 
 export interface WordAt {
@@ -14,18 +15,6 @@ export interface WordAt {
 
 const WORD_CHAR = /[A-Za-z0-9_$]/;
 
-/**
- * MySQL without ANSI_QUOTES reads "..." as a string literal, so there a double
- * quote opens a string and only a backtick quotes an identifier.
- */
-function stringQuotes(dialect: DriverId): string[] {
-  return dialect === 'mysql' ? ["'", '"'] : ["'"];
-}
-
-function identifierQuotes(dialect: DriverId): string[] {
-  return dialect === 'mysql' ? ['`'] : ['"', '`'];
-}
-
 interface QuoteState {
   /** The caret sits inside an unterminated string literal. */
   inString: boolean;
@@ -33,35 +22,18 @@ interface QuoteState {
   identAt: number;
 }
 
-/** Walk the text before the caret, tracking which quote (if any) is still open. */
+/**
+ * Which quote is still open at the end of `before`, read off the tokenizer so
+ * comments, MySQL backslash escapes, doubled quotes and the dialect's choice of
+ * identifier quote all mean here exactly what they mean everywhere else. An
+ * unterminated literal or comment is a place where nothing completes.
+ */
 function quoteState(before: string, dialect: DriverId): QuoteState {
-  const strings = stringQuotes(dialect);
-  const idents = identifierQuotes(dialect);
-  let open: string | undefined;
-  let openAt = -1;
-  let isIdent = false;
-  for (let i = 0; i < before.length; i++) {
-    const ch = before[i]!;
-    if (open) {
-      if (ch !== open) continue;
-      if (before[i + 1] === open) i++;
-      else {
-        open = undefined;
-        openAt = -1;
-      }
-      continue;
-    }
-    if (strings.includes(ch)) {
-      open = ch;
-      openAt = i;
-      isIdent = false;
-    } else if (idents.includes(ch)) {
-      open = ch;
-      openAt = i;
-      isIdent = true;
-    }
-  }
-  return { inString: open !== undefined && !isIdent, identAt: open !== undefined && isIdent ? openAt : -1 };
+  const tokens = tokenize(before, dialect);
+  const last = tokens[tokens.length - 1];
+  if (!last?.unterminated) return { inString: false, identAt: -1 };
+  if (last.kind === 'ident') return { inString: false, identAt: last.start };
+  return { inString: true, identAt: -1 };
 }
 
 /** The identifier fragment before the caret, IntelliJ's completion prefix. */

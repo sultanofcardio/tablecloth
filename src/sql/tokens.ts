@@ -25,6 +25,8 @@ export interface Token {
   end: number;
   /** Lowercased text for words; the unquoted name for identifiers and parameters. */
   value: string;
+  /** A quoted token or comment whose closing delimiter is missing, so it runs to the end of the input. */
+  unterminated?: boolean;
 }
 
 const MULTI_CHAR_OPERATORS = [
@@ -126,9 +128,11 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
   const len = sql.length;
   let i = 0;
 
-  const push = (kind: TokenKind, start: number, end: number, value?: string) => {
+  const push = (kind: TokenKind, start: number, end: number, value?: string, unterminated?: boolean) => {
     const text = sql.slice(start, end);
-    tokens.push({ kind, text, start, end, value: value ?? text });
+    const token: Token = { kind, text, start, end, value: value ?? text };
+    if (unterminated) token.unterminated = true;
+    tokens.push(token);
   };
 
   while (i < len) {
@@ -168,7 +172,7 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
           j++;
         }
       }
-      push('comment', i, j);
+      push('comment', i, j, undefined, depth > 0);
       i = j;
       continue;
     }
@@ -180,8 +184,8 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
     if (ch === "'" || doubleQuotedString || prefix > 0) {
       const quote = doubleQuotedString ? '"' : "'";
       const escapes = dialect === 'mysql' || (prefix === 1 && ch.toLowerCase() === 'e');
-      const end = skipQuoted(sql, i + prefix, quote, escapes);
-      push('string', i, end);
+      const { end, closed } = skipQuoted(sql, i + prefix, quote, escapes);
+      push('string', i, end, undefined, !closed);
       i = end;
       continue;
     }
@@ -191,8 +195,8 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
       const at = next === '@' ? i + 2 : i + 1;
       const quote = sql[at];
       if (quote === "'" || quote === '"' || quote === '`') {
-        const end = skipQuoted(sql, at, quote, quote !== '`');
-        push('variable', i, end, sql.slice(i, end).toLowerCase());
+        const { end, closed } = skipQuoted(sql, at, quote, quote !== '`');
+        push('variable', i, end, sql.slice(i, end).toLowerCase(), !closed);
         i = end;
         continue;
       }
@@ -208,9 +212,9 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
     // quoted identifiers: "name" on PostgreSQL and SQLite, `name` in MySQL,
     // whose "name" is a string literal and was lexed above
     if ((ch === '"' && dialect !== 'mysql') || (ch === '`' && dialect === 'mysql')) {
-      const end = skipQuoted(sql, i, ch, false);
-      const inner = sql.slice(i + 1, end - (sql[end - 1] === ch && end - 1 > i ? 1 : 0));
-      push('ident', i, end, inner.replaceAll(ch + ch, ch));
+      const { end, closed } = skipQuoted(sql, i, ch, false);
+      const inner = sql.slice(i + 1, end - (closed ? 1 : 0));
+      push('ident', i, end, inner.replaceAll(ch + ch, ch), !closed);
       i = end;
       continue;
     }
@@ -223,7 +227,7 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
           const tag = tagMatch[0];
           const close = sql.indexOf(tag, i + tag.length);
           const end = close === -1 ? len : close + tag.length;
-          push('string', i, end);
+          push('string', i, end, undefined, close === -1);
           i = end;
           continue;
         }
@@ -297,7 +301,12 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
   return tokens;
 }
 
-function skipQuoted(source: string, from: number, quote: string, backslashEscapes: boolean): number {
+function skipQuoted(
+  source: string,
+  from: number,
+  quote: string,
+  backslashEscapes: boolean,
+): { end: number; closed: boolean } {
   let i = from + 1;
   const len = source.length;
   while (i < len) {
@@ -311,11 +320,11 @@ function skipQuoted(source: string, from: number, quote: string, backslashEscape
         i += 2;
         continue;
       }
-      return i + 1;
+      return { end: i + 1, closed: true };
     }
     i++;
   }
-  return len;
+  return { end: len, closed: false };
 }
 
 /** Tokens without whitespace and comments. */
