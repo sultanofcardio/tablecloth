@@ -173,11 +173,14 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
       continue;
     }
 
-    // string literals, with any prefix (E'..', U&'..', X'..', B'..', N'..', _utf8mb4'..')
+    // string literals, with any prefix (E'..', U&'..', X'..', B'..', N'..', _utf8mb4'..').
+    // MySQL without ANSI_QUOTES, the default, reads "..." as a string literal too.
+    const doubleQuotedString = ch === '"' && dialect === 'mysql';
     const prefix = isWordStart(ch) ? stringPrefixLength(sql, i, dialect) : 0;
-    if (ch === "'" || prefix > 0) {
+    if (ch === "'" || doubleQuotedString || prefix > 0) {
+      const quote = doubleQuotedString ? '"' : "'";
       const escapes = dialect === 'mysql' || (prefix === 1 && ch.toLowerCase() === 'e');
-      const end = skipQuoted(sql, i + prefix, "'", escapes);
+      const end = skipQuoted(sql, i + prefix, quote, escapes);
       push('string', i, end);
       i = end;
       continue;
@@ -202,9 +205,9 @@ export function tokenize(sql: string, dialect: DriverId): Token[] {
       }
     }
 
-    // quoted identifiers: "name" everywhere (a string in MySQL without
-    // ANSI_QUOTES, but naming the same thing for our purposes), `name` in MySQL
-    if (ch === '"' || (dialect === 'mysql' && ch === '`')) {
+    // quoted identifiers: "name" on PostgreSQL and SQLite, `name` in MySQL,
+    // whose "name" is a string literal and was lexed above
+    if ((ch === '"' && dialect !== 'mysql') || (ch === '`' && dialect === 'mysql')) {
       const end = skipQuoted(sql, i, ch, false);
       const inner = sql.slice(i + 1, end - (sql[end - 1] === ch && end - 1 > i ? 1 : 0));
       push('ident', i, end, inner.replaceAll(ch + ch, ch));

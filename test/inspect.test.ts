@@ -128,6 +128,24 @@ test('IS DISTINCT FROM and ON DUPLICATE KEY UPDATE do not introduce tables', () 
   assert.deepEqual(messages('SELECT * FROM typo'), ["Unable to resolve table 'typo'"], 'an ordinary FROM is still checked');
 });
 
+test('mysql double-quoted literals are values, not columns', () => {
+  const mysql = (sql: string) => inspectSql(catalog, 'mysql', sql, 'public');
+  assert.deepEqual(mysql('SELECT id FROM orders WHERE status = "pending"').map((i) => i.message), []);
+  assert.deepEqual(mysql('SELECT id FROM orders WHERE status IN ("new", "paid")').map((i) => i.message), []);
+  assert.deepEqual(mysql('SELECT "n/a" AS note, id FROM orders').map((i) => i.message), []);
+  assert.deepEqual(mysql('SELECT id FROM orders WHERE status = "totl"').map((i) => i.fix), [], 'no quick fix rewrites a literal');
+  assert.deepEqual(mysql('SELECT `stauts` FROM orders').map((i) => [i.message, i.fix?.replacement]), [
+    ["Unable to resolve column 'stauts'", '`status`'],
+  ], 'backticked identifiers still resolve');
+  assert.deepEqual(messages('SELECT "n/a" AS note, id FROM orders'), ["Unable to resolve column 'n/a'"], 'PostgreSQL still reads it as an identifier');
+});
+
+test('a relation or alias spelled key does not swallow the next FROM/JOIN', () => {
+  assert.deepEqual(messages("SELECT * FROM orders key JOIN customers c ON c.id = key.customer_id WHERE email = 'x'"), []);
+  assert.deepEqual(messages('SELECT * FROM key JOIN typo o ON 1 = 1'), ["Unable to resolve table 'typo'"]);
+  assert.deepEqual(messages('SELECT * FROM orders WHERE status IS DISTINCT FROM total'), [], 'the operator is still not an introducer');
+});
+
 test('implicit select-list aliases resolve later in the statement', () => {
   assert.deepEqual(messages('SELECT count(*) cnt FROM orders GROUP BY status ORDER BY cnt DESC'), []);
   assert.deepEqual(messages('SELECT status s, total * 2 doubled FROM orders ORDER BY s, doubled'), []);

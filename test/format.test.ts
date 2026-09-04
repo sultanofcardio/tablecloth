@@ -152,6 +152,12 @@ test('prefixed string literals, hex and binary numbers stay intact', () => {
   expectFormat("select x'0a', 0X1f from t", "SELECT x'0a', 0X1f\nFROM t", 'sqlite');
 });
 
+test('mysql double-quoted string literals round-trip whole', () => {
+  expectFormat('select * from t where s = "a\\"b" and x = 1', 'SELECT *\nFROM t\nWHERE s = "a\\"b"\n  AND x = 1', 'mysql');
+  expectFormat('select "a, b" as c from t', 'SELECT "a, b" AS c\nFROM t', 'mysql');
+  expectFormat('select "a, b" as c from t', 'SELECT "a, b" AS c\nFROM t', 'sqlite');
+});
+
 test('mysql variables are neither uppercased nor spaced', () => {
   expectFormat("select @user_id, @@session.sql_mode, @@GLOBAL.x, @'q', @`q` from t", "SELECT @user_id, @@session.sql_mode, @@GLOBAL.x, @'q', @`q`\nFROM t", 'mysql');
   expectFormat('set @a = 1, @@session.sql_mode = @b', 'SET @a = 1, @@session.sql_mode = @b', 'mysql');

@@ -58,6 +58,13 @@ test('dollar quotes and backticks', () => {
   assert.deepEqual(kinds('SELECT `a``b` FROM `t`', 'mysql'), ['word:select', 'ident:a`b', 'word:from', 'ident:t']);
 });
 
+test('mysql reads a double-quoted token as a string, other dialects as an identifier', () => {
+  assert.deepEqual(kinds('SELECT "Name" FROM t', 'mysql'), ['word:select', 'string:"Name"', 'word:from', 'word:t']);
+  assert.deepEqual(kinds('SELECT "Name" FROM t', 'sqlite'), ['word:select', 'ident:Name', 'word:from', 'word:t']);
+  assert.deepEqual(kinds('SELECT `Name` FROM t', 'mysql'), ['word:select', 'ident:Name', 'word:from', 'word:t']);
+  assert.deepEqual(kinds('SELECT "a\\"b" FROM t', 'mysql'), ['word:select', 'string:"a\\"b"', 'word:from', 'word:t'], 'backslash escapes belong to the literal');
+});
+
 test('unterminated string runs to the end without throwing', () => {
   const tokens = tokenize("SELECT 'oops", 'postgres');
   assert.equal(tokens[tokens.length - 1]!.kind, 'string');

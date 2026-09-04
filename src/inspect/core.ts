@@ -42,8 +42,17 @@ const SELECT_LIST_ENDS = new Set([
 function introducesObject(tokens: Token[], i: number): boolean {
   const t = tokens[i];
   if (!t || t.kind !== 'word' || !OBJECT_INTRODUCERS.has(t.value)) return false;
-  const prev = tokens[i - 1];
-  return !(prev?.kind === 'word' && (prev.value === 'distinct' || prev.value === 'key'));
+  if (t.value === 'from' && (endsWithWords(tokens, i, ['is', 'distinct']) || endsWithWords(tokens, i, ['is', 'not', 'distinct']))) return false;
+  if (t.value === 'update' && endsWithWords(tokens, i, ['on', 'duplicate', 'key'])) return false;
+  return true;
+}
+
+/** Whether the words immediately before `i` are exactly `words`. */
+function endsWithWords(tokens: Token[], i: number, words: string[]): boolean {
+  return words.every((word, k) => {
+    const t = tokens[i - words.length + k];
+    return t?.kind === 'word' && t.value === word;
+  });
 }
 
 /**

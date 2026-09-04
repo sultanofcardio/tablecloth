@@ -26,6 +26,18 @@ test('UPDATE and INSERT INTO targets are found', () => {
   assert.equal(parseTableRefs('INSERT INTO customers (a) VALUES (1)')[0]?.table, 'customers');
 });
 
+test('a relation or alias spelled key or distinct still introduces a table', () => {
+  assert.deepEqual(parseTableRefs('SELECT * FROM key JOIN orders o ON o.id = key.id'), [
+    { schema: undefined, table: 'key', alias: undefined },
+    { schema: undefined, table: 'orders', alias: 'o' },
+  ]);
+  assert.deepEqual(parseTableRefs('SELECT * FROM orders key JOIN customers c ON c.id = key.customer_id'), [
+    { schema: undefined, table: 'orders', alias: 'key' },
+    { schema: undefined, table: 'customers', alias: 'c' },
+  ]);
+  assert.deepEqual(parseTableRefs('SELECT DISTINCT a FROM orders'), [{ schema: undefined, table: 'orders', alias: undefined }]);
+});
+
 test('IS DISTINCT FROM and ON DUPLICATE KEY UPDATE name values, not tables', () => {
   assert.deepEqual(parseTableRefs('SELECT * FROM orders WHERE a IS DISTINCT FROM b'), [{ schema: undefined, table: 'orders', alias: undefined }]);
   assert.deepEqual(parseTableRefs('SELECT * FROM orders o WHERE o.a IS NOT DISTINCT\n FROM o.b'), [{ schema: undefined, table: 'orders', alias: 'o' }]);

@@ -201,6 +201,19 @@ test('next-token keywords follow the clause: select list, join, group, order, up
   assert.deepEqual(labels('SELECT * FROM orders LIMIT 10 ').slice(0, 1), ['OFFSET']);
 });
 
+test('completion inside a mysql double-quoted literal offers no objects', () => {
+  const text = 'SELECT * FROM orders WHERE status = "st';
+  const mysql = computeCompletions(catalog, 'mysql', text, text.length);
+  assert.deepEqual(mysql.filter((e) => e.kind === 'column' || e.kind === 'table' || e.kind === 'view').map((e) => e.label), []);
+  const postgres = computeCompletions(catalog, 'postgres', text, text.length).map((e) => e.label);
+  assert.ok(postgres.includes('status'), 'PostgreSQL still completes a quoted identifier');
+  const backticks = 'SELECT * FROM orders WHERE `st';
+  assert.ok(
+    computeCompletions(catalog, 'mysql', backticks, backticks.length).map((e) => e.label).includes('status'),
+    'MySQL still completes a backticked identifier',
+  );
+});
+
 test('aliasFor uses initials and avoids taken names', () => {
   assert.equal(aliasFor('order_items', new Set()), 'oi');
   assert.equal(aliasFor('customers', new Set(['c'])), 'c2');

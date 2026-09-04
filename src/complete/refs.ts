@@ -42,21 +42,31 @@ export function stripQuotes(name: string): string {
 }
 
 /** `IS [NOT] DISTINCT FROM x` and `ON DUPLICATE KEY UPDATE x` name values, so their FROM / UPDATE introduce no table. */
-const NOT_AN_INTRODUCER_AFTER = /\b(?:distinct|key)\s+$/i;
+const NOT_AN_INTRODUCER_AFTER = [/\bis\s+(?:not\s+)?distinct\s+$/i, /\bon\s+duplicate\s+key\s+$/i];
+
+const NAME_SOURCE = '(?:"[^"]+"|`[^`]+`|[A-Za-z_][\\w$]*)';
+const TARGET = new RegExp(`\\b(from|join|update|into)\\s+(${NAME_SOURCE})(?:\\s*\\.\\s*(${NAME_SOURCE}))?`, 'gi');
+const ALIAS = new RegExp(`^\\s+(?:(as)\\s+)?(${NAME_SOURCE})`, 'i');
 
 /** Best-effort alias map for a statement: FROM/JOIN/UPDATE/INTO targets. */
 export function parseTableRefs(statement: string): TableRef[] {
   const refs: TableRef[] = [];
-  const pattern =
-    /\b(from|join|update|into)\s+((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*))(?:\s*\.\s*((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)))?(?:\s+(?:as\s+)?((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)))?/gi;
-  for (const match of statement.matchAll(pattern)) {
-    if (NOT_AN_INTRODUCER_AFTER.test(statement.slice(0, match.index))) continue;
-    const [, , first, second, aliasRaw] = match;
-    const schema = second ? stripQuotes(first!) : undefined;
-    const table = stripQuotes(second ?? first!);
-    let alias = aliasRaw ? stripQuotes(aliasRaw) : undefined;
-    if (alias && NOT_AN_ALIAS.has(alias.toLowerCase())) alias = undefined;
-    refs.push({ schema, table, alias });
+  TARGET.lastIndex = 0;
+  for (let match = TARGET.exec(statement); match; match = TARGET.exec(statement)) {
+    const [, , first, second] = match;
+    const afterTable = TARGET.lastIndex;
+    // an alias is only consumed once it is one, so `FROM key JOIN t` still sees the JOIN
+    let alias: string | undefined;
+    const candidate = ALIAS.exec(statement.slice(afterTable));
+    if (candidate) {
+      const name = stripQuotes(candidate[2]!);
+      if (candidate[1] || !NOT_AN_ALIAS.has(name.toLowerCase())) {
+        alias = name;
+        TARGET.lastIndex = afterTable + candidate[0].length;
+      }
+    }
+    if (NOT_AN_INTRODUCER_AFTER.some((pattern) => pattern.test(statement.slice(0, match!.index)))) continue;
+    refs.push({ schema: second ? stripQuotes(first!) : undefined, table: stripQuotes(second ?? first!), alias });
   }
   return refs;
 }
