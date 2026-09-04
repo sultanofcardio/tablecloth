@@ -244,7 +244,7 @@ export class ConsoleManager implements vscode.Disposable {
   }
 
   /** Open an existing console file, restoring its binding when state was lost. */
-  async openConsole(uri: vscode.Uri, ds: StoredDataSource, database?: string, schema?: string): Promise<void> {
+  async openConsole(uri: vscode.Uri, ds: StoredDataSource, database?: string, schema?: string): Promise<vscode.Uri> {
     if (!this.bindings()[uri.toString()]) {
       await this.setBinding(uri, {
         dataSourceId: ds.config.id,
@@ -254,6 +254,7 @@ export class ConsoleManager implements vscode.Disposable {
     }
     await vscode.commands.executeCommand('vscode.openWith', uri, 'tablecloth.console');
     this.updateStatusBar();
+    return uri;
   }
 
   /** Create the next free console file for a data source and open it. */
@@ -285,13 +286,10 @@ export class ConsoleManager implements vscode.Disposable {
   }
 
   /** Open the default console (console.sql), creating it when missing. */
-  async openDefaultConsole(ds: StoredDataSource, database?: string, schema?: string): Promise<void> {
+  async openDefaultConsole(ds: StoredDataSource, database?: string, schema?: string): Promise<vscode.Uri> {
     const existing = (await this.listConsoles(ds)).find((c) => c.isDefault);
-    if (existing) {
-      await this.openConsole(existing.uri, ds, database, schema);
-    } else {
-      await this.newConsole(ds, database, schema);
-    }
+    if (existing) return this.openConsole(existing.uri, ds, database, schema);
+    return this.newConsole(ds, database, schema);
   }
 
   /**

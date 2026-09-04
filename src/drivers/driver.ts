@@ -17,6 +17,12 @@ export interface ConnectContext {
 export interface DbSession {
   readonly dialect: DriverId;
   readonly serverVersion: string;
+  /**
+   * Server-side identity of this connection (backend pid, thread id), for
+   * cancelling a running statement from another connection. Absent when the
+   * engine cannot cancel (SQLite runs in-process).
+   */
+  readonly backendId?: number;
   /** Run a statement, returning display-normalized rows. */
   query(sql: string, params?: unknown[]): Promise<QueryResult>;
   /** Run a statement, returning raw driver values (driver-internal introspection use). */
@@ -32,6 +38,30 @@ export interface Driver {
   /** All schema-level names available for selection in the data source dialog. */
   listSchemas(session: DbSession): Promise<string[]>;
   introspect(session: DbSession, config: DataSourceConfig, showSystem: boolean): Promise<CatalogModel>;
+}
+
+/** Statement that cancels whatever `backendId` is running, issued from another connection. */
+export function cancelStatementSql(dialect: DriverId, backendId: number): string | undefined {
+  if (!Number.isInteger(backendId)) return undefined;
+  switch (dialect) {
+    case 'postgres':
+      return `SELECT pg_cancel_backend(${backendId})`;
+    case 'mysql':
+      return `KILL QUERY ${backendId}`;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Whether a statement failed because it was cancelled (PostgreSQL SQLSTATE
+ * 57014, MySQL errno 1317), as opposed to any other error.
+ */
+export function isCancellationError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const { code, errno, message } = err as { code?: unknown; errno?: unknown; message?: unknown };
+  if (code === '57014' || code === 'ER_QUERY_INTERRUPTED' || errno === 1317) return true;
+  return /canceling statement due to user request|query execution was interrupted/i.test(String(message ?? ''));
 }
 
 // ---------------------------------------------------------------------------

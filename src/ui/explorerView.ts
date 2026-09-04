@@ -15,6 +15,10 @@ export interface ExplorerActions {
   disconnect(dsId: string): Promise<void>;
   toggleSystemSchemas(): Promise<void>;
   openTable(ref: ExplorerRef): Promise<void>;
+  /** "Go to DDL" for a table, view, routine, sequence, or enum node. */
+  openDdl(ref: ExplorerRef, kind: string): Promise<void>;
+  /** Import a file into a table (ref names it) or as a new table (ref names the schema). */
+  importData(ref: ExplorerRef): Promise<void>;
   consoleMenuItems(ds: StoredDataSource): Promise<MenuItem[]>;
   consoleMenuPick(ds: StoredDataSource, itemId: string, db?: string, schema?: string): Promise<void>;
   consoleMenuButton(ds: StoredDataSource, itemId: string, buttonId: string): Promise<void>;
@@ -101,6 +105,12 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: 'tree', nodes, showSystem, expandAll });
   }
 
+  /** Expand the tree down to a node and select it (Go to Object). */
+  async reveal(nodeId: string): Promise<void> {
+    await vscode.commands.executeCommand(`${ExplorerViewProvider.viewId}.focus`);
+    this.post({ type: 'reveal', id: nodeId });
+  }
+
   private dataSourceFor(ref: ExplorerRef | undefined): StoredDataSource | undefined {
     return ref ? this.store.get(ref.dsId) : undefined;
   }
@@ -148,6 +158,12 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
       }
       case 'openTable':
         if (message.ref) await this.actions.openTable(message.ref as ExplorerRef);
+        break;
+      case 'openDdl':
+        if (message.ref) await this.actions.openDdl(message.ref as ExplorerRef, String(message.kind ?? 'table'));
+        break;
+      case 'importData':
+        if (message.ref) await this.actions.importData(message.ref as ExplorerRef);
         break;
       case 'action':
         await this.handleAction(String(message.name), message.ref as ExplorerRef | undefined);
@@ -269,6 +285,7 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
     <span class="tbsep"></span>
     <button id="tb-console" class="tbtn" title="Query Console…">${icon('<path d="M8 9l3 3l-3 3"/><path d="M13 15l3 0"/><path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/>')}</button>
     <button id="tb-table" class="tbtn" title="Open Table Data">${icon('<path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z"/><path d="M3 10h18"/><path d="M10 3v18"/>')}</button>
+    <button id="tb-ddl" class="tbtn ddl" title="Go to DDL">DDL</button>
     <span class="tbsep"></span>
     <button id="tb-eye" class="tbtn" title="Show/Hide System Schemas">${icon('<path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/>')}</button>
   </div>

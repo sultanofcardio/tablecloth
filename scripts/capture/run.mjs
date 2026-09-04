@@ -11,6 +11,15 @@ import { runTests } from '@vscode/test-electron';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outDir = process.env.SHOT_DIR ?? join(root, 'scripts', 'capture', 'out');
+// which in-host suite to run and which markers it drops (README shots by default);
+// SHOT_NAMES narrows the list, otherwise every marker the suite drops is shot
+const suiteFile = process.env.SHOT_SUITE ?? 'suite.cjs';
+const suiteShots = {
+  'suite.cjs': 'hero,grid,dialog',
+  'phase2.cjs': 'grid-changes,grid-submit,grid-filter,grid-transposed,console-inspections,console-parameters,import',
+};
+const shotNames = (process.env.SHOT_NAMES ?? suiteShots[suiteFile] ?? '').split(',').filter(Boolean);
+if (shotNames.length === 0) throw new Error(`set SHOT_NAMES: no known shots for ${suiteFile}`);
 const venvPython = process.env.VENV_PY;
 if (!venvPython) throw new Error('set VENV_PY to the pyobjc venv python');
 
@@ -97,7 +106,7 @@ const baselinePath = join(work, 'baseline.json');
 writeFileSync(baselinePath, execFileSync(venvPython, [shoot, 'list']));
 
 // watcher: marker file appears -> take the screenshot for it
-const shots = { hero: 'hero', grid: 'grid', dialog: 'dialog' };
+const shots = Object.fromEntries(shotNames.map((name) => [name, name]));
 const taken = new Set();
 const watcher = setInterval(() => {
   for (const [markerName, shotName] of Object.entries(shots)) {
@@ -115,10 +124,11 @@ const watcher = setInterval(() => {
 try {
   await runTests({
     extensionDevelopmentPath: root,
-    extensionTestsPath: join(root, 'scripts', 'capture', 'suite.cjs'),
+    extensionTestsPath: join(root, 'scripts', 'capture', suiteFile),
     launchArgs: [workspace, '--user-data-dir', profile, '--disable-workspace-trust', '--disable-extensions'],
     extensionTestsEnv: {
       TABLECLOTH_CAPTURE: '1',
+      TABLECLOTH_TEST_HOOKS: '1',
       TABLECLOTH_DEMO_EXPAND: 'orders',
       TABLECLOTH_MARKER_DIR: markerDir,
     },

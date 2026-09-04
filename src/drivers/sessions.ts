@@ -1,6 +1,6 @@
 import type { CatalogModel, DataSourceConfig, DataSourceSecrets } from '../core/types';
 import { getDriver } from './index';
-import type { DbSession } from './driver';
+import { cancelStatementSql, type DbSession } from './driver';
 
 export interface SessionDeps {
   getSecrets(dataSourceId: string): Promise<DataSourceSecrets>;
@@ -19,6 +19,9 @@ interface Managed {
 
 /** The session used for introspection, table browsing, and unbound runs. */
 const MAIN_SESSION = 'main';
+
+/** A side connection that only ever issues cancel requests. */
+const CANCEL_SESSION = 'cancel';
 
 function sessionKey(dataSourceId: string, suffix: string): string {
   return `${dataSourceId}::${suffix}`;
@@ -160,6 +163,27 @@ export class SessionManager {
   async serverVersion(config: DataSourceConfig): Promise<string> {
     const managed = await this.ensure(config, MAIN_SESSION);
     return managed.session.serverVersion;
+  }
+
+  /** Whether statements on this session can be cancelled from another connection. */
+  canCancel(config: DataSourceConfig): boolean {
+    return cancelStatementSql(config.driver, 1) !== undefined;
+  }
+
+  /**
+   * Cancel whatever the session for `suffix` is running, through a separate
+   * connection (the busy one cannot take commands). Resolves false when the
+   * session is not connected or the engine cannot cancel.
+   */
+  async cancel(config: DataSourceConfig, suffix: string = MAIN_SESSION): Promise<boolean> {
+    const pending = this.sessions.get(sessionKey(config.id, suffix));
+    const managed = pending ? await pending.catch(() => undefined) : undefined;
+    const backendId = managed?.session.backendId;
+    if (backendId === undefined) return false;
+    const sql = cancelStatementSql(config.driver, backendId);
+    if (!sql) return false;
+    await this.run(config, (session) => session.query(sql), CANCEL_SESSION);
+    return true;
   }
 
   private async closeKey(key: string, expected?: Managed): Promise<void> {

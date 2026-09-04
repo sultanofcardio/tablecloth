@@ -3,14 +3,30 @@ import * as vscode from 'vscode';
 /** Where Tablecloth opens the Data Sources dialog. */
 export type SurfacePresentation = 'floatingWindow' | 'editorTab';
 
-export const OPEN_IN_SETTING = 'tablecloth.dataSourceDialog.openIn';
+export const OPEN_IN_SETTING = 'tablecloth.dialogs.openIn';
+
+/** The Phase 1 name of the setting, still honored when the new one is unset. */
+export const LEGACY_OPEN_IN_SETTING = 'tablecloth.dataSourceDialog.openIn';
 
 /**
- * Read the user's preferred presentation for the Data Sources dialog.
- * Defaults to a floating window; any unrecognized value falls back to it too.
+ * Read the user's preferred presentation for Tablecloth's dialogs (data
+ * sources, import). Defaults to a floating window; any unrecognized value
+ * falls back to it too.
  */
 export function getSurfacePresentation(): SurfacePresentation {
-  const configured = vscode.workspace.getConfiguration().get<string>(OPEN_IN_SETTING);
+  const config = vscode.workspace.getConfiguration();
+  const inspected = config.inspect<string>(OPEN_IN_SETTING);
+  const explicitlyConfigured = !!inspected && [
+    inspected.globalValue,
+    inspected.workspaceValue,
+    inspected.workspaceFolderValue,
+    inspected.globalLanguageValue,
+    inspected.workspaceLanguageValue,
+    inspected.workspaceFolderLanguageValue,
+  ].some((value) => value !== undefined);
+  const configured = explicitlyConfigured
+    ? config.get<string>(OPEN_IN_SETTING)
+    : config.get<string>(LEGACY_OPEN_IN_SETTING);
   return configured === 'editorTab' ? 'editorTab' : 'floatingWindow';
 }
 

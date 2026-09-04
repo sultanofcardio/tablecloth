@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import * as mysql from 'mysql2/promise';
 import type {
   CatalogModel,
+  ColumnModel,
   DataSourceConfig,
   DatabaseModel,
   IndexModel,
@@ -53,6 +54,7 @@ class MySqlSession implements DbSession {
   constructor(
     private readonly connection: mysql.Connection,
     readonly serverVersion: string,
+    readonly backendId: number | undefined,
     private readonly tunnel?: SshTunnel,
   ) {}
 
@@ -152,6 +154,9 @@ export const mysqlDriver: Driver = {
         connectTimeout: 15_000,
         dateStrings: true,
         supportBigNumbers: true,
+        // report matched rows for UPDATE (the JDBC default IntelliJ sees), so
+        // an update that leaves a value unchanged still counts as one row
+        flags: ['+FOUND_ROWS'],
         stream: tunnel ? (tunnel.stream as any) : undefined,
       });
       const [versionRows] = await connection.query({ sql: 'SELECT VERSION()', rowsAsArray: true });
@@ -160,7 +165,8 @@ export const mysqlDriver: Driver = {
         await connection.query('SET SESSION TRANSACTION READ ONLY');
       }
       const flavor = /mariadb/i.test(version) ? 'MariaDB' : 'MySQL';
-      return new MySqlSession(connection, `${flavor} ${version}`, tunnel);
+      const threadId = typeof connection.threadId === 'number' ? connection.threadId : undefined;
+      return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel);
     } catch (err) {
       tunnel?.dispose();
       throw err;
@@ -221,14 +227,14 @@ export const mysqlDriver: Driver = {
     }
 
     const cols = await session.queryRaw(
-      `SELECT table_schema, table_name, column_name, column_type, is_nullable, column_default, column_key
+      `SELECT table_schema, table_name, column_name, column_type, is_nullable, column_default, column_key, extra
        FROM information_schema.columns
        WHERE table_schema IN (${placeholders})
        ORDER BY table_schema, table_name, ordinal_position`,
       selected,
     );
     for (const row of cols.rows) {
-      const [db, tbl, name, dtype, nullable, def, key] = row as [
+      const [db, tbl, name, dtype, nullable, def, key, extra] = row as [
         string,
         string,
         string,
@@ -236,29 +242,35 @@ export const mysqlDriver: Driver = {
         string,
         string | null,
         string,
+        string | null,
       ];
       const rel = relations.get(relKey(db, tbl));
       if (!rel) continue;
-      rel.columns.push({
+      const column: ColumnModel = {
         name,
         dataType: String(dtype),
         nullable: /yes/i.test(nullable),
         primaryKey: key === 'PRI',
         default: def ?? undefined,
-      });
+      };
+      if (/auto_increment/i.test(extra ?? '')) column.autoIncrement = true;
+      if (/\b(VIRTUAL|STORED) GENERATED\b/i.test(extra ?? '')) column.generated = true;
+      rel.columns.push(column);
     }
 
     const fks = await session.queryRaw(
-      `SELECT table_schema, table_name, column_name, referenced_table_schema, referenced_table_name
+      `SELECT table_schema, table_name, column_name, referenced_table_schema, referenced_table_name,
+              referenced_column_name
        FROM information_schema.key_column_usage
        WHERE table_schema IN (${placeholders}) AND referenced_table_name IS NOT NULL`,
       selected,
     );
     for (const row of fks.rows) {
-      const [db, tbl, colName, fdb, ftbl] = row as [string, string, string, string, string];
+      const [db, tbl, colName, fdb, ftbl, fcol] = row as [string, string, string, string, string, string | null];
       const col = relations.get(relKey(db, tbl))?.columns.find((c) => c.name === colName);
       if (!col) continue;
       col.foreignKeyTarget = fdb && fdb !== db ? `${fdb}.${ftbl}` : ftbl;
+      if (fcol) col.foreignKeyColumn = fcol;
     }
 
     const idx = await session.queryRaw(

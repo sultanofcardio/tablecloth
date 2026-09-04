@@ -71,12 +71,25 @@ const explorerWebviewOptions = {
   logLevel: 'info',
 };
 
-/** The anchored menu component as a global, for the plain-JS grid webview. */
+/** The Import Data dialog webview app. */
 /** @type {import('esbuild').BuildOptions} */
-const menuGlobalOptions = {
-  entryPoints: ['src/webview/menuGlobal.ts'],
+const importWebviewOptions = {
+  entryPoints: ['src/webview/import.ts'],
   bundle: true,
-  outfile: 'dist/webview/menu.js',
+  outfile: 'dist/webview/import.js',
+  platform: 'browser',
+  format: 'iife',
+  target: 'es2022',
+  minify: !watch,
+  logLevel: 'info',
+};
+
+/** The grid webview app (Tablecloth panel results and table data editors). */
+/** @type {import('esbuild').BuildOptions} */
+const gridWebviewOptions = {
+  entryPoints: ['src/webview/grid/main.ts'],
+  bundle: true,
+  outfile: 'dist/webview/grid.js',
   platform: 'browser',
   format: 'iife',
   target: 'es2022',
@@ -113,7 +126,8 @@ const allOptions = [
   extensionOptions,
   consoleWebviewOptions,
   explorerWebviewOptions,
-  menuGlobalOptions,
+  gridWebviewOptions,
+  importWebviewOptions,
   editorWorkerOptions,
 ];
 

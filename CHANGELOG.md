@@ -2,6 +2,40 @@
 
 All notable changes to Tablecloth are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may change the settings format.
 
+## [Unreleased]
+
+Phase 2 (daily driver) of [the plan](./docs/plan.html): edit data in the grid, and trust the SQL the console writes for you.
+
+### Added
+
+- **Editable data grid**: double-click a cell (or press F2) to edit it, and the change accumulates locally (edited cells blue, added rows green, deleted rows struck through). Submit shows the exact DML first and runs it as one atomic batch; Revert selected or Revert all throws it away.
+- Row operations in the grid toolbar and context menu: add a row, clone the selected row, delete rows, and Set NULL or Set DEFAULT on any cell.
+- Transaction mode per data editor, with isolation levels and commit or roll back, alongside the mode already available per console.
+- WHERE and ORDER BY fields above the grid, each with an IntelliJ-style completion lookup over the table's columns, the keywords valid in that clause, and functions. Nothing completes inside a string literal, and completing inside a quote you already typed keeps that quote.
+- Sorting and filtering from the header: click a column header to write the ORDER BY (Alt-click to sort by several columns), open a column funnel to pick from its distinct values, or use Filter by value on a cell.
+- Foreign-key navigation: a FK cell jumps to the referenced row, and the context menu opens the rows that reference the current one. View Query and Copy Query to Console show the SQL behind the grid.
+- Alternate views of a result: transpose, Table, Tree, and Text views, a value editor for long values (⇧⏎), the column list (⌘F12), and find in page (⌘F).
+- **Console intelligence**: completion for keywords and functions as well as objects, JOIN clauses and ON conditions inferred from foreign keys, live templates (`sel`, `selw`, `ins`, `upd`, `del`, `tab`, and friends), inspections for unresolved tables and columns with Change-to quick fixes, Format SQL (⌘⌥L, or Format Document), `:name` and `${name}` parameters with a values dialog, and cancelling a running statement (⌘F2).
+- **Import Data from File**: delimiter detection, a column mapping step, creating the target table from the file, and batched inserts that stop or skip on error.
+- New extractors: HTML, JSON, Markdown, One-row, Pretty, Python-DataFrame, SQL-Insert-Multirow, and XML. Excel (`.xlsx`) is available through Export Data, and the extractor and Export menus follow IntelliJ's shape.
+- Go to Database Object (⌘⇧O) searches every introspected source, and Go to DDL opens the CREATE statement for tables, views, routines, sequences, and enum types.
+
+### Changed
+
+- Console result grids are editable only for single-table SELECTs whose key columns are in the result. Any other result opens read-only and says why.
+- The SQL Updates extractor keeps known primary-key values in the WHERE clause even when the key column is not among the exported columns, while SET still covers only the columns you selected.
+- An SQL Updates copy or export whose selected columns are all part of the key has nothing to set, so it produces a single comment naming the key columns and how to get UPDATE statements; the grid says the same in the status bar after a copy, or as a warning after an export to file, so the result is never silently empty.
+
+### Fixed
+
+- An isolation level is applied to the session that runs the statements it governs, and is reapplied to a fresh session after a reconnect.
+- Exports and client-side sorting keep 64-bit integers exact; large values no longer round through a floating-point value.
+- Generated SQL quotes reserved words and case-sensitive identifiers for the dialect in hand, so tables and columns named after keywords round-trip.
+
+### Known limits
+
+The grid is no longer read-only. The limits this release still carries are listed in [ROADMAP.md](./ROADMAP.md#known-limits-after-phase-2).
+
 ## [0.0.3] - 2026-09-03
 
 ### Changed

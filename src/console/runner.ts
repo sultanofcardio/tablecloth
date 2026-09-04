@@ -2,13 +2,17 @@ import * as vscode from 'vscode';
 import { basename } from 'node:path';
 import type { ConsoleBinding, StoredDataSource, TxIsolation, TxMode } from '../core/types';
 import { ENV_COLOR_HEX, TX_ISOLATION_LABELS } from '../core/types';
-import { errorMessage, formatMillis, quoteIdent, timestamp, truncate } from '../core/util';
-import type { DbSession } from '../drivers/driver';
+import { errorMessage, formatMillis, qualify, quoteIdent, timestamp, truncate } from '../core/util';
+import { makeEditTarget, resultColumnOrigins, singleSourceRelation, type ChangeStatement } from '../edit/changeSet';
+import { findRelation, referencingColumns } from '../edit/relations';
+import { isCancellationError, type DbSession } from '../drivers/driver';
 import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
+import { bindParameters, findParameters, parameterNames } from '../sql/params';
 import { splitStatements, statementAt } from '../sql/splitter';
 import { defaultPageSize, StaticGridProvider, type GridMeta, type RunQuery } from '../ui/grid';
-import { ConsoleGridProvider, makeRunQuery } from '../ui/providers';
+import type { ReferencingDto } from '../ui/gridProtocol';
+import { ConsoleGridProvider, makeRunQuery, runChangeBatch, type ConsoleEditingOptions } from '../ui/providers';
 import type { ServicesViewProvider } from '../ui/servicesView';
 import type { MenuItem } from '../webview/menu';
 import type { ConsoleManager } from './consoles';
@@ -18,6 +22,8 @@ import { resultTabTitle } from './tabTitle';
 interface RunOutcome {
   ok: boolean;
   error?: string;
+  /** The user cancelled a prompt; nothing ran and nothing needs reporting. */
+  cancelled?: boolean;
 }
 
 const ISOLATION_SQL: Record<Exclude<TxIsolation, 'default'>, string> = {
@@ -26,14 +32,53 @@ const ISOLATION_SQL: Record<Exclude<TxIsolation, 'default'>, string> = {
   serializable: 'SERIALIZABLE',
 };
 
+const PARAM_VALUES_KEY = 'tablecloth.parameterValues';
+
+/**
+ * Session suffix for scripts run without a console document (Run File on a
+ * data source). They get a session of their own so a script's BEGIN, or a
+ * result grid's submit, never shares a transaction with introspection, table
+ * editors, or imports on the main session.
+ */
+const SCRIPT_SUFFIX = 'script';
+
+/**
+ * Asks the user for parameter values. The console webview registers its
+ * IntelliJ-style dialog per open console; anything else falls back to input
+ * boxes.
+ */
+export type ParameterPrompt = (
+  names: string[],
+  previous: Record<string, string>,
+) => Promise<Record<string, string | null> | undefined>;
+
 /** Executes console statements and presents results in the Services view. */
 export class QueryRunner {
+  private readonly prompters = new Map<string, ParameterPrompt>();
+  /** Statement in flight per console key, for the stop button. */
+  private readonly running = new Map<string, { ds: StoredDataSource; suffix?: string }>();
+  private readonly runningEmitter = new vscode.EventEmitter<{ key: string; running: boolean }>();
+  /** Fires when a console starts or finishes a statement (toolbars show the stop button). */
+  readonly onDidChangeRunning = this.runningEmitter.event;
+
+  isRunning(key: string): boolean {
+    return this.running.has(key);
+  }
+
   constructor(
     private readonly sessions: SessionManager,
     private readonly consoles: ConsoleManager,
     private readonly services: ServicesViewProvider,
     private readonly history: QueryHistory,
+    private readonly memento: vscode.Memento,
   ) {}
+
+  /** A console webview offers its own parameters dialog while it is open. */
+  registerParameterPrompt(uri: vscode.Uri, prompt: ParameterPrompt): vscode.Disposable {
+    const key = uri.toString();
+    this.prompters.set(key, prompt);
+    return { dispose: () => this.prompters.delete(key) };
+  }
 
   /** ⌘⏎: run the selection when there is one, else the statement at the caret. */
   async runStatement(editor: vscode.TextEditor): Promise<void> {
@@ -74,7 +119,7 @@ export class QueryRunner {
     for (const stmt of statements) {
       const outcome = await this.execute(ds, binding, stmt.sql, consoleUri);
       if (!outcome.ok) {
-        if (statements.length > 1) {
+        if (statements.length > 1 && !outcome.cancelled) {
           void vscode.window.showErrorMessage(
             `Run stopped at statement ${done + 1} of ${statements.length}: ${truncate(outcome.error ?? '', 200)}`,
           );
@@ -130,6 +175,7 @@ export class QueryRunner {
     for (const stmt of statements) {
       const outcome = await this.execute(ds, binding, stmt.sql, consoleUri, fileName);
       if (!outcome.ok) {
+        if (outcome.cancelled) return;
         this.services.appendOutput(consoleKey, {
           kind: 'error',
           text: `[${timestamp()}] run of ${fileName} stopped: ${done} of ${statements.length} statements completed`,
@@ -158,6 +204,8 @@ export class QueryRunner {
       env: ds.config.color,
       readOnly: ds.config.readOnly,
       statement: truncate(sql, 300),
+      dsId: ds.config.id,
+      dsName: ds.config.name,
     };
   }
 
@@ -167,6 +215,7 @@ export class QueryRunner {
 
   /** Schema context applied to each live console session (reconnects reapply). */
   private readonly appliedSchemaContext = new WeakMap<DbSession, string>();
+  private readonly appliedIsolation = new WeakMap<DbSession, TxIsolation>();
 
   /** The console's bound schema becomes the session's effective schema, like IntelliJ. */
   private async ensureSchemaContext(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
@@ -186,6 +235,24 @@ export class QueryRunner {
     this.appliedSchemaContext.set(session, key);
   }
 
+  /** Open the console's manual transaction if its mode asks for one and none is open. */
+  private async ensureManualTransaction(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
+    const tx = this.consoles.getTxState(consoleUri);
+    if (tx.isolation !== 'default' && this.appliedIsolation.get(session) !== tx.isolation) {
+      const level = ISOLATION_SQL[tx.isolation];
+      const sql =
+        ds.config.driver === 'postgres'
+          ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
+          : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
+      await session.query(sql);
+      this.appliedIsolation.set(session, tx.isolation);
+    }
+    if (tx.mode === 'manual' && !this.consoles.isInTx(consoleUri)) {
+      await session.query(this.beginSql(ds));
+      this.consoles.setInTx(consoleUri, true);
+    }
+  }
+
   /**
    * Session runner for one console: statements run on the console's own
    * session, with the bound schema applied and manual mode opening a
@@ -196,23 +263,19 @@ export class QueryRunner {
    * it and the raw fallback would fail too).
    */
   private makeConsoleRun(ds: StoredDataSource, consoleUri?: vscode.Uri, guarded = false): RunQuery {
-    if (!consoleUri) return makeRunQuery(this.sessions, ds.config);
+    if (!consoleUri) return makeRunQuery(this.sessions, ds.config, SCRIPT_SUFFIX);
     const suffix = this.consoles.consoleSuffix(consoleUri);
-    return async (sql: string) => {
+    return async (sql: string, params?: unknown[]) => {
       const started = Date.now();
       const result = await this.sessions.run(
         ds.config,
         async (session) => {
           await this.ensureSchemaContext(session, ds, consoleUri);
-          const tx = this.consoles.getTxState(consoleUri);
-          if (tx.mode === 'manual' && !this.consoles.isInTx(consoleUri)) {
-            await session.query(this.beginSql(ds));
-            this.consoles.setInTx(consoleUri, true);
-          }
+          await this.ensureManualTransaction(session, ds, consoleUri);
           if (guarded && this.consoles.isInTx(consoleUri)) {
             await session.query('SAVEPOINT tablecloth_probe');
             try {
-              const probed = await session.query(sql);
+              const probed = await session.query(sql, params);
               await session.query('RELEASE SAVEPOINT tablecloth_probe');
               return probed;
             } catch (err) {
@@ -221,7 +284,7 @@ export class QueryRunner {
               throw err;
             }
           }
-          return session.query(sql);
+          return session.query(sql, params);
         },
         suffix,
       );
@@ -245,6 +308,149 @@ export class QueryRunner {
     return { key: `script:${ds.config.id}`, label: scriptName ? basename(scriptName) : 'script' };
   }
 
+  // ------------------------------------------------------------ parameters
+
+  private savedParameterValues(dsId: string): Record<string, string> {
+    return this.memento.get<Record<string, Record<string, string>>>(PARAM_VALUES_KEY, {})[dsId] ?? {};
+  }
+
+  private async rememberParameterValues(dsId: string, values: Record<string, string | null>): Promise<void> {
+    const all = { ...this.memento.get<Record<string, Record<string, string>>>(PARAM_VALUES_KEY, {}) };
+    const forDs = { ...(all[dsId] ?? {}) };
+    for (const [name, value] of Object.entries(values)) {
+      if (value === null) delete forDs[name];
+      else forDs[name] = value;
+    }
+    all[dsId] = forDs;
+    await this.memento.update(PARAM_VALUES_KEY, all);
+  }
+
+  /** Native fallback: one input box per parameter, previous values prefilled. */
+  private async promptNatively(
+    names: string[],
+    previous: Record<string, string>,
+  ): Promise<Record<string, string | null> | undefined> {
+    const values: Record<string, string | null> = {};
+    for (const [i, name] of names.entries()) {
+      const input = await vscode.window.showInputBox({
+        title: `Parameters (${i + 1}/${names.length})`,
+        prompt: `Value for ${name} (leave empty for NULL)`,
+        value: previous[name] ?? '',
+        ignoreFocusOut: true,
+      });
+      if (input === undefined) return undefined;
+      values[name] = input === '' ? null : input;
+    }
+    return values;
+  }
+
+  private async bindStatement(
+    ds: StoredDataSource,
+    sql: string,
+    consoleUri?: vscode.Uri,
+  ): Promise<{ text: string; params?: unknown[] } | 'cancelled'> {
+    const refs = findParameters(sql, ds.config.driver);
+    if (refs.length === 0) return { text: sql };
+    const names = parameterNames(refs);
+    const previous = this.savedParameterValues(ds.config.id);
+    const prompt = (consoleUri && this.prompters.get(consoleUri.toString())) ?? this.promptNatively.bind(this);
+    const values = await prompt(names, previous);
+    if (!values) return 'cancelled';
+    await this.rememberParameterValues(ds.config.id, values);
+    const bound = bindParameters(sql, ds.config.driver, refs, values);
+    return { text: bound.text, params: bound.values };
+  }
+
+  // ------------------------------------------------------------ editable results
+
+  /**
+   * A console SELECT over one plain table becomes editable when the table is
+   * in the catalog and its key columns are all in the result. Anything that
+   * reads more than that one table (joins, derived tables, CTEs, set
+   * operations) stays read-only: its rows cannot be traced back by name.
+   */
+  private editingFor(
+    ds: StoredDataSource,
+    binding: ConsoleBinding,
+    sql: string,
+    columns: { name: string; dataType?: string; numeric?: boolean }[],
+    consoleUri: vscode.Uri | undefined,
+  ): { editing: ConsoleEditingOptions; object: GridMeta['object'] } | undefined {
+    if (classifyStatement(sql).keyword !== 'select') return undefined;
+    const source = singleSourceRelation(sql, ds.config.driver);
+    if (!source) return undefined;
+    const catalog = this.sessions.getCatalog(ds.config.id);
+    if (!catalog) return undefined;
+    const defaultSchema = ds.config.driver === 'mysql' ? binding.database : binding.schema;
+    const found = findRelation(catalog, source.schema ?? defaultSchema, source.table);
+    if (!found || found.relation.kind !== 'table') return undefined;
+    const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
+    const qualified = qualify(ds.config.driver, schemaForSql, found.relation.name);
+    const origins = resultColumnOrigins(sql, ds.config.driver, found.relation.columns, columns, source);
+    const sourcedColumns = columns.map((column, index) => ({ ...column, sourceColumn: origins[index] }));
+    const target = makeEditTarget(ds.config.driver, qualified, found.relation.columns, sourcedColumns, ds.config.readOnly, true);
+    const referencing: ReferencingDto[] = referencingColumns(catalog, found.schema, found.relation).map((r) => ({
+      label: `${r.relation.name}.${r.column.name}`,
+      schema: r.schema.implicit ? null : r.schema.name,
+      table: r.relation.name,
+      column: r.column.name,
+      viaColumn: r.viaColumn,
+    }));
+    const submit = (statements: ChangeStatement[]) => this.submitOnConsole(ds, consoleUri, statements);
+    return {
+      editing: { target, referencing, submit },
+      object: {
+        dsId: ds.config.id,
+        db: found.db.name,
+        schema: found.schema.implicit ? undefined : found.schema.name,
+        name: found.relation.name,
+      },
+    };
+  }
+
+  /** Run a grid's reviewed DML on the console's session under the console's Tx mode. */
+  private async submitOnConsole(
+    ds: StoredDataSource,
+    consoleUri: vscode.Uri | undefined,
+    statements: ChangeStatement[],
+  ): Promise<void> {
+    const key = consoleUri ? consoleUri.toString() : `script:${ds.config.id}`;
+    const manual = consoleUri ? this.consoles.getTxState(consoleUri).mode === 'manual' : false;
+    await this.sessions.run(
+      ds.config,
+      async (session) => {
+        if (consoleUri) {
+          await this.ensureSchemaContext(session, ds, consoleUri);
+          await this.ensureManualTransaction(session, ds, consoleUri);
+        }
+        const joinOpen = !!consoleUri && this.consoles.isInTx(consoleUri);
+        await runChangeBatch(session, statements, { joinOpenTransaction: joinOpen, commit: !manual });
+      },
+      consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX,
+    );
+    for (const statement of statements) {
+      this.services.appendOutput(key, { kind: 'cmd', prompt: ds.config.name, text: truncate(statement.sql, 160) });
+    }
+    this.services.appendOutput(key, {
+      kind: 'meta',
+      text: `[${timestamp()}] ${statements.length} change${statements.length === 1 ? '' : 's'} submitted${manual ? ' - pending commit (Tx: Manual)' : ''}`,
+    });
+  }
+
+  // ------------------------------------------------------------ execution
+
+  /** Cancel the statement a console is running, from a side connection. */
+  async cancel(consoleKey: string): Promise<void> {
+    const entry = this.running.get(consoleKey);
+    if (!entry) {
+      void vscode.window.showInformationMessage('Nothing is running on this console.');
+      return;
+    }
+    if (!(await this.sessions.cancel(entry.ds.config, entry.suffix))) {
+      void vscode.window.showInformationMessage('This database cannot cancel a running statement.');
+    }
+  }
+
   private async execute(
     ds: StoredDataSource,
     binding: ConsoleBinding,
@@ -264,8 +470,16 @@ export class QueryRunner {
       config.driver,
       config.color === 'none' ? null : ENV_COLOR_HEX[config.color],
     );
+
+    const bound = await this.bindStatement(ds, sql, consoleUri);
+    if (bound === 'cancelled') return { ok: false, cancelled: true };
+
     this.services.setStatus(key, 'running…');
     this.services.appendOutput(key, { kind: 'cmd', prompt, text: truncate(sql, 160) });
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
+    this.running.set(key, { ds, suffix });
+    this.runningEmitter.fire({ key, running: true });
+    const cancel = this.sessions.canCancel(config) ? () => this.sessions.cancel(config, suffix) : undefined;
 
     const cls = classifyStatement(sql);
     const run = this.makeConsoleRun(ds, consoleUri);
@@ -273,53 +487,90 @@ export class QueryRunner {
     const freshBinding = consoleUri ? (this.consoles.getBinding(consoleUri) ?? binding) : binding;
     const tabTitle = () => resultTabTitle(sql, freshBinding, () => this.services.nextResultNumber(key));
 
-    if (cls.selectish) {
-      // Page the result server-side by wrapping the statement; on any failure
-      // fall back to running it verbatim (the raw error is the accurate one).
-      const provider = new ConsoleGridProvider(config.driver, sql, this.makeConsoleRun(ds, consoleUri, true));
-      try {
-        const page = await provider.fetchPage({ offset: 0, limit: defaultPageSize() });
-        const duration = formatMillis(page.durationMs);
-        await this.services.showResultTab(key, sql, tabTitle, provider, meta, page);
-        this.services.setStatus(key, duration);
-        const note = `${page.rows.length} rows retrieved starting from 1 in ${duration}`;
-        this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] ${note}` });
-        record(note);
-        return { ok: true };
-      } catch {
-        // fall through to the raw path
-      }
-    }
-
-    const started = Date.now();
-    try {
-      const result = await run(sql);
-      const duration = formatMillis(Date.now() - started);
-      this.syncTxKeyword(consoleUri, cls.keyword);
-      let note: string;
-      if (result.columns.length > 0) {
-        const provider = new StaticGridProvider(config.driver, result.columns, result.rows);
-        const page = await provider.fetchPage({ offset: 0, limit: defaultPageSize() });
-        await this.services.showResultTab(key, sql, tabTitle, provider, meta, page);
-        note = `${result.rows.length} rows retrieved in ${duration}`;
-      } else if (cls.selectish) {
-        // a rowset with no columns (SQLite quirk): worth a line, not a tab
-        note = `0 rows retrieved in ${duration}`;
-      } else {
-        // DML and DDL report to the Output log, the IntelliJ way
-        note = `completed in ${duration}`;
-      }
-      this.services.setStatus(key, duration);
-      this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] ${note}` });
-      record(note);
-      return { ok: true };
-    } catch (err) {
+    const fail = (err: unknown): RunOutcome => {
       const message = errorMessage(err);
       this.services.showError(key, message, meta);
       this.services.setStatus(key, 'error');
       this.services.appendOutput(key, { kind: 'error', text: `[${timestamp()}] ${message}` });
       record(`error: ${truncate(message, 120)}`);
       return { ok: false, error: message };
+    };
+
+    try {
+      if (cls.selectish) {
+        // Page the result server-side by wrapping the statement; on any failure
+        // fall back to running it verbatim (the raw error is the accurate one),
+        // except a cancellation: the user stopped this statement, so it must
+        // not run a second time.
+        try {
+          const probe = new ConsoleGridProvider(
+            config.driver,
+            bound.text,
+            this.makeConsoleRun(ds, consoleUri, true),
+            bound.params,
+            cancel,
+          );
+          const page = await probe.fetchPage({ offset: 0, limit: defaultPageSize() });
+          const editable = this.editingFor(ds, freshBinding, sql, page.columns, consoleUri);
+          const provider = editable
+            ? new ConsoleGridProvider(
+                config.driver,
+                bound.text,
+                this.makeConsoleRun(ds, consoleUri, true),
+                bound.params,
+                cancel,
+                editable.editing,
+              )
+            : probe;
+          const duration = formatMillis(page.durationMs);
+          await this.services.showResultTab(
+            key,
+            sql,
+            tabTitle,
+            provider,
+            { ...meta, object: editable?.object },
+            page,
+          );
+          this.services.setStatus(key, duration);
+          const note = `${page.rows.length} rows retrieved starting from 1 in ${duration}`;
+          this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] ${note}` });
+          record(note);
+          return { ok: true };
+        } catch (err) {
+          if (isCancellationError(err)) return fail(err);
+        }
+      }
+
+      const started = Date.now();
+      try {
+        const result = await run(bound.text, bound.params);
+        const duration = formatMillis(Date.now() - started);
+        this.syncTxKeyword(consoleUri, cls.keyword);
+        let note: string;
+        if (result.columns.length > 0) {
+          const provider = new StaticGridProvider(config.driver, result.columns, result.rows);
+          const page = await provider.fetchPage({ offset: 0, limit: defaultPageSize() });
+          await this.services.showResultTab(key, sql, tabTitle, provider, meta, page);
+          note = `${result.rows.length} rows retrieved in ${duration}`;
+        } else if (cls.selectish) {
+          // a rowset with no columns (SQLite quirk): worth a line, not a tab
+          note = `0 rows retrieved in ${duration}`;
+        } else {
+          // DML and DDL report to the Output log, the IntelliJ way
+          const tx = consoleUri ? this.consoles.getTxState(consoleUri) : undefined;
+          const pending = tx?.mode === 'manual' && consoleUri && this.consoles.isInTx(consoleUri);
+          note = `completed in ${duration}${pending ? ' - pending commit (Tx: Manual)' : ''}`;
+        }
+        this.services.setStatus(key, duration);
+        this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] ${note}` });
+        record(note);
+        return { ok: true };
+      } catch (err) {
+        return fail(err);
+      }
+    } finally {
+      this.running.delete(key);
+      this.runningEmitter.fire({ key, running: false });
     }
   }
 
@@ -407,20 +658,17 @@ export class QueryRunner {
 
     if (group === 'iso' && value && value !== tx.isolation) {
       const isolation = value as TxIsolation;
-      await this.consoles.setTxState(uri, { ...this.consoles.getTxState(uri), isolation });
-      if (isolation !== 'default') {
-        const level = ISOLATION_SQL[isolation];
-        const sql =
-          ds.config.driver === 'postgres'
-            ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
-            : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
-        try {
-          await this.sessions.run(ds.config, (session) => session.query(sql), this.consoles.consoleSuffix(uri));
-          this.services.appendOutput(this.consoles.consoleSuffix(uri), { kind: 'meta', text: `[${timestamp()}] isolation set to ${level}` });
-        } catch (err) {
-          void vscode.window.showErrorMessage(`Setting isolation failed: ${errorMessage(err)}`);
-        }
+      if (this.consoles.isInTx(uri)) {
+        void vscode.window.showInformationMessage('Finish the open transaction before changing its isolation level.');
+        return;
       }
+      await this.sessions.closeSession(ds.config.id, this.consoles.consoleSuffix(uri));
+      await this.consoles.setTxState(uri, { ...this.consoles.getTxState(uri), isolation });
+      const label = isolation === 'default' ? 'database default' : ISOLATION_SQL[isolation];
+      this.services.appendOutput(this.consoles.consoleSuffix(uri), {
+        kind: 'meta',
+        text: `[${timestamp()}] isolation set to ${label}`,
+      });
     }
   }
 

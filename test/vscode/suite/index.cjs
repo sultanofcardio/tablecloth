@@ -36,6 +36,7 @@ exports.run = async function run() {
   assert.ok(extension, 'extension is installed in the dev host');
   await extension.activate();
   assert.ok(extension.isActive, 'extension activates');
+  assert.ok(extension.exports.hooks, 'test hooks are exported under TABLECLOTH_TEST_HOOKS=1');
 
   // 2. contributed commands are registered
   const commands = await vscode.commands.getCommands(true);
@@ -50,6 +51,10 @@ exports.run = async function run() {
     'tablecloth.commit',
     'tablecloth.rollback',
     'tablecloth.selectSchema',
+    'tablecloth.gotoObject',
+    'tablecloth.formatSql',
+    'tablecloth.cancelStatement',
+    'tablecloth.importData',
   ]) {
     assert.ok(commands.includes(id), `command registered: ${id}`);
   }
@@ -91,6 +96,21 @@ exports.run = async function run() {
   } finally {
     db.close();
   }
+
+  // 5b. the table data editor opens for the new table and its grid webview boots
+  await extension.exports.hooks.openTable(runId, 'greetings');
+  const gridTab = await pollForTab(
+    (tab) => tab.input instanceof vscode.TabInputWebview && tab.label === 'greetings [main]',
+  );
+  assert.ok(gridTab, 'table data editor tab opens');
+  {
+    const deadlineGrid = Date.now() + 20000;
+    while (!extension.exports.gridReady() && Date.now() < deadlineGrid) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(extension.exports.gridReady(), 'grid webview completed its ready handshake');
+  }
+  await vscode.window.tabGroups.close(gridTab);
 
   // 6. a console opens in the custom Tablecloth console editor
   await vscode.commands.executeCommand('tablecloth.newConsole');

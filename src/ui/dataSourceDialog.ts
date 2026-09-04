@@ -323,7 +323,7 @@ export class DataSourceDialog {
   <div class="pane" id="pane-options" hidden>
     <div class="frm">
       <label>Read-only:</label>
-      <span><input id="f-readonly" type="checkbox"> <span class="hint">Sets the session read-only server-side; the grid stays read-only either way in this version.</span></span>
+      <span><input id="f-readonly" type="checkbox"> <span class="hint">Sets the session read-only server-side; the data editor refuses edits as well.</span></span>
       <label>Introspection:</label>
       <span><input id="f-autosync" type="checkbox" checked> <span class="hint">Auto-sync: re-introspect on connect. Off = only on manual refresh.</span></span>
     </div>
