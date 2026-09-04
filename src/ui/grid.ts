@@ -7,6 +7,7 @@ import {
   BINARY_EXTRACTORS,
   DEFAULT_EXTRACTOR_OPTIONS,
   EXTRACTORS,
+  exportNote,
   getBinaryExtractor,
   getExtractor,
   type ExtractorInput,
@@ -726,10 +727,13 @@ export class GridController {
     const input = this.extractorInput(selectedRows, selectedColumns);
     if (!extractor || !input) return;
     const text = extractor.extract(input, extractorOptions());
+    // an extractor with nothing to emit says why (SQL Updates with only key columns); the user hears the same sentence
+    const note = exportNote(text);
     const what = `${input.rows.length} row${input.rows.length === 1 ? '' : 's'}`;
     if (mode === 'copy') {
       await vscode.env.clipboard.writeText(text);
-      vscode.window.setStatusBarMessage(`Tablecloth: copied ${what} as ${extractor.label}`, 4000);
+      if (note) vscode.window.setStatusBarMessage(`Tablecloth: ${note}`, 6000);
+      else vscode.window.setStatusBarMessage(`Tablecloth: copied ${what} as ${extractor.label}`, 4000);
       return;
     }
     const target = await vscode.window.showSaveDialog({
@@ -738,7 +742,8 @@ export class GridController {
     });
     if (!target) return;
     await vscode.workspace.fs.writeFile(target, Buffer.from(text, 'utf8'));
-    void vscode.window.showInformationMessage(`Exported ${what} to ${target.fsPath}`);
+    if (note) void vscode.window.showWarningMessage(`Tablecloth: ${note} ${target.fsPath} contains only that note.`);
+    else void vscode.window.showInformationMessage(`Exported ${what} to ${target.fsPath}`);
   }
 
   private async exportBinary(extractorId: string, selectedRows?: number[], selectedColumns?: number[]): Promise<void> {

@@ -104,6 +104,19 @@ function targetTable(input: ExtractorInput): string {
   return input.tableName ?? PLACEHOLDER_TABLE;
 }
 
+/**
+ * First line of the SQL Updates output when every selected column is part of the
+ * key: there is nothing to SET, and a copy or an export must never come back silently empty.
+ */
+export const NOTHING_TO_UPDATE = '-- Nothing to update: every selected column is part of the key';
+
+/** The sentence behind an output that is only that note, for the host to show; undefined for real output. */
+export function exportNote(text: string): string | undefined {
+  const line = text.trim();
+  if (!line.startsWith(NOTHING_TO_UPDATE) || line.includes('\n')) return undefined;
+  return line.replace(/^--\s*/, '');
+}
+
 /** Indices of the known primary key within the unprojected columns; empty when no key is known or present. */
 function keyIndices(source: ExtractorInput): number[] {
   const keySet = new Set(source.keyColumns ?? []);
@@ -191,7 +204,10 @@ const sqlUpdates = defineExtractor({
     const keyIdx = keyIndices(source);
     const keyNames = new Set(keyIdx.map((i) => source.columns[i]!.name));
     const setIdx = columns.flatMap((c, i) => (keyNames.has(c.name) ? [] : [i]));
-    if (setIdx.length === 0) return '';
+    if (setIdx.length === 0) {
+      const keys = columns.map((c) => c.name).join(', ');
+      return `${NOTHING_TO_UPDATE} (${keys}); select a column outside the key to get UPDATE statements.\n`;
+    }
 
     const lines = rows.map((row, r) => {
       const sets = setIdx

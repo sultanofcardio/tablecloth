@@ -1,14 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  BINARY_EXTRACTORS,
-  DEFAULT_EXTRACTOR_OPTIONS,
-  EXTRACTORS,
-  EXTRACTOR_GROUP_LABELS,
-  getBinaryExtractor,
-  getExtractor,
-  type ExtractorInput,
-} from '../src/export/extractors';
+import { BINARY_EXTRACTORS, DEFAULT_EXTRACTOR_OPTIONS, EXTRACTORS, EXTRACTOR_GROUP_LABELS, exportNote, getBinaryExtractor, getExtractor, type ExtractorInput } from '../src/export/extractors';
 
 const input: ExtractorInput = {
   dialect: 'postgres',
@@ -127,8 +119,10 @@ test('without a known key, SQL Updates and Where Clause fall back to the selecte
   assert.equal(extract('sql-where', noKey), "WHERE email = 'ada@example.com'\n   OR email = 'o''hara@example.com'\n");
 });
 
-test('SQL Updates emits nothing when every emitted column is part of the key', () => {
-  assert.equal(extract('sql-updates', { ...input, selectedColumns: [0] }), '');
+test('SQL Updates explains itself when every emitted column is part of the key', () => {
+  const note = (keys: string) =>
+    `-- Nothing to update: every selected column is part of the key (${keys}); select a column outside the key to get UPDATE statements.\n`;
+  assert.equal(extract('sql-updates', { ...input, selectedColumns: [0] }), note('id'));
   const userRoles: ExtractorInput = {
     dialect: 'postgres',
     columns: [
@@ -142,7 +136,7 @@ test('SQL Updates emits nothing when every emitted column is part of the key', (
     tableName: 'user_roles',
     keyColumns: ['user_id', 'role_id'],
   };
-  assert.equal(extract('sql-updates', userRoles), '');
+  assert.equal(extract('sql-updates', userRoles), note('user_id, role_id'));
   const withGrantedAt = {
     ...userRoles,
     columns: [...userRoles.columns, { name: 'granted_at' }],
@@ -156,7 +150,15 @@ test('SQL Updates emits nothing when every emitted column is part of the key', (
     "UPDATE user_roles SET granted_at = '2026-01-01' WHERE user_id = 1 AND role_id = 2;\n" +
       'UPDATE user_roles SET granted_at = NULL WHERE user_id = 1 AND role_id = 3;\n',
   );
-  assert.equal(extract('sql-updates', { ...withGrantedAt, selectedColumns: [0, 1] }), '');
+  assert.equal(extract('sql-updates', { ...withGrantedAt, selectedColumns: [0, 1] }), note('user_id, role_id'));
+  // the host shows the note's sentence; real output and anything longer than the note are not notes
+  assert.equal(
+    exportNote(note('user_id, role_id')),
+    'Nothing to update: every selected column is part of the key (user_id, role_id); select a column outside the key to get UPDATE statements.',
+  );
+  assert.equal(exportNote(extract('sql-updates', withGrantedAt)), undefined);
+  assert.equal(exportNote(note('id') + 'UPDATE t SET a = 1 WHERE id = 1;\n'), undefined);
+  assert.equal(exportNote(''), undefined);
 });
 
 test('an empty or out-of-range selection falls back to every valid column', () => {
