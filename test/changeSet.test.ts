@@ -248,6 +248,14 @@ test('singleSourceRelation proves a statement reads one plain table', () => {
     alias: 'o',
   });
   assert.deepEqual(singleSourceRelation('SELECT * FROM `orders` FOR UPDATE', 'mysql'), { schema: undefined, table: 'orders', alias: undefined });
+  assert.deepEqual(singleSourceRelation('SELECT * FROM ONLY t', 'postgres'), { schema: undefined, table: 't', alias: undefined }, 'ONLY is a modifier, not the table');
+  assert.deepEqual(singleSourceRelation('SELECT * FROM only orders o WHERE o.id > 1', 'postgres'), {
+    schema: undefined,
+    table: 'orders',
+    alias: 'o',
+  });
+  assert.equal(singleSourceRelation('SELECT * FROM ONLY (t)', 'postgres'), undefined, 'the parenthesised form stays read-only');
+  assert.deepEqual(singleSourceRelation('SELECT * FROM only', 'mysql'), { schema: undefined, table: 'only', alias: undefined }, 'only is an ordinary name on MySQL');
   const rejected = [
     'SELECT id FROM (SELECT id + 1 AS id FROM t) sub',
     'SELECT orders.id, customers.status FROM orders, customers',

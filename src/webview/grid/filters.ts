@@ -2,6 +2,7 @@
 // the user may edit by hand; header clicks and funnels compose into them.
 import type { CellValue, DriverId } from '../../core/types';
 import { quoteLiteral, sqlName } from '../../core/util';
+import { significant, tokenize } from '../../sql/tokens';
 
 export interface OrderTerm {
   /** Column name (unquoted) or the raw expression text. */
@@ -125,24 +126,12 @@ export function funnelClause(dialect: DriverId, column: string, values: CellValu
 }
 
 /** Whether the text has an OR outside quotes and parentheses, so ANDing onto it needs parentheses. */
-function hasTopLevelOr(text: string): boolean {
+function hasTopLevelOr(dialect: DriverId, text: string): boolean {
   let depth = 0;
-  let quote: string | null = null;
-  const word = /^[A-Za-z0-9_$]$/;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]!;
-    if (quote) {
-      if (ch === quote) quote = null;
-      continue;
-    }
-    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
-    else if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    else if (depth === 0 && (ch === 'o' || ch === 'O') && /^or$/i.test(text.slice(i, i + 2))) {
-      const before = i === 0 ? '' : text[i - 1]!;
-      const after = text[i + 2] ?? '';
-      if (!word.test(before) && !word.test(after)) return true;
-    }
+  for (const token of significant(tokenize(text, dialect))) {
+    if (token.text === '(') depth++;
+    else if (token.text === ')') depth--;
+    else if (depth === 0 && token.kind === 'word' && token.value === 'or') return true;
   }
   return false;
 }
@@ -153,12 +142,12 @@ function hasTopLevelOr(text: string): boolean {
  * parenthesized only when a top-level OR would otherwise bind wrongly, so
  * recomposing after every funnel change never grows the text.
  */
-export function composeWhere(manual: string, funnels: Iterable<string>): string {
+export function composeWhere(dialect: DriverId, manual: string, funnels: Iterable<string>): string {
   const clauses = [...funnels].map((clause) => clause.trim()).filter(Boolean);
   const text = manual.trim();
   if (!text) return clauses.join(' AND ');
   if (clauses.length === 0) return text;
-  return [hasTopLevelOr(text) ? `(${text})` : text, ...clauses].join(' AND ');
+  return [hasTopLevelOr(dialect, text) ? `(${text})` : text, ...clauses].join(' AND ');
 }
 
 export interface WhereParts {
@@ -173,8 +162,8 @@ export interface WhereParts {
  * with. Text that still equals the composed form keeps its funnels; anything
  * else was edited by hand and becomes the manual part, with no funnels.
  */
-export function resyncWhere(where: string, parts: WhereParts): WhereParts {
-  if (where.trim() === composeWhere(parts.manual, parts.funnels.values())) {
+export function resyncWhere(dialect: DriverId, where: string, parts: WhereParts): WhereParts {
+  if (where.trim() === composeWhere(dialect, parts.manual, parts.funnels.values())) {
     return { manual: parts.manual, funnels: new Map(parts.funnels) };
   }
   return { manual: where, funnels: new Map() };

@@ -2,7 +2,7 @@
 // editing with a local change set, WHERE/ORDER BY fields, funnels, FK
 // navigation, transposed/tree/text views, submit preview) and, in the
 // Tablecloth panel, the Services chrome around it.
-import type { CellValue } from '../../core/types';
+import type { CellValue, DriverId } from '../../core/types';
 import type { CellEdit } from '../../edit/changeSet';
 import type { CompletionEntry, FilterField } from '../../complete/core';
 import type {
@@ -73,6 +73,9 @@ import {
   type ViewPrefs,
 } from './store';
 import { closeDialog, closePopup, el, h, highlightSql, isDialogOpen, showDialog, showPopup } from './widgets';
+
+/** The dialect the page on screen came from; PostgreSQL until the first page lands. */
+const gridDialect = (): DriverId => S.data?.meta.dialect ?? 'postgres';
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -237,9 +240,8 @@ function wireToolbar(): void {
   const orderField = el<HTMLInputElement>('f-order');
   const applyFilters = () => guarded(() => post({ type: 'filter', where: whereField.value, orderBy: orderField.value }));
   // IntelliJ-style lookup in both fields: the host resolves columns, keywords, and functions
-  const lookupDialect = () => S.data?.meta.dialect ?? 'postgres';
-  attachLookup(whereField, { request: (text, offset) => requestCompletions('where', text, offset), dialect: lookupDialect });
-  attachLookup(orderField, { request: (text, offset) => requestCompletions('orderBy', text, offset), dialect: lookupDialect });
+  attachLookup(whereField, { request: (text, offset) => requestCompletions('where', text, offset), dialect: gridDialect });
+  attachLookup(orderField, { request: (text, offset) => requestCompletions('orderBy', text, offset), dialect: gridDialect });
   for (const field of [whereField, orderField]) {
     field.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -960,7 +962,7 @@ function applyFunnel(column: string, clause: string, orderBy: string): void {
   const funnels = new Map(S.funnelClauses);
   if (clause) funnels.set(column, clause);
   else funnels.delete(column);
-  const where = composeWhere(S.manualWhere, funnels.values());
+  const where = composeWhere(gridDialect(), S.manualWhere, funnels.values());
   guarded(() => {
     S.funnelClauses = funnels;
     el<HTMLInputElement>('f-where').value = where;
@@ -1340,7 +1342,7 @@ function onResult(msg: ResultMessage): void {
   closePopup();
   loadResult(msg, computeWidths(msg.columns, msg.rows));
   // WHERE text edited by hand becomes the manual part and drops the funnels
-  const parts = resyncWhere(msg.where, { manual: S.manualWhere, funnels: S.funnelClauses });
+  const parts = resyncWhere(gridDialect(), msg.where, { manual: S.manualWhere, funnels: S.funnelClauses });
   S.manualWhere = parts.manual;
   S.funnelClauses = parts.funnels;
   el<HTMLInputElement>('f-where').value = msg.where;

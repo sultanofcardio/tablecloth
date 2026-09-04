@@ -171,6 +171,7 @@ export function singleSourceRelation(sql: string, dialect: DriverId): SourceRela
   const split = selectFromSplit(tokens);
   if (!split) return undefined;
   let i = split.from + 1;
+  if (dialect === 'postgres' && tokens[i]?.kind === 'word' && tokens[i]!.value === 'only') i++;
   const names: Token[] = [];
   for (;;) {
     const token = tokens[i];
