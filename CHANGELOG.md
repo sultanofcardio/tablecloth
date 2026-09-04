@@ -24,6 +24,7 @@ Phase 2 (daily driver) of [the plan](./docs/plan.html): edit data in the grid, a
 
 - Console result grids are editable only for single-table SELECTs whose key columns are in the result. Any other result opens read-only and says why.
 - The SQL Updates extractor keeps known primary-key values in the WHERE clause even when the key column is not among the exported columns, while SET still covers only the columns you selected.
+- An SQL Updates copy or export whose selected columns are all part of the key has nothing to set, so it produces a single comment naming the key columns and how to get UPDATE statements; the grid says the same in the status bar after a copy, or as a warning after an export to file, so the result is never silently empty.
 
 ### Fixed
 
