@@ -20,7 +20,7 @@ test('sqlName quotes keywords and every dialect\'s reserved words, and leaves pl
 });
 
 test('funnel distinct queries quote reserved column names', () => {
-  assert.match(tableDistinctQuery('mysql', undefined, 't', 'rank', undefined, 10), /SELECT DISTINCT `rank` FROM `t` ORDER BY `rank` LIMIT 10$/);
+  assert.match(tableDistinctQuery('mysql', undefined, 't', 'rank', undefined, 10), /SELECT DISTINCT `rank` FROM `t`\nORDER BY `rank` LIMIT 10$/);
   assert.match(wrapDistinct('postgres', 'select * from t', 'order', undefined, 10), /SELECT DISTINCT "order" FROM/);
 });
 

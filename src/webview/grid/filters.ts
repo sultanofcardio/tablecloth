@@ -2,7 +2,7 @@
 // the user may edit by hand; header clicks and funnels compose into them.
 import type { CellValue, DriverId } from '../../core/types';
 import { quoteLiteral, sqlName } from '../../core/util';
-import { significant, tokenize } from '../../sql/tokens';
+import { significant, stripTrailingLineComments, tokenize } from '../../sql/tokens';
 
 export interface OrderTerm {
   /** Column name (unquoted) or the raw expression text. */
@@ -140,13 +140,15 @@ function hasTopLevelOr(dialect: DriverId, text: string): boolean {
  * The WHERE text as the field shows it: the hand-written part first, then
  * one clause per funnelled column, all joined with AND. The manual part is
  * parenthesized only when a top-level OR would otherwise bind wrongly, so
- * recomposing after every funnel change never grows the text.
+ * recomposing after every funnel change never grows the text. The field holds
+ * a single line, so a trailing comment in the manual part is dropped rather
+ * than allowed to comment the funnel clauses out.
  */
 export function composeWhere(dialect: DriverId, manual: string, funnels: Iterable<string>): string {
   const clauses = [...funnels].map((clause) => clause.trim()).filter(Boolean);
-  const text = manual.trim();
+  if (clauses.length === 0) return manual.trim();
+  const text = stripTrailingLineComments(manual, dialect).trim();
   if (!text) return clauses.join(' AND ');
-  if (clauses.length === 0) return text;
   return [hasTopLevelOr(dialect, text) ? `(${text})` : text, ...clauses].join(' AND ');
 }
 

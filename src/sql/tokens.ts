@@ -327,6 +327,39 @@ function skipQuoted(
   return { end: len, closed: false };
 }
 
+function stripTrailing(sql: string, dialect: DriverId, drop: (token: Token) => boolean): string {
+  const tokens = tokenize(sql, dialect);
+  let end = tokens.length;
+  while (end > 0 && drop(tokens[end - 1]!)) end--;
+  return end === 0 ? '' : sql.slice(0, tokens[end - 1]!.end);
+}
+
+/**
+ * The text with trailing whitespace, comments and semicolons removed, so more
+ * SQL can be appended without landing inside a line comment. Leading and inner
+ * text, including comments, is left intact.
+ */
+export function stripTrailingTerminators(sql: string, dialect: DriverId): string {
+  return stripTrailing(
+    sql,
+    dialect,
+    (token) => token.kind === 'ws' || token.kind === 'comment' || (token.kind === 'punct' && token.text === ';'),
+  );
+}
+
+/**
+ * The text with any trailing `--` (or MySQL `#`) comment removed, so more SQL
+ * can be appended on the same line without being commented out. Block comments
+ * and inner text are left intact.
+ */
+export function stripTrailingLineComments(sql: string, dialect: DriverId): string {
+  return stripTrailing(
+    sql,
+    dialect,
+    (token) => token.kind === 'ws' || (token.kind === 'comment' && (token.text.startsWith('--') || token.text.startsWith('#'))),
+  );
+}
+
 /** Tokens without whitespace and comments. */
 export function significant(tokens: Token[]): Token[] {
   return tokens.filter((t) => t.kind !== 'ws' && t.kind !== 'comment');

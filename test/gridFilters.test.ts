@@ -121,6 +121,18 @@ test('composeWhere parenthesizes a manual part only when it has a top-level OR',
   );
 });
 
+test('a trailing line comment in the manual text cannot comment out the funnel clauses', () => {
+  assert.equal(composeWhere('postgres', 'id = 1 -- or x', ['total > 5']), 'id = 1 AND total > 5');
+  assert.equal(composeWhere('mysql', 'id = 1 # note', ['total > 5']), 'id = 1 AND total > 5');
+  assert.equal(
+    composeWhere('postgres', "status = 'a' OR status = 'b' -- note", ['total > 5']),
+    "(status = 'a' OR status = 'b') AND total > 5",
+  );
+  assert.equal(composeWhere('postgres', "note = '-- not a comment'", ['total > 5']), "note = '-- not a comment' AND total > 5");
+  assert.equal(composeWhere('postgres', '-- everything', ['total > 5']), 'total > 5');
+  assert.equal(composeWhere('postgres', 'id = 1 -- or x', []), 'id = 1 -- or x', 'without funnels the text is left as typed');
+});
+
 test('re-funnelling a column replaces its clause and never grows parentheses', () => {
   const funnels = new Map<string, string>();
   funnels.set('status', "status = 'a'");

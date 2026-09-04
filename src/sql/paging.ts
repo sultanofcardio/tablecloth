@@ -1,6 +1,6 @@
 import type { DriverId } from '../core/types';
 import { quoteIdent, sqlName } from '../core/util';
-import { tokenize } from './tokens';
+import { stripTrailingTerminators } from './tokens';
 
 export interface SortSpec {
   column: string;
@@ -24,22 +24,20 @@ export interface PageOptions {
  * wrapper's closing paren. Leading and inner text is left intact.
  */
 export function stripTrailingSemicolon(sql: string, dialect: DriverId = 'postgres'): string {
-  const tokens = tokenize(sql, dialect);
-  let end = tokens.length;
-  while (end > 0) {
-    const token = tokens[end - 1]!;
-    if (token.kind === 'ws' || token.kind === 'comment' || (token.kind === 'punct' && token.text === ';')) end--;
-    else break;
-  }
-  return end === 0 ? '' : sql.slice(0, tokens[end - 1]!.end);
+  return stripTrailingTerminators(sql, dialect);
 }
 
+/**
+ * The WHERE and ORDER BY text the grid supplies, each on its own line: the text
+ * is free-form and may end in a line comment, which on one line would comment
+ * out every clause the builders append after it.
+ */
 function clauses(dialect: DriverId, opts: Pick<PageOptions, 'sort' | 'where' | 'orderBy'>): string {
-  const where = opts.where?.trim() ? ` WHERE ${opts.where.trim()}` : '';
-  let orderBy = '';
-  if (opts.orderBy?.trim()) orderBy = ` ORDER BY ${opts.orderBy.trim()}`;
-  else if (opts.sort) orderBy = ` ORDER BY ${quoteIdent(dialect, opts.sort.column)} ${opts.sort.direction.toUpperCase()}`;
-  return where + orderBy;
+  const parts: string[] = [];
+  if (opts.where?.trim()) parts.push(`WHERE ${opts.where.trim()}`);
+  if (opts.orderBy?.trim()) parts.push(`ORDER BY ${opts.orderBy.trim()}`);
+  else if (opts.sort) parts.push(`ORDER BY ${quoteIdent(dialect, opts.sort.column)} ${opts.sort.direction.toUpperCase()}`);
+  return parts.map((part) => `\n${part}`).join('');
 }
 
 /**
@@ -51,7 +49,7 @@ function clauses(dialect: DriverId, opts: Pick<PageOptions, 'sort' | 'where' | '
  */
 export function wrapPaged(dialect: DriverId, sql: string, opts: PageOptions): string {
   const inner = stripTrailingSemicolon(sql, dialect);
-  const paging = opts.limit === null ? '' : ` LIMIT ${opts.limit} OFFSET ${opts.offset}`;
+  const paging = opts.limit === null ? '' : `\nLIMIT ${opts.limit} OFFSET ${opts.offset}`;
   return `SELECT * FROM (\n${inner}\n) AS _tablecloth_q${clauses(dialect, opts)}${paging}`;
 }
 
@@ -65,7 +63,7 @@ export function wrapCount(dialect: DriverId, sql: string, where?: string): strin
 export function wrapDistinct(dialect: DriverId, sql: string, column: string, where: string | undefined, limit: number): string {
   const inner = stripTrailingSemicolon(sql, dialect);
   const name = sqlName(dialect, column);
-  return `SELECT DISTINCT ${name} FROM (\n${inner}\n) AS _tablecloth_q${clauses(dialect, { where })} ORDER BY ${name} LIMIT ${limit}`;
+  return `SELECT DISTINCT ${name} FROM (\n${inner}\n) AS _tablecloth_q${clauses(dialect, { where })}\nORDER BY ${name} LIMIT ${limit}`;
 }
 
 function targetName(dialect: DriverId, schema: string | undefined, table: string): string {
@@ -74,7 +72,7 @@ function targetName(dialect: DriverId, schema: string | undefined, table: string
 
 /** Build the page query for browsing a table or view directly. */
 export function tablePageQuery(dialect: DriverId, schema: string | undefined, table: string, opts: PageOptions): string {
-  const limit = opts.limit === null ? '' : ` LIMIT ${opts.limit}`;
+  const limit = opts.limit === null ? '' : `\nLIMIT ${opts.limit}`;
   const offset = opts.offset > 0 ? ` OFFSET ${opts.offset}` : '';
   // MySQL requires LIMIT when OFFSET is used; "all rows from an offset" only
   // arises with limit=null which the grid never combines with an offset.
@@ -94,7 +92,7 @@ export function tableDistinctQuery(
   limit: number,
 ): string {
   const name = sqlName(dialect, column);
-  return `SELECT DISTINCT ${name} FROM ${targetName(dialect, schema, table)}${clauses(dialect, { where })} ORDER BY ${name} LIMIT ${limit}`;
+  return `SELECT DISTINCT ${name} FROM ${targetName(dialect, schema, table)}${clauses(dialect, { where })}\nORDER BY ${name} LIMIT ${limit}`;
 }
 
 /** The statement the grid shows for a table, without paging (View Query). */

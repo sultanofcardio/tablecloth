@@ -120,8 +120,8 @@ test('without a known key, SQL Updates and Where Clause fall back to the selecte
 });
 
 test('SQL Updates explains itself when every emitted column is part of the key', () => {
-  const note = (keys: string) =>
-    `-- Nothing to update: every selected column is part of the key (${keys}); select a column outside the key to get UPDATE statements.\n`;
+  const note = (keys: string, selected?: string) =>
+    `-- Nothing to update: every selected column${selected ? ` (${selected})` : ''} is part of the key (${keys}); select a column outside the key to get UPDATE statements.\n`;
   assert.equal(extract('sql-updates', { ...input, selectedColumns: [0] }), note('id'));
   const userRoles: ExtractorInput = {
     dialect: 'postgres',
@@ -151,6 +151,13 @@ test('SQL Updates explains itself when every emitted column is part of the key',
       'UPDATE user_roles SET granted_at = NULL WHERE user_id = 1 AND role_id = 3;\n',
   );
   assert.equal(extract('sql-updates', { ...withGrantedAt, selectedColumns: [0, 1] }), note('user_id, role_id'));
+  // a partial selection of a composite key names the whole key, and the selection separately
+  assert.equal(extract('sql-updates', { ...userRoles, selectedColumns: [0] }), note('user_id, role_id', 'user_id'));
+  assert.equal(extract('sql-updates', { ...withGrantedAt, selectedColumns: [1] }), note('user_id, role_id', 'role_id'));
+  assert.equal(
+    exportNote(extract('sql-updates', { ...userRoles, selectedColumns: [0] })),
+    'Nothing to update: every selected column (user_id) is part of the key (user_id, role_id); select a column outside the key to get UPDATE statements.',
+  );
   // the host shows the note's sentence; real output and anything longer than the note are not notes
   assert.equal(
     exportNote(note('user_id, role_id')),
