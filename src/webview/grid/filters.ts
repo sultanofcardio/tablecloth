@@ -18,34 +18,37 @@ function stripQuotes(name: string): string {
   return name;
 }
 
-/** Split on commas outside quotes and parentheses. */
-function splitTopLevel(text: string): string[] {
+/**
+ * Split on commas outside quotes, comments and parentheses. Each part spans its
+ * first to its last significant token, so trailing comments - which the database
+ * would run to the end of the line - are not part of any term.
+ */
+function splitTopLevel(dialect: DriverId, text: string): string[] {
   const parts: string[] = [];
   let depth = 0;
-  let quote: string | null = null;
-  let current = '';
-  for (const ch of text) {
-    if (quote) {
-      current += ch;
-      if (ch === quote) quote = null;
+  let start = -1;
+  let end = -1;
+  const flush = () => {
+    if (start >= 0) parts.push(text.slice(start, end));
+    start = -1;
+    end = -1;
+  };
+  for (const token of significant(tokenize(text, dialect))) {
+    if (token.text === '(') depth++;
+    else if (token.text === ')') depth--;
+    else if (token.text === ',' && depth === 0) {
+      flush();
       continue;
     }
-    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
-    else if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    if (ch === ',' && depth === 0) {
-      parts.push(current);
-      current = '';
-      continue;
-    }
-    current += ch;
+    if (start < 0) start = token.start;
+    end = token.end;
   }
-  if (current.trim()) parts.push(current);
-  return parts.map((p) => p.trim()).filter(Boolean);
+  flush();
+  return parts;
 }
 
-export function parseOrderBy(text: string): OrderTerm[] {
-  return splitTopLevel(text).map((part) => {
+export function parseOrderBy(dialect: DriverId, text: string): OrderTerm[] {
+  return splitTopLevel(dialect, text).map((part) => {
     const match = /^(.*?)(?:\s+(asc|desc))?(\s+nulls\s+(?:first|last))?$/i.exec(part);
     const column = stripQuotes((match ? match[1]! : part).trim());
     const direction = match?.[2]?.toLowerCase() === 'desc' ? 'desc' : 'asc';
@@ -70,8 +73,8 @@ export interface SortMark {
   index: number;
 }
 
-export function sortMark(orderBy: string, column: string): SortMark | undefined {
-  const terms = parseOrderBy(orderBy);
+export function sortMark(dialect: DriverId, orderBy: string, column: string): SortMark | undefined {
+  const terms = parseOrderBy(dialect, orderBy);
   const i = terms.findIndex((t) => t.column.toLowerCase() === column.toLowerCase());
   if (i < 0) return undefined;
   return { direction: terms[i]!.direction, index: terms.length > 1 ? i + 1 : 0 };
@@ -83,8 +86,8 @@ export function sortMark(orderBy: string, column: string): SortMark | undefined 
  * the column joins the existing terms.
  */
 export function toggleSort(dialect: DriverId, orderBy: string, column: string, multi: boolean): string {
-  const rawTerms = splitTopLevel(orderBy);
-  const terms = parseOrderBy(orderBy);
+  const rawTerms = splitTopLevel(dialect, orderBy);
+  const terms = parseOrderBy(dialect, orderBy);
   const i = terms.findIndex((t) => t.column.toLowerCase() === column.toLowerCase());
   const current = i >= 0 ? terms[i]! : undefined;
   let next: OrderTerm | undefined;

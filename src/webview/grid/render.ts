@@ -99,7 +99,7 @@ function renderHeader(): void {
     }
     if (column.dataType) th.appendChild(h('span', { class: 'dt' }, column.dataType));
     const mark = S.prefs.sortViaOrderBy && data.meta.canFilter
-      ? sortMark(data.orderBy, column.name)
+      ? sortMark(data.meta.dialect, data.orderBy, column.name)
       : S.clientSort && S.clientSort.column === c
         ? { direction: S.clientSort.direction, index: 0 }
         : undefined;

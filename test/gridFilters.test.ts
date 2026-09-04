@@ -12,22 +12,22 @@ import {
 } from '../src/webview/grid/filters';
 
 test('parseOrderBy reads names, quotes, directions, and NULLS placement', () => {
-  assert.deepEqual(parseOrderBy('id DESC, "Display Name", total asc nulls last'), [
+  assert.deepEqual(parseOrderBy('postgres', 'id DESC, "Display Name", total asc nulls last'), [
     { column: 'id', direction: 'desc' },
     { column: 'Display Name', direction: 'asc' },
     { column: 'total', direction: 'asc' },
   ]);
-  assert.deepEqual(parseOrderBy(''), []);
-  assert.deepEqual(parseOrderBy('coalesce(a, b) DESC'), [{ column: 'coalesce(a, b)', direction: 'desc' }]);
+  assert.deepEqual(parseOrderBy('postgres', ''), []);
+  assert.deepEqual(parseOrderBy('postgres', 'coalesce(a, b) DESC'), [{ column: 'coalesce(a, b)', direction: 'desc' }]);
 });
 
 test('a NULLS clause without an explicit direction still reads as the column, ascending', () => {
-  assert.deepEqual(parseOrderBy('a NULLS LAST'), [{ column: 'a', direction: 'asc' }]);
-  assert.deepEqual(parseOrderBy('a nulls first, b'), [
+  assert.deepEqual(parseOrderBy('postgres', 'a NULLS LAST'), [{ column: 'a', direction: 'asc' }]);
+  assert.deepEqual(parseOrderBy('postgres', 'a nulls first, b'), [
     { column: 'a', direction: 'asc' },
     { column: 'b', direction: 'asc' },
   ]);
-  assert.deepEqual(sortMark('a nulls last', 'a'), { direction: 'asc', index: 0 });
+  assert.deepEqual(sortMark('postgres', 'a nulls last', 'a'), { direction: 'asc', index: 0 });
   assert.equal(toggleSort('postgres', 'a NULLS LAST', 'a', true), 'a DESC NULLS LAST');
   assert.equal(toggleSort('postgres', 'a NULLS LAST, b', 'a', true), 'a DESC NULLS LAST, b');
 });
@@ -43,14 +43,29 @@ test('Alt-click adds and updates a column in a multi-column sort', () => {
   assert.equal(toggleSort('postgres', 'created_at DESC', 'id', true), 'created_at DESC, id');
   assert.equal(toggleSort('postgres', 'created_at DESC, id', 'id', true), 'created_at DESC, id DESC');
   assert.equal(toggleSort('postgres', 'created_at DESC, id DESC', 'created_at', true), 'id DESC');
-  assert.deepEqual(sortMark('created_at DESC, id', 'id'), { direction: 'asc', index: 2 });
-  assert.deepEqual(sortMark('id', 'id'), { direction: 'asc', index: 0 });
-  assert.equal(sortMark('id', 'total'), undefined);
+  assert.deepEqual(sortMark('postgres', 'created_at DESC, id', 'id'), { direction: 'asc', index: 2 });
+  assert.deepEqual(sortMark('postgres', 'id', 'id'), { direction: 'asc', index: 0 });
+  assert.equal(sortMark('postgres', 'id', 'total'), undefined);
   assert.equal(
     toggleSort('postgres', 'coalesce(a, b) DESC NULLS LAST', 'id', true),
     'coalesce(a, b) DESC NULLS LAST, id',
   );
   assert.equal(toggleSort('postgres', 'id ASC NULLS LAST, coalesce(a, b) DESC', 'id', true), 'id DESC NULLS LAST, coalesce(a, b) DESC');
+});
+
+test('a line comment in the ORDER BY text ends the terms, as it does for the database', () => {
+  assert.equal(toggleSort('postgres', 'id -- note', 'created_at', true), 'id, created_at');
+  assert.equal(toggleSort('mysql', 'id # note', 'created_at', true), 'id, created_at');
+  assert.equal(toggleSort('postgres', 'id -- note', 'id', true), 'id DESC');
+  assert.deepEqual(parseOrderBy('postgres', 'id -- note, created_at'), [{ column: 'id', direction: 'asc' }]);
+  assert.deepEqual(sortMark('postgres', 'id -- note, created_at', 'id'), { direction: 'asc', index: 0 });
+  assert.equal(sortMark('postgres', 'id -- note, created_at', 'created_at'), undefined);
+  assert.deepEqual(parseOrderBy('postgres', 'id -- note\n, created_at'), [
+    { column: 'id', direction: 'asc' },
+    { column: 'created_at', direction: 'asc' },
+  ]);
+  assert.deepEqual(parseOrderBy('postgres', "note /* a, b */ DESC"), [{ column: 'note /* a, b */', direction: 'desc' }]);
+  assert.deepEqual(parseOrderBy('mysql', "concat(a, ',') DESC"), [{ column: "concat(a, ',')", direction: 'desc' }]);
 });
 
 test('names are quoted only when the dialect would fold or reject them', () => {
