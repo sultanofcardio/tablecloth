@@ -206,6 +206,11 @@ test("MySQL's multi-table UPDATE names the table its SET clause writes", () => {
   ]);
   // the target decides the self-reference exemption, so this reads its own column
   assert.deepEqual(found('UPDATE customers c, orders o SET o.hits = o.hits + 1', 'mysql'), []);
+  // an unnamed target still has a relation list, so a conditioned join keeps its exemption
+  assert.deepEqual(found('UPDATE orders o JOIN customers c ON c.id = o.customer_id SET total = 0', 'mysql'), []);
+  assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET total = 0', 'mysql'), []);
+  assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c ON c.id = o.customer_id SET c.seen = 1, o.total = 0', 'mysql'), []);
+  assert.deepEqual(found('DELETE a, b FROM a JOIN b ON a.id = b.id', 'mysql'), []);
   // writing several relations, or none of them qualified: name no table rather than the wrong one
   assert.deepEqual(found('UPDATE customers c, orders o SET c.seen = 1, o.total = 0', 'mysql'), [
     ['UPDATE', 'UPDATE customers c, orders o SET c.seen = 1, o.total = 0', undefined],

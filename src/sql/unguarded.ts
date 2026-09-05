@@ -225,6 +225,16 @@ function listsMoreThanOne(tokens: Token[], start: number): boolean {
 }
 
 /**
+ * A statement that writes several of the relations it lists, or one this
+ * detector cannot pin down: the dialog names no table, but the list still has a
+ * head, so a JOIN onto it can be seen to restrict what is written.
+ */
+function unnamedTarget(relations: WriteTarget[]): WriteTarget {
+  const head = relations[0];
+  return head ? { names: new Set(), at: head.at } : NO_TARGET;
+}
+
+/**
  * MySQL's `DELETE alias[, alias] FROM tables …`: the word after the verb is a
  * target, not a table, and it is the FROM list that says which table it stands
  * for. One target that resolves there names its table; anything else names no
@@ -232,21 +242,25 @@ function listsMoreThanOne(tokens: Token[], start: number): boolean {
  */
 function multiTableDelete(tokens: Token[], start: number): WriteTarget {
   const target = nameOf(tokens[start])?.toLowerCase();
-  if (!target) return NO_TARGET;
   let depth = 0;
   let from = -1;
+  let several = false;
   for (let j = start; j < tokens.length; j++) {
     const t = tokens[j]!;
     if (t.text === '(') depth++;
     else if (t.text === ')') depth = Math.max(0, depth - 1);
-    else if (depth === 0 && (t.text === ',' || t.text === ';')) return NO_TARGET;
-    else if (depth === 0 && t.kind === 'word' && t.value === 'from') {
+    else if (depth !== 0) continue;
+    else if (t.text === ';') break;
+    else if (t.text === ',') several = true;
+    else if (t.kind === 'word' && t.value === 'from') {
       from = j;
       break;
     }
   }
   if (from < 0) return NO_TARGET;
-  return relationsIn(tokens, from + 1).find((relation) => relation.names.has(target)) ?? NO_TARGET;
+  const relations = relationsIn(tokens, from + 1);
+  if (several || !target) return unnamedTarget(relations);
+  return relations.find((relation) => relation.names.has(target)) ?? unnamedTarget(relations);
 }
 
 /**
@@ -256,18 +270,18 @@ function multiTableDelete(tokens: Token[], start: number): WriteTarget {
  */
 function qualifiedUpdateTarget(relations: WriteTarget[], setTokens: Token[]): WriteTarget {
   const assignments = splitAssignments(setTokens).filter((a) => a.length > 0);
-  if (assignments.length === 0) return NO_TARGET;
+  if (assignments.length === 0) return unnamedTarget(relations);
   const qualifiers = new Set<string>();
   for (const assignment of assignments) {
     const eq = assignment.findIndex((t) => t.text === '=');
-    if (eq <= 0 || assignment[eq - 2]?.text !== '.') return NO_TARGET;
+    if (eq <= 0 || assignment[eq - 2]?.text !== '.') return unnamedTarget(relations);
     const qualifier = nameOf(assignment[eq - 3]);
-    if (!qualifier) return NO_TARGET;
+    if (!qualifier) return unnamedTarget(relations);
     qualifiers.add(qualifier.toLowerCase());
   }
-  if (qualifiers.size !== 1) return NO_TARGET;
+  if (qualifiers.size !== 1) return unnamedTarget(relations);
   const [only] = [...qualifiers];
-  return relations.find((relation) => relation.names.has(only!)) ?? NO_TARGET;
+  return relations.find((relation) => relation.names.has(only!)) ?? unnamedTarget(relations);
 }
 
 /** The table the statement writes to, and the names it answers to. */
@@ -281,7 +295,7 @@ function parseTarget(tokens: Token[], i: number, setTokens: Token[]): WriteTarge
   if (tokens[i]!.value === 'delete') {
     // `DELETE alias FROM …` names its target first; `DELETE FROM t1, t2 USING …` deletes from every table listed
     if (!sawFrom) return multiTableDelete(tokens, j);
-    if (listsMoreThanOne(tokens, j)) return NO_TARGET;
+    if (listsMoreThanOne(tokens, j)) return unnamedTarget(relationsIn(tokens, j));
   } else {
     const relations = relationsIn(tokens, j);
     if (relations.length > 1) return qualifiedUpdateTarget(relations, setTokens);
