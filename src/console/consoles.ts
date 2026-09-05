@@ -9,6 +9,8 @@ import type { MenuItem } from '../webview/menu';
 
 const BINDINGS_KEY = 'tablecloth.bindings';
 const TX_KEY = 'tablecloth.txStates';
+/** Consoles whose "Don't ask again" silenced the DELETE/UPDATE-without-WHERE warning. */
+const UNGUARDED_OK_KEY = 'tablecloth.unguardedWritesAllowed';
 const CONSOLE_DIR_SEP = '__';
 const CUSTOM_LABELS = 'workbench.editor.customLabels.patterns';
 
@@ -129,6 +131,19 @@ export class ConsoleManager implements vscode.Disposable {
     await this.context.workspaceState.update(TX_KEY, states);
     this.updateStatusBar();
     this.stateEmitter.fire();
+  }
+
+  /** Whether this console still asks before running a DELETE or UPDATE without WHERE. */
+  asksBeforeUnguardedWrite(uri: vscode.Uri): boolean {
+    return !this.context.workspaceState.get<Record<string, true>>(UNGUARDED_OK_KEY, {})[uri.toString()];
+  }
+
+  /** "Don't ask again for this console": remembered with the console's other state. */
+  async setAsksBeforeUnguardedWrite(uri: vscode.Uri, asks: boolean): Promise<void> {
+    const allowed = { ...this.context.workspaceState.get<Record<string, true>>(UNGUARDED_OK_KEY, {}) };
+    if (asks) delete allowed[uri.toString()];
+    else allowed[uri.toString()] = true;
+    await this.context.workspaceState.update(UNGUARDED_OK_KEY, allowed);
   }
 
   isInTx(uri: vscode.Uri): boolean {
@@ -437,6 +452,12 @@ export class ConsoleManager implements vscode.Disposable {
       await this.context.workspaceState.update(TX_KEY, txStates);
     }
     if (this.inTx.delete(oldKey)) this.inTx.add(newKey);
+    const allowed = { ...this.context.workspaceState.get<Record<string, true>>(UNGUARDED_OK_KEY, {}) };
+    if (allowed[oldKey]) {
+      allowed[newKey] = true;
+      delete allowed[oldKey];
+      await this.context.workspaceState.update(UNGUARDED_OK_KEY, allowed);
+    }
   }
 
   /** Rename a console file, carrying its binding, labels, and tx state along. */
@@ -490,6 +511,11 @@ export class ConsoleManager implements vscode.Disposable {
     delete txStates[key];
     await this.context.workspaceState.update(TX_KEY, txStates);
     this.inTx.delete(key);
+    const allowed = { ...this.context.workspaceState.get<Record<string, true>>(UNGUARDED_OK_KEY, {}) };
+    if (allowed[key]) {
+      delete allowed[key];
+      await this.context.workspaceState.update(UNGUARDED_OK_KEY, allowed);
+    }
     await this.applyTabLabel(uri, undefined);
     this.stateEmitter.fire();
   }

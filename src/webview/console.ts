@@ -387,6 +387,79 @@ function askParameters(msg: { id: number; names: string[]; previous: Record<stri
   }, 0);
 }
 
+// ------------------------------------------------------------ DELETE/UPDATE without WHERE
+/** Open warnings by id, so the row count can land while the dialog is up. */
+const openWarnings = new Map<number, (count: number | null) => void>();
+
+function askUnguardedWrite(msg: { id: number; verb: string; table: string | null; dsName: string }): void {
+  const overlay = document.createElement('div');
+  overlay.className = 'tc-overlay';
+  const dialog = document.createElement('div');
+  dialog.className = 'tc-dialog narrow';
+  const title = document.createElement('div');
+  title.className = 'tc-dialog-title';
+  title.textContent = `Run ${msg.verb} without a WHERE clause?`;
+  const body = document.createElement('div');
+  body.className = 'tc-dialog-body';
+  const text = document.createElement('p');
+  text.className = 'tc-dialog-text';
+  const rows = document.createElement('span');
+  if (msg.table) {
+    const table = document.createElement('b');
+    table.textContent = msg.table;
+    text.append('This statement affects every row in ', table, ` on ${msg.dsName}`, rows, '.');
+  } else {
+    text.append(`This statement affects every row of its table on ${msg.dsName}.`);
+  }
+  const check = document.createElement('label');
+  check.className = 'tc-dialog-check';
+  const dontAsk = document.createElement('input');
+  dontAsk.type = 'checkbox';
+  check.append(dontAsk, "Don't ask again for this console");
+  body.append(text, check);
+  const actions = document.createElement('div');
+  actions.className = 'tc-dialog-actions';
+  // Cancel is the default: ⌘⏎ then a stray ⏎ must not run the statement
+  const cancel = document.createElement('button');
+  cancel.className = 'tc-button primary';
+  cancel.textContent = 'Cancel';
+  const run = document.createElement('button');
+  run.className = 'tc-button danger';
+  run.textContent = 'Run anyway';
+  actions.append(cancel, run);
+  dialog.append(title, body, actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  openWarnings.set(msg.id, (count) => {
+    if (count === null) return;
+    rows.textContent = `: ${count.toLocaleString('en-US')} row${count === 1 ? '' : 's'}`;
+  });
+  const finish = (proceed: boolean) => {
+    openWarnings.delete(msg.id);
+    document.removeEventListener('keydown', onKey, true);
+    overlay.remove();
+    vscode.postMessage({ type: 'unguardedWrite', id: msg.id, run: proceed, dontAsk: proceed && dontAsk.checked });
+    editor?.focus();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      finish(false);
+    } else if (e.key === 'Enter') {
+      // only the focused button answers; anywhere else Enter is Cancel
+      e.preventDefault();
+      e.stopPropagation();
+      finish(e.target === run);
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+  cancel.addEventListener('click', () => finish(false));
+  run.addEventListener('click', () => finish(true));
+  setTimeout(() => cancel.focus(), 0);
+}
+
 // ------------------------------------------------------------ toolbar
 function renderToolbar(): void {
   el('tx-label').textContent = `Tx: ${state.txMode === 'manual' ? 'Manual' : 'Auto'}${state.inTx ? ' ●' : ''}`;
@@ -472,6 +545,12 @@ window.addEventListener('message', (event) => {
     case 'markers':
       if (editor) applyMarkers(msg.markers ?? []);
       else pendingMarkers = msg.markers ?? [];
+      break;
+    case 'askUnguardedWrite':
+      askUnguardedWrite(msg);
+      break;
+    case 'unguardedWriteCount':
+      openWarnings.get(Number(msg.id))?.(typeof msg.count === 'number' ? msg.count : null);
       break;
     case 'askParameters':
       askParameters(msg);

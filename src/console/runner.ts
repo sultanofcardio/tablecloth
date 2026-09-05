@@ -10,6 +10,7 @@ import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
 import { splitStatements, statementAt } from '../sql/splitter';
+import { findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
 import { defaultPageSize, StaticGridProvider, type GridMeta, type RunQuery } from '../ui/grid';
 import type { ReferencingDto } from '../ui/gridProtocol';
 import { ConsoleGridProvider, makeRunQuery, runChangeBatch, type ConsoleEditingOptions } from '../ui/providers';
@@ -34,6 +35,13 @@ const ISOLATION_SQL: Record<Exclude<TxIsolation, 'default'>, string> = {
 
 const PARAM_VALUES_KEY = 'tablecloth.parameterValues';
 
+/** The sentence under the warning's title, shared by the native dialog and the webview's. */
+export function unguardedWriteDetail(warning: { table?: string; dsName: string }, count: number | undefined): string {
+  if (!warning.table) return `This statement affects every row of its table on ${warning.dsName}.`;
+  const rows = count === undefined ? '' : `: ${count.toLocaleString('en-US')} row${count === 1 ? '' : 's'}`;
+  return `This statement affects every row in ${warning.table} on ${warning.dsName}${rows}.`;
+}
+
 /**
  * Session suffix for scripts run without a console document (Run File on a
  * data source). They get a session of their own so a script's BEGIN, or a
@@ -52,9 +60,30 @@ export type ParameterPrompt = (
   previous: Record<string, string>,
 ) => Promise<Record<string, string | null> | undefined>;
 
+/** What the warning before a DELETE or UPDATE without WHERE has to say. */
+export interface UnguardedWriteWarning {
+  verb: UnguardedWrite['verb'];
+  /** The table the way the dialog names it (public.orders), when the statement names one. */
+  table?: string;
+  dsName: string;
+  /** Rows the statement would touch, once counted; undefined when it cannot be counted. */
+  count: Promise<number | undefined>;
+}
+
+/** The answer to that warning: run it, and optionally stop asking on this console. */
+export type UnguardedWritePrompt = (warning: UnguardedWriteWarning) => Promise<{ run: boolean; dontAsk: boolean } | undefined>;
+
+function warnWithoutWhereEnabled(): boolean {
+  return vscode.workspace.getConfiguration('tablecloth.execution').get<boolean>('warnWithoutWhere', true);
+}
+
+/** How long the native dialog waits for the row count before showing without it. */
+const COUNT_WAIT_MS = 3000;
+
 /** Executes console statements and presents results in the Services view. */
 export class QueryRunner {
   private readonly prompters = new Map<string, ParameterPrompt>();
+  private readonly unguardedPrompters = new Map<string, UnguardedWritePrompt>();
   /** Statement in flight per console key, for the stop button. */
   private readonly running = new Map<string, { ds: StoredDataSource; suffix?: string }>();
   private readonly runningEmitter = new vscode.EventEmitter<{ key: string; running: boolean }>();
@@ -78,6 +107,13 @@ export class QueryRunner {
     const key = uri.toString();
     this.prompters.set(key, prompt);
     return { dispose: () => this.prompters.delete(key) };
+  }
+
+  /** A console webview offers its own "Run DELETE without a WHERE clause?" dialog while it is open. */
+  registerUnguardedWritePrompt(uri: vscode.Uri, prompt: UnguardedWritePrompt): vscode.Disposable {
+    const key = uri.toString();
+    this.unguardedPrompters.set(key, prompt);
+    return { dispose: () => this.unguardedPrompters.delete(key) };
   }
 
   /** ⌘⏎: run the selection when there is one, else the statement at the caret. */
@@ -361,6 +397,77 @@ export class QueryRunner {
     return { text: bound.text, params: bound.values };
   }
 
+  // ------------------------------------------------------------ DELETE/UPDATE without WHERE
+
+  /**
+   * IntelliJ's safety net: a DELETE or UPDATE with no WHERE clause is
+   * confirmed before it runs, with the table and its row count. Returns the
+   * write the user declined, or undefined when the statement may run.
+   */
+  private async confirmUnguardedWrites(
+    ds: StoredDataSource,
+    binding: ConsoleBinding,
+    sql: string,
+    consoleUri?: vscode.Uri,
+  ): Promise<UnguardedWrite | undefined> {
+    if (!warnWithoutWhereEnabled()) return undefined;
+    if (consoleUri && !this.consoles.asksBeforeUnguardedWrite(consoleUri)) return undefined;
+    const prompt = (consoleUri && this.unguardedPrompters.get(consoleUri.toString())) ?? this.confirmNatively.bind(this);
+    for (const write of findUnguardedWrites(sql, ds.config.driver)) {
+      const answer = await prompt(this.describeUnguardedWrite(ds, binding, write, consoleUri));
+      if (!answer?.run) return write;
+      if (answer.dontAsk && consoleUri) {
+        await this.consoles.setAsksBeforeUnguardedWrite(consoleUri, false);
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  private describeUnguardedWrite(
+    ds: StoredDataSource,
+    binding: ConsoleBinding,
+    write: UnguardedWrite,
+    consoleUri?: vscode.Uri,
+  ): UnguardedWriteWarning {
+    const warning: UnguardedWriteWarning = { verb: write.verb, dsName: ds.config.name, count: Promise.resolve(undefined) };
+    if (!write.table) return warning;
+    const catalog = this.sessions.getCatalog(ds.config.id);
+    const defaultSchema = ds.config.driver === 'mysql' ? binding.database : binding.schema;
+    const found = catalog ? findRelation(catalog, write.table.schema ?? defaultSchema, write.table.name) : undefined;
+    if (!found) {
+      warning.table = write.table.schema ? `${write.table.schema}.${write.table.name}` : write.table.name;
+      return warning;
+    }
+    warning.table = found.schema.implicit ? found.relation.name : `${found.schema.name}.${found.relation.name}`;
+    // counted on the console's own session, so an open transaction's changes are included
+    const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
+    const countSql = `SELECT count(*) FROM ${qualify(ds.config.driver, schemaForSql, found.relation.name)}`;
+    warning.count = this.makeConsoleRun(ds, consoleUri, true)(countSql)
+      .then((result) => {
+        const value = Number(result.rows[0]?.[0]);
+        return Number.isFinite(value) ? value : undefined;
+      })
+      .catch(() => undefined);
+    return warning;
+  }
+
+  /** Native fallback for scripts and plain .sql files; waits briefly for the count. */
+  private async confirmNatively(warning: UnguardedWriteWarning): Promise<{ run: boolean; dontAsk: boolean } | undefined> {
+    const count = await Promise.race([
+      warning.count,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), COUNT_WAIT_MS)),
+    ]);
+    // Cancel comes first so it is the focused default: ⌘⏎ then a stray ⏎ must not run the statement
+    const answer = await vscode.window.showWarningMessage(
+      `Run ${warning.verb} without a WHERE clause?`,
+      { modal: true, detail: unguardedWriteDetail(warning, count) },
+      { title: 'Cancel', isCloseAffordance: true },
+      { title: 'Run anyway' },
+    );
+    return answer?.title === 'Run anyway' ? { run: true, dontAsk: false } : undefined;
+  }
+
   // ------------------------------------------------------------ editable results
 
   /**
@@ -470,6 +577,12 @@ export class QueryRunner {
       config.driver,
       config.color === 'none' ? null : ENV_COLOR_HEX[config.color],
     );
+
+    const declined = await this.confirmUnguardedWrites(ds, binding, sql, consoleUri);
+    if (declined) {
+      this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] not run: ${declined.verb} without WHERE clause` });
+      return { ok: false, cancelled: true };
+    }
 
     const bound = await this.bindStatement(ds, sql, consoleUri);
     if (bound === 'cancelled') return { ok: false, cancelled: true };
