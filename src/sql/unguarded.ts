@@ -25,6 +25,9 @@ const SET_CLAUSE_ENDS = new Set(['from', 'where', 'limit', 'order', 'returning']
 /** Words that end a statement's relation list. */
 const FROM_LIST_ENDS = new Set(['set', 'where', 'order', 'limit', 'group', 'having', 'returning']);
 
+/** The words that join a relation onto the list before them. */
+const JOIN_WORDS = new Set(['join', 'straight_join']);
+
 /** Words that open a parenthesized group reading rows of its own. */
 const SUBQUERY_STARTS = new Set(['select', 'with', 'values', 'table']);
 
@@ -163,7 +166,7 @@ function relationOccurrences(tokens: Token[], start: number, stop: number): Writ
       continue;
     }
     if (t.kind !== 'word') continue;
-    if (t.value === 'from' || t.value === 'using' || t.value === 'join') {
+    if (t.value === 'from' || t.value === 'using' || JOIN_WORDS.has(t.value)) {
       const relation = tableAt(tokens, j + 1);
       if (relation.table) out.push(relation);
       inList = true;
@@ -198,7 +201,7 @@ function relationsIn(tokens: Token[], start: number): WriteTarget[] {
       expect = false;
       continue;
     }
-    if (t.text === ',' || (t.kind === 'word' && t.value === 'join')) {
+    if (t.text === ',' || (t.kind === 'word' && JOIN_WORDS.has(t.value))) {
       expect = true;
       continue;
     }
@@ -219,7 +222,7 @@ function listsMoreThanOne(tokens: Token[], start: number): boolean {
     } else if (depth !== 0) continue;
     else if (t.text === ';') return false;
     else if (t.text === ',') return true;
-    else if (t.kind === 'word' && (FROM_LIST_ENDS.has(t.value) || t.value === 'using' || t.value === 'join')) return false;
+    else if (t.kind === 'word' && (FROM_LIST_ENDS.has(t.value) || t.value === 'using' || JOIN_WORDS.has(t.value))) return false;
   }
   return false;
 }
@@ -301,14 +304,17 @@ function usingList(tokens: Token[], start: number): number | undefined {
   return undefined;
 }
 
+/** Where the statement's relation list starts: past LOW_PRIORITY, IGNORE, FROM and the other modifiers. */
+function afterVerbModifiers(tokens: Token[], i: number): number {
+  let j = i + 1;
+  while (tokens[j]?.kind === 'word' && VERB_MODIFIERS.has(tokens[j]!.value)) j++;
+  return j;
+}
+
 /** The table the statement writes to, and the names it answers to. */
 function parseTarget(tokens: Token[], i: number, setTokens: Token[]): WriteTarget {
-  let j = i + 1;
-  let sawFrom = false;
-  while (tokens[j]?.kind === 'word' && VERB_MODIFIERS.has(tokens[j]!.value)) {
-    if (tokens[j]!.value === 'from') sawFrom = true;
-    j++;
-  }
+  const j = afterVerbModifiers(tokens, i);
+  const sawFrom = tokens.slice(i + 1, j).some((t) => t.value === 'from');
   if (tokens[i]!.value === 'delete') {
     // `DELETE alias FROM …` names its target first; `DELETE FROM t1, t2 USING …` deletes from every table listed
     if (!sawFrom) return multiTableDelete(tokens, j);
@@ -339,7 +345,7 @@ function conditionQualifiers(tokens: Token[], start: number, stop: number): Set<
       depth--;
       continue;
     }
-    if (depth === 0 && t.kind === 'word' && (t.value === 'join' || t.value === 'set' || t.value === 'where' || FROM_LIST_ENDS.has(t.value))) {
+    if (depth === 0 && t.kind === 'word' && (JOIN_WORDS.has(t.value) || t.value === 'set' || t.value === 'where' || FROM_LIST_ENDS.has(t.value))) {
       break;
     }
     if (tokens[j + 1]?.text !== '.') continue;
@@ -389,7 +395,7 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
       continue;
     }
     if (t.kind !== 'word') continue;
-    if (t.value === 'join') {
+    if (JOIN_WORDS.has(t.value)) {
       pendingJoin = j;
     } else if (pendingJoin >= 0 && (t.value === 'on' || t.value === 'using')) {
       // the condition holds both sides of the join, so either one being the target is enough
@@ -503,7 +509,7 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
   if (guarded || limited) return undefined;
   const setClause = setStart < 0 ? [] : tokens.slice(setStart, setEnd < 0 ? stop : setEnd);
   const target = parseTarget(tokens, i, setClause);
-  if (joinConstrainsTarget(tokens, i + 1, stop, target)) return undefined;
+  if (joinConstrainsTarget(tokens, afterVerbModifiers(tokens, i), stop, target)) return undefined;
   if (verb.value === 'update') {
     if (setStart < 0) return undefined; // not a complete statement yet
     if (selfReferencing(setClause, target.names)) return undefined;

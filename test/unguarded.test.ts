@@ -277,6 +277,10 @@ test('a join is read for what it restricts, not for names that look like the tar
   assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c USING (customer_id) SET c.seen = 1', 'mysql'), []);
   assert.deepEqual(found('UPDATE orders JOIN customers USING (id) SET customers.seen = 1', 'mysql'), []);
   assert.deepEqual(found('DELETE c FROM orders o JOIN customers c USING (id)', 'mysql'), []);
+  // a verb modifier before the relation list, and MySQL's STRAIGHT_JOIN, are still joins onto the target
+  assert.deepEqual(found('UPDATE IGNORE orders o JOIN customers c USING (id) SET o.total = 0', 'mysql'), []);
+  assert.deepEqual(found('UPDATE LOW_PRIORITY IGNORE orders o JOIN customers c ON c.id = o.customer_id SET o.total = 0', 'mysql'), []);
+  assert.deepEqual(found('UPDATE orders o STRAIGHT_JOIN customers c ON c.id = o.id SET o.total = 0', 'mysql'), []);
   // the same table joined as a second row source is not the target it writes
   assert.deepEqual(
     found('UPDATE orders o SET total = o2.total FROM orders o2 JOIN lines l ON l.order_id = o2.id').map((w) => w[0]),
