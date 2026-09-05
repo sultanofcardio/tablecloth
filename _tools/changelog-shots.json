@@ -1,4 +1,10 @@
 {
+  "0.1.1|Changed|The README and the Marketplace listing": [
+    [
+      "cl-docs-site.png",
+      "The docs site the README and the listing point at now."
+    ]
+  ],
   "0.1.0|Added|**Editable data grid**": [
     [
       "cl-grid-changes.png",
