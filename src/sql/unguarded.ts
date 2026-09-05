@@ -25,6 +25,9 @@ const SET_CLAUSE_ENDS = new Set(['from', 'where', 'limit', 'order', 'returning']
 /** Words that end the FROM list of a MySQL multi-table DELETE. */
 const FROM_LIST_ENDS = new Set(['where', 'order', 'limit', 'group', 'having', 'returning']);
 
+/** Words that open a parenthesized group reading rows of its own. */
+const SUBQUERY_STARTS = new Set(['select', 'with', 'values', 'table']);
+
 /** Words that can only be a clause of their own, never a table's alias. */
 const NOT_ALIAS = new Set([
   'set', 'where', 'from', 'using', 'returning', 'limit', 'order', 'group', 'having', 'values',
@@ -222,8 +225,12 @@ function parseTarget(tokens: Token[], i: number): WriteTarget {
   return tableAt(tokens, j);
 }
 
-/** The names an ON/USING condition mentions, up to the next join or clause. */
-function conditionNames(tokens: Token[], start: number, stop: number): Set<string> {
+/**
+ * The relations an ON/USING condition qualifies a column with, up to the next
+ * join or clause. Only qualifiers count: a column that happens to be spelled
+ * like a table (`c.orders`) says nothing about which rows the join keeps.
+ */
+function conditionQualifiers(tokens: Token[], start: number, stop: number): Set<string> {
   const names = new Set<string>();
   let depth = 0;
   for (let j = start; j < stop; j++) {
@@ -240,6 +247,7 @@ function conditionNames(tokens: Token[], start: number, stop: number): Set<strin
     if (depth === 0 && t.kind === 'word' && (t.value === 'join' || t.value === 'set' || t.value === 'where' || FROM_LIST_ENDS.has(t.value))) {
       break;
     }
+    if (tokens[j + 1]?.text !== '.') continue;
     const name = nameOf(t);
     if (name) names.add(name.toLowerCase());
   }
@@ -247,10 +255,10 @@ function conditionNames(tokens: Token[], start: number, stop: number): Set<strin
 }
 
 /**
- * Whether a JOIN with an ON/USING condition restricts the write target, the
- * exemption IntelliJ makes. The join has to involve the target: the relation
- * list it belongs to starts at the target, the joined relation is the target,
- * or the condition names it. A join between two other tables
+ * Whether any JOIN with an ON/USING condition restricts the write target, the
+ * exemption IntelliJ makes. The join has to involve the target: it joins onto
+ * the relation list the target heads, or its condition qualifies a column with
+ * the target's name or alias. A join between two other tables
  * (`UPDATE orders SET … FROM customers c JOIN regions r ON r.id = c.region_id`)
  * still leaves every row of the target in play.
  */
@@ -258,7 +266,7 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
   const hits = (names: Set<string>) => [...names].some((name) => targetNames.has(name));
   let depth = 0;
   let chainRoot = targetNames;
-  let joined: Set<string> | undefined;
+  let pendingJoin = false;
   let constrained = false;
   for (let j = start; j < stop; j++) {
     const t = tokens[j]!;
@@ -273,33 +281,26 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
     if (depth !== 0) continue;
     if (t.text === ',') {
       chainRoot = tableAt(tokens, j + 1).names;
-      joined = undefined;
+      pendingJoin = false;
       continue;
     }
     if (t.kind !== 'word') continue;
     if (t.value === 'join') {
-      joined = tableAt(tokens, j + 1).names;
-      constrained = false;
-    } else if (joined && (t.value === 'on' || t.value === 'using')) {
-      constrained = hits(chainRoot) || hits(joined) || hits(conditionNames(tokens, j + 1, stop));
-      joined = undefined;
+      pendingJoin = true;
+    } else if (pendingJoin && (t.value === 'on' || t.value === 'using')) {
+      constrained ||= hits(chainRoot) || hits(conditionQualifiers(tokens, j + 1, stop));
+      pendingJoin = false;
     } else if (t.value === 'from' || t.value === 'using') {
       chainRoot = tableAt(tokens, j + 1).names;
-      joined = undefined;
+      pendingJoin = false;
     }
   }
   return constrained;
 }
 
 /**
- * Whether every assignment in an UPDATE's SET clause reads the column it
- * writes (`SET counter = counter + 1`): a deliberate whole-table change,
- * which IntelliJ leaves alone. It has to be the target's own column, so
- * `SET status = c.status FROM customers c` is still a whole-table rewrite.
- */
-/**
- * Which tokens of an assignment's right-hand side read the target's own row:
- * those at depth 0, plus the arguments of a function call. A subquery reads
+ * Which tokens of an assignment's right-hand side read the target's own row.
+ * Grouping parentheses, function arguments and casts do; a subquery reads
  * another table, so `SET total = (SELECT total FROM defaults)` reads nothing
  * of the target's.
  */
@@ -309,9 +310,9 @@ function readsOwnRow(read: Token[]): boolean[] {
   for (let k = 0; k < read.length; k++) {
     const t = read[k]!;
     if (t.text === '(') {
-      const before = read[k - 1];
-      const call = !!before && (before.kind === 'word' || before.kind === 'ident') && !isWord(read, k + 1, 'select');
-      groups.push(call && (groups[groups.length - 1] ?? true));
+      const opens = read[k + 1];
+      const subquery = opens?.kind === 'word' && SUBQUERY_STARTS.has(opens.value);
+      groups.push(!subquery && (groups[groups.length - 1] ?? true));
       continue;
     }
     if (t.text === ')') {
@@ -323,6 +324,12 @@ function readsOwnRow(read: Token[]): boolean[] {
   return own;
 }
 
+/**
+ * Whether every assignment in an UPDATE's SET clause reads the column it
+ * writes (`SET counter = counter + 1`): a deliberate whole-table change,
+ * which IntelliJ leaves alone. It has to be the target's own column, so
+ * `SET status = c.status FROM customers c` is still a whole-table rewrite.
+ */
 function selfReferencing(setTokens: Token[], targetNames: Set<string>): boolean {
   const assignments: Token[][] = [[]];
   let depth = 0;

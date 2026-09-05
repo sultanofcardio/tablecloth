@@ -221,6 +221,26 @@ test('a conditioned JOIN exempts the statement only when it restricts the target
     found('UPDATE orders o JOIN customers c ON c.id = o.customer_id JOIN regions r ON r.id = c.region_id SET o.total = 0', 'mysql'),
     [],
   );
+  // any conditioned join that restricts the target is enough, not just the last one
+  assert.deepEqual(
+    found('UPDATE orders o SET total = 0 FROM customers c JOIN order_lines l ON l.order_id = o.id JOIN regions r ON r.id = c.region_id'),
+    [],
+  );
+  assert.deepEqual(found('UPDATE orders o JOIN customers c ON c.id = o.customer_id CROSS JOIN regions r SET o.total = 0', 'mysql'), []);
+});
+
+test('a join is read for what it restricts, not for names that look like the target', () => {
+  // a column spelled like the target table is not a reference to it
+  assert.deepEqual(
+    found("UPDATE orders SET status = 'x' FROM customers c JOIN regions r ON r.id = c.orders").map((w) => w[0]),
+    ['UPDATE'],
+  );
+  // the target's own table joined again under another alias restricts nothing
+  assert.deepEqual(
+    found("UPDATE orders SET status = 'x' FROM customers c JOIN orders o2 ON o2.id = c.id").map((w) => w[0]),
+    ['UPDATE'],
+  );
+  assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET o.total = 0', 'mysql'), []);
 });
 
 test('an assignment reading a subquery is not reading its own column', () => {
@@ -233,4 +253,8 @@ test('an assignment reading a subquery is not reading its own column', () => {
   );
   assert.deepEqual(found('UPDATE orders SET total = coalesce(total, 0)'), []);
   assert.deepEqual(found('UPDATE counters SET hits = hits + 1'), []);
+  // grouping parentheses, casts and unary minus still read the target's own row
+  assert.deepEqual(found('UPDATE counters SET hits = (hits + 1)'), []);
+  assert.deepEqual(found('UPDATE counters SET hits = -(hits)'), []);
+  assert.deepEqual(found('UPDATE counters SET hits = (hits + 1)::int'), []);
 });
