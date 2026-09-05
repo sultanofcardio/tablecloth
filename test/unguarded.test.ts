@@ -210,6 +210,11 @@ test("MySQL's multi-table UPDATE names the table its SET clause writes", () => {
   assert.deepEqual(found('UPDATE orders o JOIN customers c ON c.id = o.customer_id SET total = 0', 'mysql'), []);
   assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET total = 0', 'mysql'), []);
   assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c ON c.id = o.customer_id SET c.seen = 1', 'mysql'), []);
+  // the same join also writing orders: the LEFT JOIN preserves orders, so that half rewrites every row, and
+  // with two relations written there is no single table to name
+  assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c ON c.id = o.customer_id SET c.seen = 1, o.total = 0', 'mysql'), [
+    ['UPDATE', 'UPDATE orders o LEFT JOIN customers c ON c.id = o.customer_id SET c.seen = 1, o.total = 0', undefined],
+  ]);
   assert.deepEqual(found('DELETE a, b FROM a JOIN b ON a.id = b.id', 'mysql'), []);
   // a multi-target DELETE joins in its USING list, which is where the condition has to be read
   assert.deepEqual(found('DELETE FROM t1, t2 USING t1 JOIN t2 ON t1.id = t2.id', 'mysql'), []);
