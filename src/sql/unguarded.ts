@@ -22,8 +22,8 @@ const VERB_MODIFIERS = new Set([
 /** Words that end the SET clause of an UPDATE at parenthesis depth 0. */
 const SET_CLAUSE_ENDS = new Set(['from', 'where', 'limit', 'order', 'returning']);
 
-/** Words that end the FROM list of a MySQL multi-table DELETE. */
-const FROM_LIST_ENDS = new Set(['where', 'order', 'limit', 'group', 'having', 'returning']);
+/** Words that end a statement's relation list. */
+const FROM_LIST_ENDS = new Set(['set', 'where', 'order', 'limit', 'group', 'having', 'returning']);
 
 /** Words that open a parenthesized group reading rows of its own. */
 const SUBQUERY_STARTS = new Set(['select', 'with', 'values', 'table']);
@@ -249,8 +249,29 @@ function multiTableDelete(tokens: Token[], start: number): WriteTarget {
   return relationsIn(tokens, from + 1).find((relation) => relation.names.has(target)) ?? NO_TARGET;
 }
 
+/**
+ * MySQL's multi-table UPDATE writes to whichever relation its SET clause
+ * qualifies, not to the first one listed. One qualifier shared by every
+ * assignment names the target; mixed or unqualified assignments name none.
+ */
+function qualifiedUpdateTarget(relations: WriteTarget[], setTokens: Token[]): WriteTarget {
+  const assignments = splitAssignments(setTokens).filter((a) => a.length > 0);
+  if (assignments.length === 0) return NO_TARGET;
+  const qualifiers = new Set<string>();
+  for (const assignment of assignments) {
+    const eq = assignment.findIndex((t) => t.text === '=');
+    if (eq <= 0 || assignment[eq - 2]?.text !== '.') return NO_TARGET;
+    const qualifier = nameOf(assignment[eq - 3]);
+    if (!qualifier) return NO_TARGET;
+    qualifiers.add(qualifier.toLowerCase());
+  }
+  if (qualifiers.size !== 1) return NO_TARGET;
+  const [only] = [...qualifiers];
+  return relations.find((relation) => relation.names.has(only!)) ?? NO_TARGET;
+}
+
 /** The table the statement writes to, and the names it answers to. */
-function parseTarget(tokens: Token[], i: number): WriteTarget {
+function parseTarget(tokens: Token[], i: number, setTokens: Token[]): WriteTarget {
   let j = i + 1;
   let sawFrom = false;
   while (tokens[j]?.kind === 'word' && VERB_MODIFIERS.has(tokens[j]!.value)) {
@@ -261,6 +282,9 @@ function parseTarget(tokens: Token[], i: number): WriteTarget {
     // `DELETE alias FROM …` names its target first; `DELETE FROM t1, t2 USING …` deletes from every table listed
     if (!sawFrom) return multiTableDelete(tokens, j);
     if (listsMoreThanOne(tokens, j)) return NO_TARGET;
+  } else {
+    const relations = relationsIn(tokens, j);
+    if (relations.length > 1) return qualifiedUpdateTarget(relations, setTokens);
   }
   return tableAt(tokens, j);
 }
@@ -314,7 +338,7 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
   else if (bare && !others.some((relation) => relation.names.has(bare))) referred.add(bare);
   const hits = (names: Set<string>) => [...names].some((name) => referred.has(name));
   let depth = 0;
-  let chainIsTarget = target.at !== undefined;
+  let chainIsTarget = isTarget(tableAt(tokens, start));
   let pendingJoin = false;
   let constrained = false;
   for (let j = start; j < stop; j++) {
@@ -345,6 +369,22 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
     }
   }
   return constrained;
+}
+
+/** The SET clause split into its assignments, on the commas that separate them. */
+function splitAssignments(setTokens: Token[]): Token[][] {
+  const assignments: Token[][] = [[]];
+  let depth = 0;
+  for (const t of setTokens) {
+    if (t.text === '(' || t.text === '[') depth++;
+    else if (t.text === ')' || t.text === ']') depth = Math.max(0, depth - 1);
+    if (t.text === ',' && depth === 0) {
+      assignments.push([]);
+      continue;
+    }
+    assignments[assignments.length - 1]!.push(t);
+  }
+  return assignments;
 }
 
 /**
@@ -380,17 +420,7 @@ function readsOwnRow(read: Token[]): boolean[] {
  * `SET status = c.status FROM customers c` is still a whole-table rewrite.
  */
 function selfReferencing(setTokens: Token[], targetNames: Set<string>): boolean {
-  const assignments: Token[][] = [[]];
-  let depth = 0;
-  for (const t of setTokens) {
-    if (t.text === '(' || t.text === '[') depth++;
-    else if (t.text === ')' || t.text === ']') depth = Math.max(0, depth - 1);
-    if (t.text === ',' && depth === 0) {
-      assignments.push([]);
-      continue;
-    }
-    assignments[assignments.length - 1]!.push(t);
-  }
+  const assignments = splitAssignments(setTokens);
   if (assignments.every((a) => a.length === 0)) return false;
   return assignments.every((assignment) => {
     const eq = assignment.findIndex((t) => t.text === '=');
@@ -439,11 +469,12 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
     end = t.end;
   }
   if (guarded || limited) return undefined;
-  const target = parseTarget(tokens, i);
+  const setClause = setStart < 0 ? [] : tokens.slice(setStart, setEnd < 0 ? stop : setEnd);
+  const target = parseTarget(tokens, i, setClause);
   if (joinConstrainsTarget(tokens, i + 1, stop, target)) return undefined;
   if (verb.value === 'update') {
     if (setStart < 0) return undefined; // not a complete statement yet
-    if (selfReferencing(tokens.slice(setStart, setEnd < 0 ? stop : setEnd), target.names)) return undefined;
+    if (selfReferencing(setClause, target.names)) return undefined;
   }
   return {
     verb: verb.value === 'delete' ? 'DELETE' : 'UPDATE',

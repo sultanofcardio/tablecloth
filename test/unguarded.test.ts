@@ -194,6 +194,30 @@ test('EXPLAIN ANALYZE covers only the statement it runs, not a verb in its claus
   assert.deepEqual(found('EXPLAIN (ANALYZE, BUFFERS) UPDATE orders SET total = 0').map((w) => w[0]), ['UPDATE']);
 });
 
+test("MySQL's multi-table UPDATE names the table its SET clause writes", () => {
+  assert.deepEqual(found('UPDATE customers c, orders o SET o.total = 0', 'mysql'), [
+    ['UPDATE', 'UPDATE customers c, orders o SET o.total = 0', { name: 'orders' }],
+  ]);
+  assert.deepEqual(found('UPDATE customers, orders SET orders.total = 0', 'mysql'), [
+    ['UPDATE', 'UPDATE customers, orders SET orders.total = 0', { name: 'orders' }],
+  ]);
+  assert.deepEqual(found('UPDATE customers c CROSS JOIN orders o SET o.total = 0', 'mysql'), [
+    ['UPDATE', 'UPDATE customers c CROSS JOIN orders o SET o.total = 0', { name: 'orders' }],
+  ]);
+  // the target decides the self-reference exemption, so this reads its own column
+  assert.deepEqual(found('UPDATE customers c, orders o SET o.hits = o.hits + 1', 'mysql'), []);
+  // writing several relations, or none of them qualified: name no table rather than the wrong one
+  assert.deepEqual(found('UPDATE customers c, orders o SET c.seen = 1, o.total = 0', 'mysql'), [
+    ['UPDATE', 'UPDATE customers c, orders o SET c.seen = 1, o.total = 0', undefined],
+  ]);
+  assert.deepEqual(found('UPDATE customers c, orders o SET total = 0', 'mysql'), [
+    ['UPDATE', 'UPDATE customers c, orders o SET total = 0', undefined],
+  ]);
+  assert.deepEqual(found("UPDATE public.orders SET status = 'x'"), [
+    ['UPDATE', "UPDATE public.orders SET status = 'x'", { schema: 'public', name: 'orders' }],
+  ]);
+});
+
 test("MySQL's multi-table DELETE names the table, not the target alias", () => {
   assert.deepEqual(found('DELETE o FROM orders o', 'mysql'), [['DELETE', 'DELETE o FROM orders o', { name: 'orders' }]]);
   assert.deepEqual(found('DELETE o FROM shop.orders AS o', 'mysql'), [
