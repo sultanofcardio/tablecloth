@@ -8,6 +8,10 @@
     const all=[...grid.querySelectorAll('.sq')];
     const COLS=28, ABOVE=117;
     const stageLabel={done:'Supported',v1:'Before 1.0',after:'After 1.0',never:'Not planned'};
+    // CSS zoom (html { zoom }) scales getBoundingClientRect in current browsers but not offsetWidth or CSS lengths; rc() returns rects in CSS px.
+    const probe=document.createElement('div'); probe.style.cssText='position:absolute;visibility:hidden;width:100px;height:1px;pointer-events:none'; body.appendChild(probe);
+    const Z=()=>{ const w=probe.getBoundingClientRect().width; return w>0 ? w/100 : 1; };
+    const rc=el=>{ const r=el.getBoundingClientRect(), z=Z(); return {left:r.left/z, top:r.top/z, right:r.right/z, bottom:r.bottom/z, width:r.width/z, height:r.height/z}; };
     const NEXT=new Set([57,60,64,117]);
     all.forEach(s=>{ if(NEXT.has(+s.dataset.n)) s.classList.add('next'); });
     function tones(){
@@ -19,18 +23,18 @@
     }
     function drawSeam(){
       if(!areasEl.hidden){ seam.innerHTML=''; return; }
-      const b=body.getBoundingClientRect();
-      const last=all[ABOVE-1].getBoundingClientRect(), nextRow=all[ABOVE].getBoundingClientRect();
+      const b=rc(body);
+      const last=rc(all[ABOVE-1]), nextRow=rc(all[ABOVE]);
       const gap=(nextRow.left-last.right)/2; const x=last.right-b.left+gap; const yLow=last.bottom-b.top+gap; const yHigh=last.top-b.top-gap;
       const w=b.width;
       seam.setAttribute('viewBox',`0 0 ${w} ${b.height}`);
-      const gw=grid.getBoundingClientRect().right-b.left; const d2=`M0 ${yLow} H${x} V${yHigh} H${gw+10}`;
+      const gw=rc(grid).right-b.left; const d2=`M0 ${yLow} H${x} V${yHigh} H${gw+10}`;
       seam.innerHTML=`<path class="under" d="${d2}"/><path class="over" d="${d2}"/><g transform="translate(${gw+12} ${yHigh-11})"><rect class="tag" width="38" height="22" rx="6"/><text class="tagtext" x="19" y="15" text-anchor="middle">1.0</text></g>`;
     }
     function flip(fn){
-      const before=new Map(all.map(s=>[s,s.getBoundingClientRect()]));
+      const before=new Map(all.map(s=>[s,rc(s)]));
       fn();
-      all.forEach(s=>{ const a=before.get(s), b=s.getBoundingClientRect(); const dx=a.left-b.left, dy=a.top-b.top; const k=a.width/b.width||1;
+      all.forEach(s=>{ const a=before.get(s), b=rc(s); const dx=a.left-b.left, dy=a.top-b.top; const k=a.width/b.width||1;
         s.style.transition='none'; s.style.transform=`translate(${dx}px,${dy}px) scale(${k})`; });
       void body.offsetWidth;
       all.forEach(s=>{ s.style.transition=''; s.classList.add('moving'); s.style.transform=''; });
@@ -50,7 +54,7 @@
       cloth.querySelectorAll('.seg button').forEach(x=>x.classList.toggle('on',x===b));
       seam.innerHTML=''; cloth.querySelector('.cloth-title').textContent=b.dataset.mode==='area'?'The cloth, by area':'The cloth, rank 1 to 252'; flip(b.dataset.mode==='area'?byArea:byRank);
     }));
-    function showTip(s){ const r=s.getBoundingClientRect(), b=body.getBoundingClientRect();
+    function showTip(s){ const r=rc(s), b=rc(body);
       tip.innerHTML=`<span class="tn">#${s.dataset.n}</span>${s.dataset.feat}<span class="ts ${s.dataset.stage}">${stageLabel[s.dataset.stage]} · ${s.dataset.area}</span>`;
       tip.hidden=false; let x=r.left-b.left+r.width/2-tip.offsetWidth/2, y=r.top-b.top-tip.offsetHeight-8;
       x=Math.max(0,Math.min(x,b.width-tip.offsetWidth)); if(y<0) y=r.bottom-b.top+8; tip.style.left=x+'px'; tip.style.top=y+'px'; }

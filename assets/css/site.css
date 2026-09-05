@@ -111,7 +111,11 @@
 
 
   .site { min-height: 100vh; }
-  .site nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .site nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: start; }
+  .navrail { position: fixed; }
+  /* the reviewed mock reads right at about 170%, so that is the default on desktop widths */
+  @media (min-width: 1200px) { html { zoom: 1.7; } }
+  @media (min-width: 800px) and (max-width: 1199px) { html { zoom: 1.35; } }
   .site nav a.item { display: block; color: var(--ink); font-size: 14px; padding: 6px 10px; border-radius: 6px; text-decoration: none; }
   .site nav a.item:hover { background: rgba(255,255,255,.05); }
   .site nav a.item.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
