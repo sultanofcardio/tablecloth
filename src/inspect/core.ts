@@ -199,7 +199,8 @@ export function unguardedWriteMessage(verb: 'DELETE' | 'UPDATE', table?: { schem
  */
 export function inspectSql(catalog: CatalogModel | undefined, dialect: DriverId, text: string, defaultSchema?: string): Inspection[] {
   const out: Inspection[] = [];
-  for (const stmt of splitStatements(text, dialect)) {
+  const statements = splitStatements(text, dialect);
+  for (const stmt of statements) {
     for (const write of findUnguardedWrites(stmt.sql, dialect)) {
       out.push({
         start: stmt.start + write.start,
@@ -214,7 +215,7 @@ export function inspectSql(catalog: CatalogModel | undefined, dialect: DriverId,
   const schemaNames = new Set(catalog.databases.flatMap((db) => db.schemas.map((s) => s.name.toLowerCase())));
   const knownSchemaNames = new Set(catalog.databases.flatMap((db) => db.allSchemaNames.map((s) => s.toLowerCase())));
 
-  for (const stmt of splitStatements(text, dialect)) {
+  for (const stmt of statements) {
     const tokens = significant(tokenize(stmt.sql, dialect));
     if (tokens.length === 0) continue;
     const scope: StatementScope = {

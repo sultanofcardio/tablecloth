@@ -10,7 +10,7 @@ import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
 import { splitStatements, statementAt } from '../sql/splitter';
-import { findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
+import { countPlan, findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
 import { defaultPageSize, StaticGridProvider, type GridMeta, type RunQuery } from '../ui/grid';
 import type { ReferencingDto } from '../ui/gridProtocol';
 import { ConsoleGridProvider, makeRunQuery, runChangeBatch, type ConsoleEditingOptions } from '../ui/providers';
@@ -440,16 +440,39 @@ export class QueryRunner {
       return warning;
     }
     warning.table = found.schema.implicit ? found.relation.name : `${found.schema.name}.${found.relation.name}`;
-    // counted on the console's own session, so an open transaction's changes are included
     const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
-    const countSql = `SELECT count(*) FROM ${qualify(ds.config.driver, schemaForSql, found.relation.name)}`;
-    warning.count = this.makeConsoleRun(ds, consoleUri, true)(countSql)
+    warning.count = this.countRows(ds, qualify(ds.config.driver, schemaForSql, found.relation.name), consoleUri);
+    return warning;
+  }
+
+  /**
+   * Count the rows the statement would touch on the console's own session, so
+   * an open transaction's uncommitted changes are included. The count never
+   * opens a transaction of its own and never touches the console's tracked Tx
+   * state; the table is qualified so no schema context is needed. Anything
+   * that goes wrong, a timeout included, leaves the dialog without a number.
+   */
+  private countRows(ds: StoredDataSource, qualifiedTable: string, consoleUri?: vscode.Uri): Promise<number | undefined> {
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
+    const plan = countPlan(ds.config.driver, qualifiedTable, !!consoleUri && this.consoles.isInTx(consoleUri));
+    return this.sessions
+      .run(
+        ds.config,
+        async (session) => {
+          try {
+            for (const sql of plan.before) await session.query(sql);
+            return await session.query(plan.count);
+          } finally {
+            for (const sql of plan.after) await session.query(sql).catch(() => undefined);
+          }
+        },
+        suffix,
+      )
       .then((result) => {
         const value = Number(result.rows[0]?.[0]);
         return Number.isFinite(value) ? value : undefined;
       })
       .catch(() => undefined);
-    return warning;
   }
 
   /** Native fallback for scripts and plain .sql files; waits briefly for the count. */

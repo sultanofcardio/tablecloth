@@ -171,3 +171,40 @@ export function findUnguardedWrites(sql: string, dialect: DriverId): UnguardedWr
   }
   return out;
 }
+
+/** Server-side bound on the row count shown in the warning, in milliseconds. */
+export const COUNT_TIMEOUT_MS = 3000;
+
+const COUNT_SAVEPOINT = 'tablecloth_count';
+
+/**
+ * How to count the rows a DELETE or UPDATE without WHERE would touch, on the
+ * console's own session, without disturbing it. The count is bounded so a
+ * safety prompt cannot stall the console: Postgres gets a statement timeout,
+ * MySQL the optimizer hint, SQLite nothing (it counts in process). While a
+ * transaction is open the count runs under a savepoint that is rolled back
+ * afterwards, so it sees the transaction's uncommitted rows and leaves neither
+ * the timeout setting nor an aborted transaction behind. `after` runs whether
+ * the count succeeded or not, best effort.
+ */
+export function countPlan(
+  dialect: DriverId,
+  qualifiedTable: string,
+  inTransaction: boolean,
+): { before: string[]; count: string; after: string[] } {
+  const hint = dialect === 'mysql' ? `/*+ MAX_EXECUTION_TIME(${COUNT_TIMEOUT_MS}) */ ` : '';
+  const count = `SELECT ${hint}count(*) FROM ${qualifiedTable}`;
+  if (inTransaction) {
+    const before = [`SAVEPOINT ${COUNT_SAVEPOINT}`];
+    if (dialect === 'postgres') before.push(`SET LOCAL statement_timeout = ${COUNT_TIMEOUT_MS}`);
+    return {
+      before,
+      count,
+      after: [`ROLLBACK TO SAVEPOINT ${COUNT_SAVEPOINT}`, `RELEASE SAVEPOINT ${COUNT_SAVEPOINT}`],
+    };
+  }
+  if (dialect === 'postgres') {
+    return { before: [`SET statement_timeout = ${COUNT_TIMEOUT_MS}`], count, after: ['SET statement_timeout = DEFAULT'] };
+  }
+  return { before: [], count, after: [] };
+}

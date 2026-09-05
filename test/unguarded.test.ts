@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findUnguardedWrites } from '../src/sql/unguarded';
+import { countPlan, findUnguardedWrites } from '../src/sql/unguarded';
 import type { DriverId } from '../src/core/types';
 
 const found = (sql: string, dialect: DriverId = 'postgres') =>
@@ -89,4 +89,41 @@ test('an UPDATE still being typed is not reported until it has a SET clause', ()
   assert.deepEqual(found('UPDATE orders'), []);
   assert.deepEqual(found('UPDATE orders SET'), [['UPDATE', 'UPDATE orders SET', { name: 'orders' }]]);
   assert.deepEqual(found('DELETE'), [['DELETE', 'DELETE', undefined]]);
+});
+
+test('the row count is bounded server-side per dialect and never opens a transaction', () => {
+  const outside = countPlan('postgres', 'public.orders', false);
+  assert.deepEqual(outside.before, ['SET statement_timeout = 3000']);
+  assert.equal(outside.count, 'SELECT count(*) FROM public.orders');
+  assert.deepEqual(outside.after, ['SET statement_timeout = DEFAULT']);
+
+  const mysql = countPlan('mysql', '`shop`.`orders`', false);
+  assert.deepEqual(mysql.before, []);
+  assert.equal(mysql.count, 'SELECT /*+ MAX_EXECUTION_TIME(3000) */ count(*) FROM `shop`.`orders`');
+  assert.deepEqual(mysql.after, []);
+
+  const sqlite = countPlan('sqlite', '"orders"', false);
+  assert.deepEqual(sqlite.before, []);
+  assert.equal(sqlite.count, 'SELECT count(*) FROM "orders"');
+  assert.deepEqual(sqlite.after, []);
+
+  for (const plan of [countPlan('postgres', 'public.orders', false), mysql, sqlite]) {
+    assert.equal([...plan.before, plan.count, ...plan.after].some((sql) => /^(BEGIN|START|COMMIT|ROLLBACK)\b/i.test(sql)), false);
+  }
+});
+
+test('inside an open transaction the count runs under a savepoint that is always undone', () => {
+  const pg = countPlan('postgres', 'public.orders', true);
+  assert.deepEqual(pg.before, ['SAVEPOINT tablecloth_count', 'SET LOCAL statement_timeout = 3000']);
+  assert.equal(pg.count, 'SELECT count(*) FROM public.orders');
+  assert.deepEqual(pg.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
+
+  const mysql = countPlan('mysql', 'orders', true);
+  assert.deepEqual(mysql.before, ['SAVEPOINT tablecloth_count']);
+  assert.equal(mysql.count, 'SELECT /*+ MAX_EXECUTION_TIME(3000) */ count(*) FROM orders');
+  assert.deepEqual(mysql.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
+
+  const sqlite = countPlan('sqlite', 'orders', true);
+  assert.deepEqual(sqlite.before, ['SAVEPOINT tablecloth_count']);
+  assert.deepEqual(sqlite.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
 });
