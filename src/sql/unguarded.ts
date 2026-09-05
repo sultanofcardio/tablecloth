@@ -22,6 +22,21 @@ const VERB_MODIFIERS = new Set([
 /** Words that end the SET clause of an UPDATE at parenthesis depth 0. */
 const SET_CLAUSE_ENDS = new Set(['from', 'where', 'limit', 'order', 'returning']);
 
+/** Words that end the FROM list of a MySQL multi-table DELETE. */
+const FROM_LIST_ENDS = new Set(['where', 'order', 'limit', 'group', 'having', 'returning']);
+
+/** Words that can only be a clause of their own, never a table's alias. */
+const NOT_ALIAS = new Set([
+  'set', 'where', 'from', 'using', 'returning', 'limit', 'order', 'group', 'having', 'values',
+  'join', 'inner', 'left', 'right', 'full', 'cross', 'natural', 'straight_join', 'on', 'select', 'union', 'as',
+]);
+
+/** Words EXPLAIN takes before the statement it explains. */
+const EXPLAIN_OPTIONS = new Set([
+  'analyze', 'analyse', 'verbose', 'costs', 'settings', 'generic_plan', 'buffers', 'serialize', 'wal',
+  'timing', 'summary', 'memory', 'format', 'text', 'xml', 'json', 'yaml', 'true', 'false', 'on', 'off', 'none',
+]);
+
 function nameOf(token: Token | undefined): string | undefined {
   if (!token) return undefined;
   if (token.kind === 'ident') return token.value;
@@ -62,31 +77,114 @@ function isStatementHead(tokens: Token[], i: number, stmtStart: number, depth: n
   if (first?.kind !== 'word') return false;
   if (first.value === 'with') return prev.text === ')';
   if (first.value === 'explain') {
-    return tokens.slice(stmtStart + 1, i).some((t) => t.kind === 'word' && (t.value === 'analyze' || t.value === 'analyse'));
+    const target = explainTarget(tokens, stmtStart);
+    if (target === undefined || target > i) return false;
+    return target === i || isStatementHead(tokens, i, target, depth);
   }
   return false;
 }
 
-/** The plainly written target table right after the verb, if any. */
-function targetTable(tokens: Token[], i: number): UnguardedWrite['table'] {
-  let j = i + 1;
-  while (tokens[j]?.kind === 'word' && VERB_MODIFIERS.has(tokens[j]!.value)) j++;
+/**
+ * Where the statement EXPLAIN runs begins, when the options say it runs at
+ * all: `EXPLAIN (ANALYZE, BUFFERS) UPDATE …` executes, plain `EXPLAIN UPDATE …`
+ * only plans. Undefined when no ANALYZE option is present.
+ */
+function explainTarget(tokens: Token[], stmtStart: number): number | undefined {
+  let analyzed = false;
+  let j = stmtStart + 1;
+  for (; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(' || t.text === ')' || t.text === ',') continue;
+    if (t.kind !== 'word' || !EXPLAIN_OPTIONS.has(t.value)) break;
+    if (t.value === 'analyze' || t.value === 'analyse') analyzed = true;
+  }
+  return analyzed ? j : undefined;
+}
+
+interface WriteTarget {
+  /** The target table as written, when the statement names one plainly. */
+  table?: { schema?: string; name: string };
+  /** The names that target answers to in the statement: its table name and its alias. */
+  names: Set<string>;
+}
+
+const NO_TARGET: WriteTarget = { names: new Set() };
+
+/** Read `[schema.]table [[AS] alias]` at `j`. */
+function tableAt(tokens: Token[], j: number): WriteTarget {
   const first = tokens[j];
   const name = nameOf(first);
-  if (!name || (first!.kind === 'word' && first!.value === 'set')) return undefined;
+  if (!name || (first!.kind === 'word' && first!.value === 'set')) return NO_TARGET;
+  let table: { schema?: string; name: string } = { name };
+  let k = j + 1;
   if (tokens[j + 1]?.text === '.') {
     const second = nameOf(tokens[j + 2]);
-    return second ? { schema: name, name: second } : undefined;
+    if (!second) return NO_TARGET;
+    table = { schema: name, name: second };
+    k = j + 3;
   }
-  return { name };
+  const names = new Set([table.name.toLowerCase()]);
+  if (isWord(tokens, k, 'as')) k++;
+  const aliasToken = tokens[k];
+  const alias = nameOf(aliasToken);
+  if (alias && !(aliasToken!.kind === 'word' && NOT_ALIAS.has(aliasToken!.value))) names.add(alias.toLowerCase());
+  return { table, names };
+}
+
+/**
+ * MySQL's `DELETE alias[, alias] FROM tables …`: the word after the verb is a
+ * target, not a table. Only a single target over a single-table FROM resolves;
+ * anything else names no table rather than naming an alias.
+ */
+function multiTableDelete(tokens: Token[], start: number): WriteTarget {
+  const target = nameOf(tokens[start])?.toLowerCase();
+  if (!target) return NO_TARGET;
+  let depth = 0;
+  let from = -1;
+  for (let j = start; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') depth++;
+    else if (t.text === ')') depth = Math.max(0, depth - 1);
+    else if (depth === 0 && (t.text === ',' || t.text === ';')) return NO_TARGET;
+    else if (depth === 0 && t.kind === 'word' && t.value === 'from') {
+      from = j;
+      break;
+    }
+  }
+  if (from < 0) return NO_TARGET;
+  for (let j = from + 1; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') depth++;
+    else if (t.text === ')') depth = Math.max(0, depth - 1);
+    else if (depth !== 0) continue;
+    else if (t.text === ';') break;
+    else if (t.text === ',') return NO_TARGET;
+    else if (t.kind === 'word' && t.value === 'join') return NO_TARGET;
+    else if (t.kind === 'word' && FROM_LIST_ENDS.has(t.value)) break;
+  }
+  const table = tableAt(tokens, from + 1);
+  return table.names.has(target) ? table : NO_TARGET;
+}
+
+/** The table the statement writes to, and the names it answers to. */
+function parseTarget(tokens: Token[], i: number): WriteTarget {
+  let j = i + 1;
+  let sawFrom = false;
+  while (tokens[j]?.kind === 'word' && VERB_MODIFIERS.has(tokens[j]!.value)) {
+    if (tokens[j]!.value === 'from') sawFrom = true;
+    j++;
+  }
+  if (tokens[i]!.value === 'delete' && !sawFrom) return multiTableDelete(tokens, j);
+  return tableAt(tokens, j);
 }
 
 /**
  * Whether every assignment in an UPDATE's SET clause reads the column it
  * writes (`SET counter = counter + 1`): a deliberate whole-table change,
- * which IntelliJ leaves alone.
+ * which IntelliJ leaves alone. It has to be the target's own column, so
+ * `SET status = c.status FROM customers c` is still a whole-table rewrite.
  */
-function selfReferencing(setTokens: Token[]): boolean {
+function selfReferencing(setTokens: Token[], targetNames: Set<string>): boolean {
   const assignments: Token[][] = [[]];
   let depth = 0;
   for (const t of setTokens) {
@@ -104,7 +202,13 @@ function selfReferencing(setTokens: Token[]): boolean {
     if (eq <= 0) return false;
     const column = nameOf(assignment[eq - 1])?.toLowerCase();
     if (!column) return false;
-    return assignment.slice(eq + 1).some((t) => nameOf(t)?.toLowerCase() === column);
+    const read = assignment.slice(eq + 1);
+    return read.some((t, k) => {
+      if (nameOf(t)?.toLowerCase() !== column) return false;
+      if (read[k - 1]?.text !== '.') return true;
+      const qualifier = nameOf(read[k - 2])?.toLowerCase();
+      return !!qualifier && targetNames.has(qualifier);
+    });
   });
 }
 
@@ -145,15 +249,16 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
     end = t.end;
   }
   if (guarded || limited || (joined && lastJoinConditioned)) return undefined;
+  const target = parseTarget(tokens, i);
   if (verb.value === 'update') {
     if (setStart < 0) return undefined; // not a complete statement yet
-    if (selfReferencing(tokens.slice(setStart, setEnd < 0 ? stop : setEnd))) return undefined;
+    if (selfReferencing(tokens.slice(setStart, setEnd < 0 ? stop : setEnd), target.names)) return undefined;
   }
   return {
     verb: verb.value === 'delete' ? 'DELETE' : 'UPDATE',
     start: verb.start,
     end,
-    table: targetTable(tokens, i),
+    table: target.table,
   };
 }
 

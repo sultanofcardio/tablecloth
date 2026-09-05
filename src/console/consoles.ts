@@ -52,6 +52,9 @@ export class ConsoleManager implements vscode.Disposable {
         this.stateEmitter.fire();
       }),
       vscode.workspace.onDidCloseTextDocument((doc) => void this.onDocumentClosed(doc)),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('tablecloth.execution.warnWithoutWhere')) void this.resetUnguardedWriteChoices();
+      }),
       // a console session that died (or was disconnected) took its open
       // transaction with it; keep the tracked state honest
       { dispose: this.sessions.onDidCloseSession((_dsId, suffix) => this.onSessionClosed(suffix)) },
@@ -144,6 +147,16 @@ export class ConsoleManager implements vscode.Disposable {
     if (asks) delete allowed[uri.toString()];
     else allowed[uri.toString()] = true;
     await this.context.workspaceState.update(UNGUARDED_OK_KEY, allowed);
+  }
+
+  /**
+   * Turning the warning setting off and on again is how a user takes back
+   * "Don't ask again": every console asks once more.
+   */
+  async resetUnguardedWriteChoices(): Promise<void> {
+    const allowed = this.context.workspaceState.get<Record<string, true>>(UNGUARDED_OK_KEY, {});
+    if (Object.keys(allowed).length === 0) return;
+    await this.context.workspaceState.update(UNGUARDED_OK_KEY, {});
   }
 
   isInTx(uri: vscode.Uri): boolean {

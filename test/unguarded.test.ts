@@ -169,3 +169,39 @@ test('a data-modifying CTE is a statement head even with a materialization hint'
     [],
   );
 });
+
+test('an assignment is exempt only when it reads the target\'s own column', () => {
+  // the classic forgotten join condition: every row of orders is rewritten
+  assert.deepEqual(found('UPDATE orders o SET status = c.status FROM customers c'), [
+    ['UPDATE', 'UPDATE orders o SET status = c.status FROM customers c', { name: 'orders' }],
+  ]);
+  assert.deepEqual(found('UPDATE orders SET total = archive.total FROM archive'), [
+    ['UPDATE', 'UPDATE orders SET total = archive.total FROM archive', { name: 'orders' }],
+  ]);
+  assert.deepEqual(found('UPDATE orders o SET total = o.total * 2'), []);
+  assert.deepEqual(found('UPDATE public.orders SET total = orders.total + 1'), []);
+  assert.deepEqual(found('UPDATE `orders` o SET o.total = o.total + 1', 'mysql'), []);
+});
+
+test('EXPLAIN ANALYZE covers only the statement it runs, not a verb in its clauses', () => {
+  assert.deepEqual(found('EXPLAIN ANALYZE INSERT INTO t VALUES (1) ON CONFLICT (id) DO UPDATE SET n = 1'), []);
+  assert.deepEqual(
+    found('EXPLAIN ANALYZE MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE WHEN NOT MATCHED THEN INSERT VALUES (1)'),
+    [],
+  );
+  assert.deepEqual(found('EXPLAIN ANALYZE SELECT * FROM orders FOR UPDATE'), []);
+  assert.deepEqual(found('EXPLAIN ANALYZE DELETE FROM orders').map((w) => w[0]), ['DELETE']);
+  assert.deepEqual(found('EXPLAIN (ANALYZE, BUFFERS) UPDATE orders SET total = 0').map((w) => w[0]), ['UPDATE']);
+});
+
+test("MySQL's multi-table DELETE names the table, not the target alias", () => {
+  assert.deepEqual(found('DELETE o FROM orders o', 'mysql'), [['DELETE', 'DELETE o FROM orders o', { name: 'orders' }]]);
+  assert.deepEqual(found('DELETE o FROM shop.orders AS o', 'mysql'), [
+    ['DELETE', 'DELETE o FROM shop.orders AS o', { schema: 'shop', name: 'orders' }],
+  ]);
+  assert.deepEqual(found('DELETE o.* FROM orders o', 'mysql'), [['DELETE', 'DELETE o.* FROM orders o', { name: 'orders' }]]);
+  // more than one target, or more than one table to delete from: name neither
+  assert.deepEqual(found('DELETE a, b FROM a JOIN b', 'mysql'), [['DELETE', 'DELETE a, b FROM a JOIN b', undefined]]);
+  assert.deepEqual(found('DELETE a FROM a, b', 'mysql'), [['DELETE', 'DELETE a FROM a, b', undefined]]);
+  assert.deepEqual(found('DELETE x FROM orders o', 'mysql'), [['DELETE', 'DELETE x FROM orders o', undefined]]);
+});

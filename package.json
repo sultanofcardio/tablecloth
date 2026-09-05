@@ -342,7 +342,7 @@
         "tablecloth.execution.warnWithoutWhere": {
           "type": "boolean",
           "default": true,
-          "description": "Ask before running a DELETE or UPDATE that has no WHERE clause, and say how many rows it would touch."
+          "description": "Ask before running a DELETE or UPDATE that has no WHERE clause, and say how many rows it would touch. Changing this setting resets every console's \"Don't ask again\" choice."
         },
         "tablecloth.grid.pageSize": {
           "type": "number",
