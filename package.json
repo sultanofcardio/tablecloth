@@ -2,7 +2,7 @@
   "name": "tablecloth",
   "displayName": "Tablecloth",
   "description": "IntelliJ-grade database tools, laid over VS Code. PostgreSQL, MySQL/MariaDB, and SQLite: explorer tree, query consoles, and a DataGrip-style data grid.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "sultanofcardio",
   "license": "MIT",
   "repository": {
