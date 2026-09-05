@@ -11,7 +11,15 @@ import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
 import { splitStatements, statementAt } from '../sql/splitter';
-import { countPlan, countProbe, COUNT_TIMEOUT_MS, findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
+import {
+  countPlan,
+  countProbe,
+  COUNT_TIMEOUT_MS,
+  findUnguardedWrites,
+  unguardedWriteRows,
+  unguardedWriteSentence,
+  type UnguardedWrite,
+} from '../sql/unguarded';
 import { defaultPageSize, StaticGridProvider, type GridMeta, type RunQuery } from '../ui/grid';
 import type { ReferencingDto } from '../ui/gridProtocol';
 import { ConsoleGridProvider, makeRunQuery, runChangeBatch, type ConsoleEditingOptions } from '../ui/providers';
@@ -36,11 +44,10 @@ const ISOLATION_SQL: Record<Exclude<TxIsolation, 'default'>, string> = {
 
 const PARAM_VALUES_KEY = 'tablecloth.parameterValues';
 
-/** The sentence under the warning's title, shared by the native dialog and the webview's. */
-export function unguardedWriteDetail(warning: { table?: string; dsName: string }, count: number | undefined): string {
-  if (!warning.table) return `This statement affects every row of its table on ${warning.dsName}.`;
-  const rows = count === undefined ? '' : `: ${count.toLocaleString('en-US')} row${count === 1 ? '' : 's'}`;
-  return `This statement affects every row in ${warning.table} on ${warning.dsName}${rows}.`;
+/** The sentence under the native dialog's title, from the pieces the webview's dialog also uses. */
+function unguardedWriteDetail(warning: { table?: string; dsName: string }, count: number | undefined): string {
+  const sentence = unguardedWriteSentence(warning.table, warning.dsName);
+  return `${sentence.before}${sentence.table}${sentence.after}${unguardedWriteRows(count)}.`;
 }
 
 /**

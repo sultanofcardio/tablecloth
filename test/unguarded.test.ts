@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { countPlan, countProbe, findUnguardedWrites } from '../src/sql/unguarded';
+import { countPlan, countProbe, findUnguardedWrites, unguardedWriteRows, unguardedWriteSentence } from '../src/sql/unguarded';
 import type { DriverId } from '../src/core/types';
 
 const found = (sql: string, dialect: DriverId = 'postgres') =>
@@ -209,7 +209,7 @@ test("MySQL's multi-table UPDATE names the table its SET clause writes", () => {
   // an unnamed target still has a relation list, so a conditioned join keeps its exemption
   assert.deepEqual(found('UPDATE orders o JOIN customers c ON c.id = o.customer_id SET total = 0', 'mysql'), []);
   assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET total = 0', 'mysql'), []);
-  assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c ON c.id = o.customer_id SET c.seen = 1, o.total = 0', 'mysql'), []);
+  assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c ON c.id = o.customer_id SET c.seen = 1', 'mysql'), []);
   assert.deepEqual(found('DELETE a, b FROM a JOIN b ON a.id = b.id', 'mysql'), []);
   // a multi-target DELETE joins in its USING list, which is where the condition has to be read
   assert.deepEqual(found('DELETE FROM t1, t2 USING t1 JOIN t2 ON t1.id = t2.id', 'mysql'), []);
@@ -281,6 +281,26 @@ test('a join is read for what it restricts, not for names that look like the tar
   assert.deepEqual(found('UPDATE IGNORE orders o JOIN customers c USING (id) SET o.total = 0', 'mysql'), []);
   assert.deepEqual(found('UPDATE LOW_PRIORITY IGNORE orders o JOIN customers c ON c.id = o.customer_id SET o.total = 0', 'mysql'), []);
   assert.deepEqual(found('UPDATE orders o STRAIGHT_JOIN customers c ON c.id = o.id SET o.total = 0', 'mysql'), []);
+});
+
+test('an outer join preserves one side whole, so it restricts only the side it filters', () => {
+  // the orphan delete without its "WHERE t2.id IS NULL": every row of t1 goes
+  assert.deepEqual(found('DELETE t1 FROM t1 LEFT JOIN t2 ON t1.id = t2.id', 'mysql'), [
+    ['DELETE', 'DELETE t1 FROM t1 LEFT JOIN t2 ON t1.id = t2.id', { name: 't1' }],
+  ]);
+  assert.deepEqual(found('UPDATE t1 LEFT JOIN t2 ON t1.id = t2.id SET t1.x = 1', 'mysql').map((w) => w[0]), ['UPDATE']);
+  assert.deepEqual(found('UPDATE t1 LEFT OUTER JOIN t2 ON t1.id = t2.id SET t1.x = 1', 'mysql').map((w) => w[0]), ['UPDATE']);
+  // the right side of a RIGHT JOIN, and both sides of a FULL JOIN, are preserved too
+  assert.deepEqual(found('UPDATE t1 RIGHT JOIN t2 ON t1.id = t2.id SET t2.x = 1', 'mysql').map((w) => w[0]), ['UPDATE']);
+  assert.deepEqual(found('UPDATE t1 FULL JOIN t2 ON t1.id = t2.id SET t1.x = 1').map((w) => w[0]), ['UPDATE']);
+  // the filtered side of the same joins is restricted, so those stay exempt
+  assert.deepEqual(found('DELETE t2 FROM t1 LEFT JOIN t2 ON t1.id = t2.id', 'mysql'), []);
+  assert.deepEqual(found('UPDATE t1 RIGHT JOIN t2 ON t1.id = t2.id SET t1.x = 1', 'mysql'), []);
+  assert.deepEqual(found('DELETE t1 FROM t1 JOIN t2 ON t1.id = t2.id', 'mysql'), []);
+  assert.deepEqual(found('DELETE t1 FROM t1 INNER JOIN t2 ON t1.id = t2.id', 'mysql'), []);
+  // a join with no condition never exempts, whichever side is written
+  assert.deepEqual(found('DELETE t1 FROM t1 CROSS JOIN t2', 'mysql').map((w) => w[0]), ['DELETE']);
+  assert.deepEqual(found('DELETE t1 FROM t1 NATURAL JOIN t2', 'mysql').map((w) => w[0]), ['DELETE']);
   // the same table joined as a second row source is not the target it writes
   assert.deepEqual(
     found('UPDATE orders o SET total = o2.total FROM orders o2 JOIN lines l ON l.order_id = o2.id').map((w) => w[0]),
@@ -312,4 +332,18 @@ test('an assignment reading a subquery is not reading its own column', () => {
   assert.deepEqual(found('UPDATE counters SET hits = (hits + 1)::int'), []);
   // a comma inside an array literal does not start a second assignment
   assert.deepEqual(found('UPDATE counters SET tags = tags || ARRAY[1,2]'), []);
+});
+
+test('both dialogs build the same warning sentence from one set of pieces', () => {
+  const named = unguardedWriteSentence('public.orders', 'acme-dev');
+  assert.equal(named.table, 'public.orders');
+  assert.equal(
+    `${named.before}${named.table}${named.after}${unguardedWriteRows(2400)}.`,
+    'This statement affects every row in public.orders on acme-dev: 2,400 rows.',
+  );
+  assert.equal(`${named.before}${named.table}${named.after}${unguardedWriteRows(undefined)}.`, 'This statement affects every row in public.orders on acme-dev.');
+  assert.equal(unguardedWriteRows(1), ': 1 row');
+  const unnamed = unguardedWriteSentence(undefined, 'acme-dev');
+  assert.equal(unnamed.table, '');
+  assert.equal(`${unnamed.before}${unnamed.table}${unnamed.after}.`, 'This statement affects every row of its table on acme-dev.');
 });

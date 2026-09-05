@@ -9,6 +9,7 @@ import type { DriverId, TxMode } from '../core/types';
 import type { Inspection } from '../inspect/core';
 import { formatSql } from '../sql/format';
 import { splitStatements, statementAt } from '../sql/splitter';
+import { unguardedWriteRows, unguardedWriteSentence } from '../sql/unguarded';
 import { showMenu } from './menu';
 
 declare function acquireVsCodeApi(): {
@@ -404,12 +405,13 @@ function askUnguardedWrite(msg: { id: number; verb: string; table: string | null
   const text = document.createElement('p');
   text.className = 'tc-dialog-text';
   const rows = document.createElement('span');
-  if (msg.table) {
+  const sentence = unguardedWriteSentence(msg.table ?? undefined, msg.dsName);
+  if (sentence.table) {
     const table = document.createElement('b');
-    table.textContent = msg.table;
-    text.append('This statement affects every row in ', table, ` on ${msg.dsName}`, rows, '.');
+    table.textContent = sentence.table;
+    text.append(sentence.before, table, sentence.after, rows, '.');
   } else {
-    text.append(`This statement affects every row of its table on ${msg.dsName}.`);
+    text.append(`${sentence.before}.`);
   }
   const check = document.createElement('label');
   check.className = 'tc-dialog-check';
@@ -433,7 +435,7 @@ function askUnguardedWrite(msg: { id: number; verb: string; table: string | null
 
   openWarnings.set(msg.id, (count) => {
     if (count === null) return;
-    rows.textContent = `: ${count.toLocaleString('en-US')} row${count === 1 ? '' : 's'}`;
+    rows.textContent = unguardedWriteRows(count);
   });
   const finish = (proceed: boolean) => {
     openWarnings.delete(msg.id);

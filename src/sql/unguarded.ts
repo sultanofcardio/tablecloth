@@ -28,6 +28,9 @@ const FROM_LIST_ENDS = new Set(['set', 'where', 'order', 'limit', 'group', 'havi
 /** The words that join a relation onto the list before them. */
 const JOIN_WORDS = new Set(['join', 'straight_join']);
 
+/** The words that qualify a JOIN, read backwards from it. */
+const JOIN_KINDS = new Set(['outer', 'left', 'right', 'full', 'inner', 'cross', 'natural']);
+
 /** Words that open a parenthesized group reading rows of its own. */
 const SUBQUERY_STARTS = new Set(['select', 'with', 'values', 'table']);
 
@@ -356,6 +359,27 @@ function conditionQualifiers(tokens: Token[], start: number, stop: number): Set<
 }
 
 /**
+ * Which operands a join's condition actually restricts: an inner join both,
+ * `LEFT [OUTER] JOIN` only its right one, `RIGHT [OUTER] JOIN` only its left
+ * one, `FULL [OUTER] JOIN` neither, because a preserved side keeps every row.
+ */
+function joinFilters(tokens: Token[], joinIndex: number): { left: boolean; right: boolean } {
+  let preservesLeft = false;
+  let preservesRight = false;
+  for (let k = joinIndex - 1; k >= 0; k--) {
+    const t = tokens[k];
+    if (t?.kind !== 'word' || !JOIN_KINDS.has(t.value)) break;
+    if (t.value === 'left') preservesLeft = true;
+    else if (t.value === 'right') preservesRight = true;
+    else if (t.value === 'full') {
+      preservesLeft = true;
+      preservesRight = true;
+    }
+  }
+  return { left: !preservesLeft, right: !preservesRight };
+}
+
+/**
  * Whether any JOIN with an ON/USING condition restricts the write target, the
  * exemption IntelliJ makes. The join has to involve the target itself: it joins
  * onto the relation list that very occurrence heads, or its condition qualifies
@@ -398,8 +422,11 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
     if (JOIN_WORDS.has(t.value)) {
       pendingJoin = j;
     } else if (pendingJoin >= 0 && (t.value === 'on' || t.value === 'using')) {
-      // the condition holds both sides of the join, so either one being the target is enough
-      constrained ||= chainIsTarget || isTarget(tableAt(tokens, pendingJoin + 1)) || hits(conditionQualifiers(tokens, j + 1, stop));
+      // an outer join preserves one side whole, so the condition only restricts the side it filters
+      const filters = joinFilters(tokens, pendingJoin);
+      const joinedIsTarget = isTarget(tableAt(tokens, pendingJoin + 1));
+      const namedInCondition = !joinedIsTarget && hits(conditionQualifiers(tokens, j + 1, stop));
+      constrained ||= ((chainIsTarget || namedInCondition) && filters.left) || (joinedIsTarget && filters.right);
       pendingJoin = -1;
     } else if (t.value === 'from' || t.value === 'using') {
       chainIsTarget = isTarget(tableAt(tokens, j + 1));
@@ -622,4 +649,19 @@ export function countPlan(
     return { before: [`SET statement_timeout = ${COUNT_TIMEOUT_MS}`], count, after: [`SET statement_timeout = ${restore}`] };
   }
   return { before: [], count, after: [] };
+}
+
+/**
+ * The warning's sentence in the pieces the dialogs need: the console webview
+ * puts the table in bold between `before` and `after`, the native modal joins
+ * them. The row count arrives later and goes in front of the full stop.
+ */
+export function unguardedWriteSentence(table: string | undefined, dsName: string): { before: string; table: string; after: string } {
+  if (!table) return { before: `This statement affects every row of its table on ${dsName}`, table: '', after: '' };
+  return { before: 'This statement affects every row in ', table, after: ` on ${dsName}` };
+}
+
+/** The `: 2,400 rows` the sentence ends with once the count arrives. */
+export function unguardedWriteRows(count: number | undefined): string {
+  return count === undefined ? '' : `: ${count.toLocaleString('en-US')} row${count === 1 ? '' : 's'}`;
 }
