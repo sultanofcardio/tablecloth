@@ -43,7 +43,17 @@ Type the abbreviation at the start of a statement and accept it; tab through the
 
 ## Inspections
 
-Unresolved tables and qualified columns get a warning squiggle, and so do bare columns in single-table statements. The quick fix (<span class="keys"><kbd>⌘</kbd><kbd>.</kbd></span>) offers **Change to 'x'** for the closest existing name. Turn them off with `tablecloth.inspections.enabled`.
+Unresolved tables and qualified columns get a warning squiggle, and so do bare columns in single-table statements. The quick fix (<span class="keys"><kbd>⌘</kbd><kbd>.</kbd></span>) offers **Change to 'x'** for the closest existing name.
+
+A `DELETE` or `UPDATE` with no `WHERE` clause is flagged over the whole statement. This check needs no catalogue, so it works before introspection has finished. It follows IntelliJ's exemptions: a `LIMIT`, a `JOIN` whose `ON` or `USING` condition constrains the table being written, and an `UPDATE` whose every assignment reads its own column (`SET hits = hits + 1`) are left alone. A `WHERE` inside a subquery doesn't count, and neither does the verb inside a clause such as `ON DUPLICATE KEY UPDATE` or `FOR UPDATE`. Running the statement anyway [asks first]({{ site.baseurl }}/consoles.html#running-sql).
+
+![A console with DELETE FROM orders; underlined by a warning squiggle.]({{ site.baseurl }}/assets/images/cl-without-where.png)
+{: .fig}
+
+*The whole statement is marked, comment excluded.*
+{: .figcaption}
+
+Turn inspections off with `tablecloth.inspections.enabled`.
 
 ## Format SQL
 

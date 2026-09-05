@@ -19,6 +19,13 @@ A console is a Monaco editor bound to one data source and one schema, with an In
 - **Run script** (the toolbar button) runs the whole console. Multi-statement runs produce one result tab per query.
 - <span class="keys"><kbd>⌘</kbd><kbd>F2</kbd></span> cancels the running statement by killing it server-side (`pg_cancel_backend`, `KILL QUERY`). SQLite runs in-process and can't be cancelled.
 - Statements with parameters ask for values first. `:name` and `${name}` work everywhere; `?` works on MySQL and SQLite and `$1` on PostgreSQL. Values are remembered per data source.
+- A `DELETE` or `UPDATE` with no `WHERE` clause asks before it runs. The dialog names the table and how many rows it holds, counted on the console's own session so an open transaction's changes are included. **Cancel** is the default button, so a stray <kbd>⏎</kbd> after <span class="keys"><kbd>⌘</kbd><kbd>⏎</kbd></span> cancels; **Run anyway** runs it, and **Don't ask again for this console** silences it for that console. `tablecloth.execution.warnWithoutWhere` turns it off everywhere, and changing that setting resets every console's "Don't ask again" choice. **Run File on Data Source** asks through a native dialog with a third button, **Run all anyway**, that answers for the rest of that run.
+
+![The Run DELETE without a WHERE clause? dialog over a console, naming public.orders on acme-dev and its 1,200 rows, with Cancel focused.]({{ site.baseurl }}/assets/images/cl-without-where-dialog.png)
+{: .fig}
+
+*Cancel has focus; Run anyway needs a Tab or a click.*
+{: .figcaption}
 
 ## Toolbar
 

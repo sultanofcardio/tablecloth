@@ -259,7 +259,7 @@ Notes on method:
 |---|---|---|---|
 | Unresolved reference (Error) with quick-fixes | Unknown table/column | R/Code_Inspections_in_SQL.html; https://www.jetbrains.com/help/inspectopedia/SqlResolve.html | SHIPPED |
 | Ambiguous reference | Same column name in several joined tables | R/Code_Inspections_in_SQL.html | MISSING |
-| DELETE/UPDATE without WHERE (inspection + pre-execution warning dialog) | Guard destructive statements | R/Code_Inspections_in_SQL.html, D/query-execution.html | MISSING |
+| DELETE/UPDATE without WHERE (inspection + pre-execution warning dialog) | Guard destructive statements | R/Code_Inspections_in_SQL.html, D/query-execution.html | SHIPPED |
 | Column should be in GROUP BY; Aggregate-related problems | Aggregate misuse | R/Code_Inspections_in_SQL.html | MISSING |
 | Constant condition / Constant expression | Always true/false/null predicates | R/Code_Inspections_in_SQL.html | MISSING |
 | Function signature; Types compatibility; VALUES clause cardinality; Insert NULL into NOT NULL; Insertion into generated columns | Type and arity checks | R/Code_Inspections_in_SQL.html | MISSING |
