@@ -551,8 +551,9 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
 
 /**
  * The DELETE and UPDATE statements in `sql` that carry no WHERE clause and
- * would touch every row. Like IntelliJ, a LIMIT, a JOIN with a condition, and
- * an UPDATE whose every assignment reads its own column are left alone.
+ * would touch every row. Like IntelliJ, a LIMIT, a conditioned JOIN that
+ * restricts the target (see `joinConstrainsTarget`), and an UPDATE whose every
+ * assignment reads its own column are left alone.
  */
 export function findUnguardedWrites(sql: string, dialect: DriverId): UnguardedWrite[] {
   return unguardedWritesIn(significant(tokenize(sql, dialect)));

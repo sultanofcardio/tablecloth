@@ -337,7 +337,7 @@
         "tablecloth.inspections.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Flag unresolved tables and columns, and DELETE or UPDATE statements without a WHERE clause, in consoles and attached SQL files, with Change-to quick fixes."
+          "description": "Flag unresolved tables and columns (with Change-to quick fixes), and DELETE or UPDATE statements without a WHERE clause, in consoles and attached SQL files."
         },
         "tablecloth.execution.warnWithoutWhere": {
           "type": "boolean",
