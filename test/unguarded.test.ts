@@ -102,12 +102,18 @@ test('the row count is bounded server-side per dialect and never opens a transac
   assert.equal(mysql.count, 'SELECT /*+ MAX_EXECUTION_TIME(3000) */ count(*) FROM `shop`.`orders`');
   assert.deepEqual(mysql.after, []);
 
+  // MariaDB parses the MySQL hint as a plain comment and would run unbounded
+  const mariadb = countPlan('mysql', '`shop`.`orders`', false, true);
+  assert.deepEqual(mariadb.before, []);
+  assert.equal(mariadb.count, 'SET STATEMENT max_statement_time=3 FOR SELECT count(*) FROM `shop`.`orders`');
+  assert.deepEqual(mariadb.after, []);
+
   const sqlite = countPlan('sqlite', '"orders"', false);
   assert.deepEqual(sqlite.before, []);
   assert.equal(sqlite.count, 'SELECT count(*) FROM "orders"');
   assert.deepEqual(sqlite.after, []);
 
-  for (const plan of [countPlan('postgres', 'public.orders', false), mysql, sqlite]) {
+  for (const plan of [countPlan('postgres', 'public.orders', false), mysql, mariadb, sqlite]) {
     assert.equal([...plan.before, plan.count, ...plan.after].some((sql) => /^(BEGIN|START|COMMIT|ROLLBACK)\b/i.test(sql)), false);
   }
 });
@@ -122,6 +128,11 @@ test('inside an open transaction the count runs under a savepoint that is always
   assert.deepEqual(mysql.before, ['SAVEPOINT tablecloth_count']);
   assert.equal(mysql.count, 'SELECT /*+ MAX_EXECUTION_TIME(3000) */ count(*) FROM orders');
   assert.deepEqual(mysql.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
+
+  const mariadb = countPlan('mysql', 'orders', true, true);
+  assert.deepEqual(mariadb.before, ['SAVEPOINT tablecloth_count']);
+  assert.equal(mariadb.count, 'SET STATEMENT max_statement_time=3 FOR SELECT count(*) FROM orders');
+  assert.deepEqual(mariadb.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
 
   const sqlite = countPlan('sqlite', 'orders', true);
   assert.deepEqual(sqlite.before, ['SAVEPOINT tablecloth_count']);

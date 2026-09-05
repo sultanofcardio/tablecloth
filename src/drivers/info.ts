@@ -20,3 +20,8 @@ export function dbmsDisplay(serverVersion: string): string {
   const match = /^(\S+)\s+(.+)$/.exec(serverVersion.trim());
   return match ? `${match[1]} (ver. ${match[2]})` : serverVersion;
 }
+
+/** MariaDB ships under the MySQL driver; its server version string names it. */
+export function isMariaDb(serverVersion: string): boolean {
+  return /mariadb/i.test(serverVersion);
+}

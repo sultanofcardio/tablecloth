@@ -179,9 +179,10 @@ const COUNT_SAVEPOINT = 'tablecloth_count';
 
 /**
  * How to count the rows a DELETE or UPDATE without WHERE would touch, on the
- * console's own session, without disturbing it. The count is bounded so a
- * safety prompt cannot stall the console: Postgres gets a statement timeout,
- * MySQL the optimizer hint, SQLite nothing (it counts in process). While a
+ * session the statement will run on, without disturbing it. The count is
+ * bounded so a safety prompt cannot stall the console: Postgres gets a
+ * statement timeout, MySQL the optimizer hint, MariaDB (which ignores that
+ * hint) a SET STATEMENT prefix, SQLite nothing (it counts in process). While a
  * transaction is open the count runs under a savepoint that is rolled back
  * afterwards, so it sees the transaction's uncommitted rows and leaves neither
  * the timeout setting nor an aborted transaction behind. `after` runs whether
@@ -191,9 +192,14 @@ export function countPlan(
   dialect: DriverId,
   qualifiedTable: string,
   inTransaction: boolean,
+  mariadb = false,
 ): { before: string[]; count: string; after: string[] } {
-  const hint = dialect === 'mysql' ? `/*+ MAX_EXECUTION_TIME(${COUNT_TIMEOUT_MS}) */ ` : '';
-  const count = `SELECT ${hint}count(*) FROM ${qualifiedTable}`;
+  let count = `SELECT count(*) FROM ${qualifiedTable}`;
+  if (dialect === 'mysql') {
+    count = mariadb
+      ? `SET STATEMENT max_statement_time=${COUNT_TIMEOUT_MS / 1000} FOR ${count}`
+      : `SELECT /*+ MAX_EXECUTION_TIME(${COUNT_TIMEOUT_MS}) */ count(*) FROM ${qualifiedTable}`;
+  }
   if (inTransaction) {
     const before = [`SAVEPOINT ${COUNT_SAVEPOINT}`];
     if (dialect === 'postgres') before.push(`SET LOCAL statement_timeout = ${COUNT_TIMEOUT_MS}`);

@@ -12,6 +12,7 @@ import type {
 } from '../core/types';
 import type { ConnectContext, DbSession, Driver } from './driver';
 import { makeResult, normalizeRows } from './driver';
+import { isMariaDb } from './info';
 import { openSshTunnel, type SshTunnel } from './ssh';
 
 /** mysql2 column type codes that should right-align as numbers. */
@@ -164,7 +165,7 @@ export const mysqlDriver: Driver = {
       if (config.readOnly) {
         await connection.query('SET SESSION TRANSACTION READ ONLY');
       }
-      const flavor = /mariadb/i.test(version) ? 'MariaDB' : 'MySQL';
+      const flavor = isMariaDb(version) ? 'MariaDB' : 'MySQL';
       const threadId = typeof connection.threadId === 'number' ? connection.threadId : undefined;
       return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel);
     } catch (err) {

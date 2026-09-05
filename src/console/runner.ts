@@ -4,13 +4,14 @@ import type { ConsoleBinding, StoredDataSource, TxIsolation, TxMode } from '../c
 import { ENV_COLOR_HEX, TX_ISOLATION_LABELS } from '../core/types';
 import { errorMessage, formatMillis, qualify, quoteIdent, timestamp, truncate } from '../core/util';
 import { makeEditTarget, resultColumnOrigins, singleSourceRelation, type ChangeStatement } from '../edit/changeSet';
-import { findRelation, referencingColumns } from '../edit/relations';
+import { findRelation, findWrittenRelation, referencingColumns } from '../edit/relations';
 import { isCancellationError, type DbSession } from '../drivers/driver';
+import { isMariaDb } from '../drivers/info';
 import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
 import { splitStatements, statementAt } from '../sql/splitter';
-import { countPlan, findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
+import { countPlan, COUNT_TIMEOUT_MS, findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
 import { defaultPageSize, StaticGridProvider, type GridMeta, type RunQuery } from '../ui/grid';
 import type { ReferencingDto } from '../ui/gridProtocol';
 import { ConsoleGridProvider, makeRunQuery, runChangeBatch, type ConsoleEditingOptions } from '../ui/providers';
@@ -77,13 +78,15 @@ function warnWithoutWhereEnabled(): boolean {
   return vscode.workspace.getConfiguration('tablecloth.execution').get<boolean>('warnWithoutWhere', true);
 }
 
-/** How long the native dialog waits for the row count before showing without it. */
-const COUNT_WAIT_MS = 3000;
+/** How long the native dialog waits for the row count, a margin over the server-side bound. */
+const COUNT_WAIT_MS = COUNT_TIMEOUT_MS + 500;
 
 /** Executes console statements and presents results in the Services view. */
 export class QueryRunner {
   private readonly prompters = new Map<string, ParameterPrompt>();
   private readonly unguardedPrompters = new Map<string, UnguardedWritePrompt>();
+  /** Data sources whose script session (SCRIPT_SUFFIX) has a transaction open. */
+  private readonly scriptsInTx = new Set<string>();
   /** Statement in flight per console key, for the stop button. */
   private readonly running = new Map<string, { ds: StoredDataSource; suffix?: string }>();
   private readonly runningEmitter = new vscode.EventEmitter<{ key: string; running: boolean }>();
@@ -100,7 +103,13 @@ export class QueryRunner {
     private readonly services: ServicesViewProvider,
     private readonly history: QueryHistory,
     private readonly memento: vscode.Memento,
-  ) {}
+  ) {
+    // a script session that died (or was disconnected) took its open
+    // transaction with it; keep the tracked state honest
+    this.sessions.onDidCloseSession((dsId, suffix) => {
+      if (suffix === SCRIPT_SUFFIX) this.scriptsInTx.delete(dsId);
+    });
+  }
 
   /** A console webview offers its own parameters dialog while it is open. */
   registerParameterPrompt(uri: vscode.Uri, prompt: ParameterPrompt): vscode.Disposable {
@@ -328,11 +337,26 @@ export class QueryRunner {
     };
   }
 
-  /** The user typed transaction control themselves; keep the tracked state honest. */
-  private syncTxKeyword(consoleUri: vscode.Uri | undefined, keyword: string): void {
-    if (!consoleUri) return;
-    if (keyword === 'begin' || keyword === 'start') this.consoles.setInTx(consoleUri, true);
-    if (keyword === 'commit' || keyword === 'rollback' || keyword === 'end') this.consoles.setInTx(consoleUri, false);
+  /**
+   * The user typed transaction control themselves; keep the tracked state
+   * honest. A script has no console to track it on, so its own session's state
+   * is kept per data source.
+   */
+  private syncTxKeyword(dsId: string, consoleUri: vscode.Uri | undefined, keyword: string): void {
+    const opens = keyword === 'begin' || keyword === 'start';
+    const closes = keyword === 'commit' || keyword === 'rollback' || keyword === 'end';
+    if (!opens && !closes) return;
+    if (consoleUri) {
+      this.consoles.setInTx(consoleUri, opens);
+      return;
+    }
+    if (opens) this.scriptsInTx.add(dsId);
+    else this.scriptsInTx.delete(dsId);
+  }
+
+  /** Whether a transaction is open on the session a run would use. */
+  private isInTx(dsId: string, consoleUri?: vscode.Uri): boolean {
+    return consoleUri ? this.consoles.isInTx(consoleUri) : this.scriptsInTx.has(dsId);
   }
 
   /** Identity of a run's console in the Tablecloth panel tree. */
@@ -434,14 +458,15 @@ export class QueryRunner {
     if (!write.table) return warning;
     const catalog = this.sessions.getCatalog(ds.config.id);
     const defaultSchema = ds.config.driver === 'mysql' ? binding.database : binding.schema;
-    const found = catalog ? findRelation(catalog, write.table.schema ?? defaultSchema, write.table.name) : undefined;
+    const found = catalog ? findWrittenRelation(catalog, write.table.schema, defaultSchema, write.table.name) : undefined;
     if (!found) {
       warning.table = write.table.schema ? `${write.table.schema}.${write.table.name}` : write.table.name;
       return warning;
     }
     warning.table = found.schema.implicit ? found.relation.name : `${found.schema.name}.${found.relation.name}`;
     const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
-    warning.count = this.countRows(ds, qualify(ds.config.driver, schemaForSql, found.relation.name), consoleUri);
+    const mariadb = ds.config.driver === 'mysql' && isMariaDb(catalog?.serverVersion ?? '');
+    warning.count = this.countRows(ds, qualify(ds.config.driver, schemaForSql, found.relation.name), mariadb, consoleUri);
     return warning;
   }
 
@@ -452,9 +477,14 @@ export class QueryRunner {
    * state; the table is qualified so no schema context is needed. Anything
    * that goes wrong, a timeout included, leaves the dialog without a number.
    */
-  private countRows(ds: StoredDataSource, qualifiedTable: string, consoleUri?: vscode.Uri): Promise<number | undefined> {
+  private countRows(
+    ds: StoredDataSource,
+    qualifiedTable: string,
+    mariadb: boolean,
+    consoleUri?: vscode.Uri,
+  ): Promise<number | undefined> {
     const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
-    const plan = countPlan(ds.config.driver, qualifiedTable, !!consoleUri && this.consoles.isInTx(consoleUri));
+    const plan = countPlan(ds.config.driver, qualifiedTable, this.isInTx(ds.config.id, consoleUri), mariadb);
     return this.sessions
       .run(
         ds.config,
@@ -681,7 +711,7 @@ export class QueryRunner {
       try {
         const result = await run(bound.text, bound.params);
         const duration = formatMillis(Date.now() - started);
-        this.syncTxKeyword(consoleUri, cls.keyword);
+        this.syncTxKeyword(config.id, consoleUri, cls.keyword);
         let note: string;
         if (result.columns.length > 0) {
           const provider = new StaticGridProvider(config.driver, result.columns, result.rows);
