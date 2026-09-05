@@ -73,7 +73,7 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
     const binding = this.consoles.getBinding(uri);
     const ds = binding ? this.store.get(binding.dataSourceId) : undefined;
     const catalog = ds ? this.sessions.getCatalog(ds.config.id) : undefined;
-    if (!ds || !catalog || !inspectionsEnabled()) return [];
+    if (!ds || !inspectionsEnabled()) return [];
     const schema = ds.config.driver === 'mysql' ? binding?.database : binding?.schema;
     return inspectSql(catalog, ds.config.driver, text, schema);
   }
@@ -108,9 +108,10 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
       }, 300);
     };
 
-    // parameter prompts answered by the webview's dialog
+    // parameter prompts and DELETE/UPDATE-without-WHERE warnings answered by the webview's dialogs
     let promptSeq = 0;
     const pendingPrompts = new Map<number, (values: Record<string, string | null> | undefined) => void>();
+    const pendingWarnings = new Map<number, (answer: { run: boolean; dontAsk: boolean } | undefined) => void>();
 
     const subscriptions: vscode.Disposable[] = [
       vscode.workspace.onDidChangeTextDocument((e) => {
@@ -139,10 +140,29 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
           void panel.webview.postMessage({ type: 'askParameters', id, names, previous });
         });
       }),
+      this.runner.registerUnguardedWritePrompt(uri, (warning) => {
+        const id = ++promptSeq;
+        return new Promise((resolve) => {
+          pendingWarnings.set(id, resolve);
+          panel.reveal(undefined, false);
+          void panel.webview.postMessage({
+            type: 'askUnguardedWrite',
+            id,
+            verb: warning.verb,
+            table: warning.table ?? null,
+            dsName: warning.dsName,
+          });
+          // the row count arrives while the dialog is up
+          void warning.count.then((count) => {
+            if (pendingWarnings.has(id)) void panel.webview.postMessage({ type: 'unguardedWriteCount', id, count: count ?? null });
+          });
+        });
+      }),
     ];
     panel.onDidDispose(() => {
       if (markerTimer) clearTimeout(markerTimer);
       for (const resolve of pendingPrompts.values()) resolve(undefined);
+      for (const resolve of pendingWarnings.values()) resolve(undefined);
       for (const d of subscriptions) d.dispose();
       if (this.panels.get(key) === panel) this.panels.delete(key);
     });
@@ -191,6 +211,14 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
           if (resolve) {
             pendingPrompts.delete(Number(message.id));
             resolve(message.values && typeof message.values === 'object' ? message.values : undefined);
+          }
+          break;
+        }
+        case 'unguardedWrite': {
+          const resolve = pendingWarnings.get(Number(message.id));
+          if (resolve) {
+            pendingWarnings.delete(Number(message.id));
+            resolve(message.run === true ? { run: true, dontAsk: message.dontAsk === true } : undefined);
           }
           break;
         }

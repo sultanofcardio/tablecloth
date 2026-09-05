@@ -160,3 +160,21 @@ test('closestName', () => {
   assert.equal(closestName('zzz', ['status', 'total']), undefined);
   assert.equal(closestName('cust', ['customers', 'orders']), 'customers');
 });
+
+test('a DELETE or UPDATE without WHERE is flagged over the whole statement, with or without a catalog', () => {
+  const sql = "-- clear the test orders\nDELETE FROM orders;\nUPDATE public.orders SET status = 'x';\nDELETE FROM orders WHERE id = 1;";
+  const found = inspectSql(catalog, 'postgres', sql, 'public');
+  assert.deepEqual(
+    found.map((i) => [i.message, sql.slice(i.start, i.end), i.severity]),
+    [
+      ['DELETE without WHERE clause deletes every row in orders', 'DELETE FROM orders', 'warning'],
+      ['UPDATE without WHERE clause updates every row in public.orders', "UPDATE public.orders SET status = 'x'", 'warning'],
+    ],
+  );
+  assert.deepEqual(
+    inspectSql(undefined, 'postgres', 'SELECT nope FROM orders; DELETE FROM orders', 'public').map((i) => i.message),
+    ['DELETE without WHERE clause deletes every row in orders'],
+    'without a catalog only the catalog-free checks run',
+  );
+  assert.deepEqual(messages('UPDATE orders SET status = DEFAULT WHERE id = 1'), []);
+});

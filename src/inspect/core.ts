@@ -8,6 +8,7 @@ import type { CatalogModel, DriverId, RelationModel } from '../core/types';
 import { findRelation } from '../edit/relations';
 import { splitStatements } from '../sql/splitter';
 import { SQL_FUNCTIONS, SQL_KEYWORDS, significant, tokenize, type Token } from '../sql/tokens';
+import { unguardedWritesIn } from '../sql/unguarded';
 
 export interface Inspection {
   start: number;
@@ -184,19 +185,41 @@ function functionArgDepths(tokens: Token[]): boolean[] {
   return inside;
 }
 
+/** The message for a DELETE or UPDATE that would touch every row. */
+export function unguardedWriteMessage(verb: 'DELETE' | 'UPDATE', table?: { schema?: string; name: string }): string {
+  const target = table ? ` in ${table.schema ? `${table.schema}.` : ''}${table.name}` : '';
+  return `${verb} without WHERE clause ${verb === 'DELETE' ? 'deletes' : 'updates'} every row${target}`;
+}
+
 /**
  * Run the inspections. `defaultSchema` is the console's bound schema (or
  * MySQL database); unqualified tables resolve there first, then anywhere in
- * the catalog.
+ * the catalog. Without a catalog (not introspected yet) only the checks that
+ * need none run, such as DELETE/UPDATE without WHERE.
  */
-export function inspectSql(catalog: CatalogModel, dialect: DriverId, text: string, defaultSchema?: string): Inspection[] {
+export function inspectSql(catalog: CatalogModel | undefined, dialect: DriverId, text: string, defaultSchema?: string): Inspection[] {
   const out: Inspection[] = [];
+  const statements = splitStatements(text, dialect).map((stmt) => ({
+    ...stmt,
+    tokens: significant(tokenize(stmt.sql, dialect)),
+  }));
+  for (const stmt of statements) {
+    for (const write of unguardedWritesIn(stmt.tokens)) {
+      out.push({
+        start: stmt.start + write.start,
+        end: stmt.start + write.end,
+        message: unguardedWriteMessage(write.verb, write.table),
+        severity: 'warning',
+      });
+    }
+  }
+  if (!catalog) return out;
   const allRelationNames = catalog.databases.flatMap((db) => db.schemas.flatMap((s) => s.relations.map((r) => r.name)));
   const schemaNames = new Set(catalog.databases.flatMap((db) => db.schemas.map((s) => s.name.toLowerCase())));
   const knownSchemaNames = new Set(catalog.databases.flatMap((db) => db.allSchemaNames.map((s) => s.toLowerCase())));
 
-  for (const stmt of splitStatements(text, dialect)) {
-    const tokens = significant(tokenize(stmt.sql, dialect));
+  for (const stmt of statements) {
+    const tokens = stmt.tokens;
     if (tokens.length === 0) continue;
     const scope: StatementScope = {
       refs: parseTableRefs(stmt.sql),

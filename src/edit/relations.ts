@@ -8,7 +8,8 @@ export interface RelationLocation {
   relation: RelationModel;
 }
 
-function sameName(a: string, b: string): boolean {
+/** Names compare case-insensitively, the way the catalog's lookups do. */
+export function sameName(a: string, b: string): boolean {
   return a === b || a.toLowerCase() === b.toLowerCase();
 }
 
@@ -29,6 +30,23 @@ export function findRelation(
     }
   }
   return fallback;
+}
+
+/**
+ * Resolve a relation the way a statement wrote it: an unqualified name falls
+ * back to any schema (the catalog's usual leniency), but a name that carries
+ * its own schema resolves only inside that schema, so `archive.orders` is
+ * never answered with `public.orders`.
+ */
+export function findWrittenRelation(
+  catalog: CatalogModel,
+  schemaName: string | undefined,
+  defaultSchema: string | undefined,
+  table: string,
+): RelationLocation | undefined {
+  const found = findRelation(catalog, schemaName ?? defaultSchema, table);
+  if (!found || !schemaName) return found;
+  return sameName(found.schema.name, schemaName) ? found : undefined;
 }
 
 /**

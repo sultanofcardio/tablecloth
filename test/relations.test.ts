@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findRelation, referencingColumns, resolveForeignKey } from '../src/edit/relations';
+import { findRelation, findWrittenRelation, referencingColumns, resolveForeignKey } from '../src/edit/relations';
 import type { CatalogModel } from '../src/core/types';
 
 const catalog: CatalogModel = {
@@ -90,4 +90,16 @@ test('referencingColumns lists every foreign key pointing at a table, across sch
     referencingColumns(catalog, customers.schema, customers.relation).map((r) => r.relation.name),
     ['orders'],
   );
+});
+
+test('a name that carries its own schema never resolves to another schema', () => {
+  assert.equal(findWrittenRelation(catalog, 'public', undefined, 'orders')?.schema.name, 'public');
+  assert.equal(findWrittenRelation(catalog, 'PUBLIC', undefined, 'Orders')?.schema.name, 'public');
+  // findRelation falls back to public.orders here; a written archive.orders must not
+  assert.equal(findRelation(catalog, 'archive', 'orders')?.schema.name, 'public');
+  assert.equal(findWrittenRelation(catalog, 'archive', 'public', 'orders'), undefined);
+  // unqualified names keep the bound schema first, then the catalog-wide fallback
+  assert.equal(findWrittenRelation(catalog, undefined, 'billing', 'invoices')?.schema.name, 'billing');
+  assert.equal(findWrittenRelation(catalog, undefined, 'billing', 'orders')?.schema.name, 'public');
+  assert.equal(findWrittenRelation(catalog, undefined, 'billing', 'nope'), undefined);
 });

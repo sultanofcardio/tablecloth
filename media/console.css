@@ -127,6 +127,13 @@ html, body {
 .tc-button:hover { background: var(--ij-btn-hover); }
 .tc-button.primary { background: #3574f0; border-color: #3574f0; color: #fff; }
 .tc-button.primary:hover { background: #3f7df2; }
+.tc-button.danger { color: #f75464; border-color: #c94b4f; }
+.tc-button.danger:hover { background: rgba(201, 75, 79, 0.16); }
+.tc-button:focus-visible { outline: 2px solid #3574f0; outline-offset: 1px; }
+.tc-dialog.narrow { width: 420px; }
+.tc-dialog-text { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.tc-dialog-check { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; cursor: pointer; }
+.tc-dialog-check input { margin: 0; accent-color: #3574f0; }
 table.params { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 table.params th { text-align: left; color: var(--ij-fg-dim); font-weight: 600; padding: 2px 8px 6px; font-size: 11.5px; }
 table.params td { padding: 3px 8px; }

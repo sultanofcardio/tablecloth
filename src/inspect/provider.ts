@@ -75,7 +75,7 @@ export class SqlInspectionProvider implements vscode.CodeActionProvider, vscode.
     const binding = this.consoles.getBinding(doc.uri);
     const ds = binding ? this.store.get(binding.dataSourceId) : undefined;
     const catalog = ds ? this.sessions.getCatalog(ds.config.id) : undefined;
-    if (!ds || !catalog || !inspectionsEnabled()) {
+    if (!ds || !inspectionsEnabled()) {
       this.diagnostics.delete(doc.uri);
       this.fixes.delete(doc.uri.toString());
       return;

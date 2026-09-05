@@ -89,7 +89,7 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 | Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, no-auth · read-only sources (enforced server-side) · env color labels · Project (workspace, the default) and Global (user) scopes · passwords only in the OS keychain |
 | Explorer | Tree in the IntelliJ design language: vendor marks, introspection badges, schemas, tables with PK/FK keys, indexes, views, sequences, routines, enum types · toolbar row · context menus · schema selection and system-schema toggle · auto-sync per source |
 | Consoles | Monaco-based editor under an IntelliJ toolbar · run statement with the statement frame · run script · cancel a running statement (⌘F2) · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · `:name` parameters with a values dialog · consoles persist, rename, and reopen |
-| SQL intelligence | Object completion with dialect-correct quoting · keywords and functions · FK-based JOIN clauses and ON conditions · live templates (`sel`, `selw`, `ins`, `upd`, `del`, `tab`, …) · inspections for unresolved tables and columns with Change-to quick fixes · Format SQL (⌘⌥L or Format Document) · Go to Database Object (⌘⇧O) · Go to DDL |
+| SQL intelligence | Object completion with dialect-correct quoting · keywords and functions · FK-based JOIN clauses and ON conditions · live templates (`sel`, `selw`, `ins`, `upd`, `del`, `tab`, …) · inspections for unresolved tables and columns with Change-to quick fixes · DELETE/UPDATE without WHERE flagged in the editor and confirmed before it runs, with the row count · Format SQL (⌘⌥L or Format Document) · Go to Database Object (⌘⇧O) · Go to DDL |
 | Results | Tablecloth panel shaped like IntelliJ's Services window: Database → source → console tree, per-console result tabs and Output logs, a data source Information tab · multi-statement runs, one tab per query |
 | Data editor | Cell editing with a change set and a DML preview on Submit · add, clone, delete rows · Set NULL / DEFAULT · revert selected or all · Tx mode per data editor with commit and roll back · WHERE and ORDER BY fields with completion · header sort and funnels · FK navigation and referencing rows · value editor (⇧⏎) · transpose, Table / Tree / Text views · column list (⌘F12) · find in page (⌘F) · 500-row pages, floating pager, count on demand |
 | Import & export | Import Data from File with column mapping or create-table-from-file · extractors: SQL Inserts / Updates / Where Clause · CSV, TSV, pipe, semicolon · HTML, JSON, Markdown, One-row, Pretty, Python-DataFrame, SQL-Insert-Multirow, XML · Excel (xlsx) through Export Data · copy or export, selection-aware |
@@ -113,7 +113,8 @@ Found something else? [Open an issue](https://github.com/sultanofcardio/tableclo
 | `tablecloth.dataSources` | `[]` | Data source definitions, managed through the dialog. Workspace settings hold Project sources (the default when a trusted folder is open); user settings hold Global sources. Passwords are never stored here. |
 | `tablecloth.dialogs.openIn` | `floatingWindow` | Open the Data Sources and Import Data dialogs in a separate compact window or as an editor tab. (`tablecloth.dataSourceDialog.openIn` from Phase 1 is still honored.) |
 | `tablecloth.grid.pageSize` | `500` | Rows per data grid page; "Set as Default" in the pager menu writes it. |
-| `tablecloth.inspections.enabled` | `true` | Flag unresolved tables and columns in consoles and attached SQL files. |
+| `tablecloth.inspections.enabled` | `true` | Flag unresolved tables and columns, and DELETE/UPDATE without WHERE, in consoles and attached SQL files. |
+| `tablecloth.execution.warnWithoutWhere` | `true` | Ask before running a DELETE or UPDATE that has no WHERE clause, naming the table and its row count. Changing it resets every console's "Don't ask again" choice. |
 | `tablecloth.explorer.showSystemSchemas` | `false` | Show `pg_catalog`, `information_schema`, `mysql`, `sys`, and friends in the explorer. |
 | `tablecloth.export.nullText` | `""` | Text used for NULL values in CSV-family exports. |
 | `tablecloth.export.csvQuoteAll` | `false` | Quote every value in CSV-family exports. |
@@ -136,7 +137,7 @@ npm run lint
 npm run package          # build the .vsix
 ```
 
-Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces (`SHOT_NAMES` narrows either list).
+Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces; `SHOT_SUITE=withoutWhere.cjs` the DELETE-without-WHERE inspection and its warning dialog (`SHOT_NAMES` narrows any of the lists).
 
 **Docs.** The site at [sultanofcardio.github.io/tablecloth](https://sultanofcardio.github.io/tablecloth/) is built by GitHub Pages from the `gh-pages` branch; edit the Markdown there. The roadmap page is generated, see `_tools/README.md` on that branch.
 

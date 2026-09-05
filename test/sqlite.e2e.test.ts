@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sqliteDriver } from '../src/drivers/sqlite';
 import { tablePageQuery, wrapCount, wrapPaged } from '../src/sql/paging';
+import { countPlan } from '../src/sql/unguarded';
 import type { DataSourceConfig } from '../src/core/types';
 
 function config(file: string, readOnly = false): DataSourceConfig {
@@ -121,5 +122,20 @@ test('sqlite read-only session rejects writes', async () => {
   const read = await session.query('SELECT count(*) AS n FROM orders');
   assert.equal(read.rows[0]![0], 1200);
   await assert.rejects(() => session.query("INSERT INTO customers (id, email) VALUES (99, 'x@example.com')"));
+  await session.close();
+});
+
+test('the without-WHERE row count sees an open transaction and leaves it open', async () => {
+  const session = await sqliteDriver.connect({ config: config(dbFile), secrets: {} });
+  await session.query('BEGIN');
+  await session.query("INSERT INTO customers (id, email) VALUES (60, 'count@example.com')");
+  const plan = countPlan('sqlite', 'customers', { inTransaction: true });
+  for (const sql of plan.before) await session.query(sql);
+  const counted = await session.query(plan.count);
+  for (const sql of plan.after) await session.query(sql);
+  assert.equal(counted.rows[0]![0], 3);
+  await session.query('ROLLBACK');
+  const after = await session.query('SELECT count(*) AS n FROM customers');
+  assert.equal(after.rows[0]![0], 2);
   await session.close();
 });

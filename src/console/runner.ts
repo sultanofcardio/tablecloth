@@ -4,12 +4,22 @@ import type { ConsoleBinding, StoredDataSource, TxIsolation, TxMode } from '../c
 import { ENV_COLOR_HEX, TX_ISOLATION_LABELS } from '../core/types';
 import { errorMessage, formatMillis, qualify, quoteIdent, timestamp, truncate } from '../core/util';
 import { makeEditTarget, resultColumnOrigins, singleSourceRelation, type ChangeStatement } from '../edit/changeSet';
-import { findRelation, referencingColumns } from '../edit/relations';
+import { findRelation, findWrittenRelation, referencingColumns } from '../edit/relations';
 import { isCancellationError, type DbSession } from '../drivers/driver';
+import { isMariaDb } from '../drivers/info';
 import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
 import { splitStatements, statementAt } from '../sql/splitter';
+import {
+  countPlan,
+  countProbe,
+  COUNT_TIMEOUT_MS,
+  findUnguardedWrites,
+  unguardedWriteRows,
+  unguardedWriteSentence,
+  type UnguardedWrite,
+} from '../sql/unguarded';
 import { defaultPageSize, StaticGridProvider, type GridMeta, type RunQuery } from '../ui/grid';
 import type { ReferencingDto } from '../ui/gridProtocol';
 import { ConsoleGridProvider, makeRunQuery, runChangeBatch, type ConsoleEditingOptions } from '../ui/providers';
@@ -34,6 +44,12 @@ const ISOLATION_SQL: Record<Exclude<TxIsolation, 'default'>, string> = {
 
 const PARAM_VALUES_KEY = 'tablecloth.parameterValues';
 
+/** The sentence under the native dialog's title, from the pieces the webview's dialog also uses. */
+function unguardedWriteDetail(warning: { table?: string; dsName: string }, count: number | undefined): string {
+  const sentence = unguardedWriteSentence(warning.table, warning.dsName);
+  return `${sentence.before}${sentence.table}${sentence.after}${unguardedWriteRows(count)}.`;
+}
+
 /**
  * Session suffix for scripts run without a console document (Run File on a
  * data source). They get a session of their own so a script's BEGIN, or a
@@ -52,9 +68,46 @@ export type ParameterPrompt = (
   previous: Record<string, string>,
 ) => Promise<Record<string, string | null> | undefined>;
 
+/** What the warning before a DELETE or UPDATE without WHERE has to say. */
+export interface UnguardedWriteWarning {
+  verb: UnguardedWrite['verb'];
+  /** The table the way the dialog names it (public.orders), when the statement names one. */
+  table?: string;
+  dsName: string;
+  /** Rows the statement would touch, once counted; undefined when it cannot be counted. */
+  count: Promise<number | undefined>;
+}
+
+/** The answer to that warning: run it, and optionally stop asking. */
+export interface UnguardedWriteAnswer {
+  run: boolean;
+  /** "Don't ask again for this console", remembered with the console's other state. */
+  dontAsk: boolean;
+  /** "Run all anyway": stop asking for the rest of this script run only. */
+  allInRun?: boolean;
+}
+
+export type UnguardedWritePrompt = (warning: UnguardedWriteWarning) => Promise<UnguardedWriteAnswer | undefined>;
+
+/** What one Run File (or script) run remembers while it lasts; nothing is persisted. */
+interface ScriptRun {
+  /** "Run all anyway" was answered: the remaining statements run without asking. */
+  skipUnguardedWarnings: boolean;
+}
+
+function warnWithoutWhereEnabled(): boolean {
+  return vscode.workspace.getConfiguration('tablecloth.execution').get<boolean>('warnWithoutWhere', true);
+}
+
+/** How long the native dialog waits for the row count, a margin over the server-side bound. */
+const COUNT_WAIT_MS = COUNT_TIMEOUT_MS + 500;
+
 /** Executes console statements and presents results in the Services view. */
 export class QueryRunner {
   private readonly prompters = new Map<string, ParameterPrompt>();
+  private readonly unguardedPrompters = new Map<string, UnguardedWritePrompt>();
+  /** Data sources whose script session (SCRIPT_SUFFIX) has a transaction open. */
+  private readonly scriptsInTx = new Set<string>();
   /** Statement in flight per console key, for the stop button. */
   private readonly running = new Map<string, { ds: StoredDataSource; suffix?: string }>();
   private readonly runningEmitter = new vscode.EventEmitter<{ key: string; running: boolean }>();
@@ -71,13 +124,26 @@ export class QueryRunner {
     private readonly services: ServicesViewProvider,
     private readonly history: QueryHistory,
     private readonly memento: vscode.Memento,
-  ) {}
+  ) {
+    // a script session that died (or was disconnected) took its open
+    // transaction with it; keep the tracked state honest
+    this.sessions.onDidCloseSession((dsId, suffix) => {
+      if (suffix === SCRIPT_SUFFIX) this.scriptsInTx.delete(dsId);
+    });
+  }
 
   /** A console webview offers its own parameters dialog while it is open. */
   registerParameterPrompt(uri: vscode.Uri, prompt: ParameterPrompt): vscode.Disposable {
     const key = uri.toString();
     this.prompters.set(key, prompt);
     return { dispose: () => this.prompters.delete(key) };
+  }
+
+  /** A console webview offers its own "Run DELETE without a WHERE clause?" dialog while it is open. */
+  registerUnguardedWritePrompt(uri: vscode.Uri, prompt: UnguardedWritePrompt): vscode.Disposable {
+    const key = uri.toString();
+    this.unguardedPrompters.set(key, prompt);
+    return { dispose: () => this.unguardedPrompters.delete(key) };
   }
 
   /** ⌘⏎: run the selection when there is one, else the statement at the caret. */
@@ -171,9 +237,10 @@ export class QueryRunner {
     }
     const { key: consoleKey } = this.consoleIdentity(ds, consoleUri, fileName);
     const started = Date.now();
+    const scriptRun: ScriptRun = { skipUnguardedWarnings: false };
     let done = 0;
     for (const stmt of statements) {
-      const outcome = await this.execute(ds, binding, stmt.sql, consoleUri, fileName);
+      const outcome = await this.execute(ds, binding, stmt.sql, consoleUri, fileName, scriptRun);
       if (!outcome.ok) {
         if (outcome.cancelled) return;
         this.services.appendOutput(consoleKey, {
@@ -292,11 +359,26 @@ export class QueryRunner {
     };
   }
 
-  /** The user typed transaction control themselves; keep the tracked state honest. */
-  private syncTxKeyword(consoleUri: vscode.Uri | undefined, keyword: string): void {
-    if (!consoleUri) return;
-    if (keyword === 'begin' || keyword === 'start') this.consoles.setInTx(consoleUri, true);
-    if (keyword === 'commit' || keyword === 'rollback' || keyword === 'end') this.consoles.setInTx(consoleUri, false);
+  /**
+   * The user typed transaction control themselves; keep the tracked state
+   * honest. A script has no console to track it on, so its own session's state
+   * is kept per data source.
+   */
+  private syncTxKeyword(dsId: string, consoleUri: vscode.Uri | undefined, keyword: string): void {
+    const opens = keyword === 'begin' || keyword === 'start';
+    const closes = keyword === 'commit' || keyword === 'rollback' || keyword === 'end';
+    if (!opens && !closes) return;
+    if (consoleUri) {
+      this.consoles.setInTx(consoleUri, opens);
+      return;
+    }
+    if (opens) this.scriptsInTx.add(dsId);
+    else this.scriptsInTx.delete(dsId);
+  }
+
+  /** Whether a transaction is open on the session a run would use. */
+  private isInTx(dsId: string, consoleUri?: vscode.Uri): boolean {
+    return consoleUri ? this.consoles.isInTx(consoleUri) : this.scriptsInTx.has(dsId);
   }
 
   /** Identity of a run's console in the Tablecloth panel tree. */
@@ -359,6 +441,125 @@ export class QueryRunner {
     await this.rememberParameterValues(ds.config.id, values);
     const bound = bindParameters(sql, ds.config.driver, refs, values);
     return { text: bound.text, params: bound.values };
+  }
+
+  // ------------------------------------------------------------ DELETE/UPDATE without WHERE
+
+  /**
+   * IntelliJ's safety net: a DELETE or UPDATE with no WHERE clause is
+   * confirmed before it runs, with the table and its row count. Returns the
+   * write the user declined, or undefined when the statement may run.
+   */
+  private async confirmUnguardedWrites(
+    ds: StoredDataSource,
+    binding: ConsoleBinding,
+    sql: string,
+    consoleUri?: vscode.Uri,
+    scriptRun?: ScriptRun,
+  ): Promise<UnguardedWrite | undefined> {
+    if (!warnWithoutWhereEnabled()) return undefined;
+    if (scriptRun?.skipUnguardedWarnings) return undefined;
+    if (consoleUri && !this.consoles.asksBeforeUnguardedWrite(consoleUri)) return undefined;
+    const webview = consoleUri && this.unguardedPrompters.get(consoleUri.toString());
+    const prompt: UnguardedWritePrompt = webview ?? ((warning) => this.confirmNatively(warning, !!scriptRun));
+    for (const write of findUnguardedWrites(sql, ds.config.driver)) {
+      const answer = await prompt(this.describeUnguardedWrite(ds, binding, write, consoleUri));
+      if (!answer?.run) return write;
+      if (answer.allInRun && scriptRun) {
+        scriptRun.skipUnguardedWarnings = true;
+        return undefined;
+      }
+      if (answer.dontAsk && consoleUri) {
+        await this.consoles.setAsksBeforeUnguardedWrite(consoleUri, false);
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  private describeUnguardedWrite(
+    ds: StoredDataSource,
+    binding: ConsoleBinding,
+    write: UnguardedWrite,
+    consoleUri?: vscode.Uri,
+  ): UnguardedWriteWarning {
+    const warning: UnguardedWriteWarning = { verb: write.verb, dsName: ds.config.name, count: Promise.resolve(undefined) };
+    if (!write.table) return warning;
+    const catalog = this.sessions.getCatalog(ds.config.id);
+    const defaultSchema = ds.config.driver === 'mysql' ? binding.database : binding.schema;
+    const found = catalog ? findWrittenRelation(catalog, write.table.schema, defaultSchema, write.table.name) : undefined;
+    if (!found) {
+      warning.table = write.table.schema ? `${write.table.schema}.${write.table.name}` : write.table.name;
+      return warning;
+    }
+    warning.table =
+      ds.config.driver === 'sqlite' ? found.relation.name : `${found.schema.name}.${found.relation.name}`;
+    const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
+    const mariadb = ds.config.driver === 'mysql' && isMariaDb(catalog?.serverVersion ?? '');
+    warning.count = this.countRows(ds, qualify(ds.config.driver, schemaForSql, found.relation.name), mariadb, consoleUri);
+    return warning;
+  }
+
+  /**
+   * Count the rows the statement would touch on the console's own session, so
+   * an open transaction's uncommitted changes are included. The count never
+   * opens a transaction of its own and never touches the console's tracked Tx
+   * state; the table is qualified so no schema context is needed. Anything
+   * that goes wrong, a timeout included, leaves the dialog without a number.
+   */
+  private countRows(
+    ds: StoredDataSource,
+    qualifiedTable: string,
+    mariadb: boolean,
+    consoleUri?: vscode.Uri,
+  ): Promise<number | undefined> {
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
+    const inTransaction = this.isInTx(ds.config.id, consoleUri);
+    const probe = countProbe(ds.config.driver, inTransaction);
+    return this.sessions
+      .run(
+        ds.config,
+        async (session) => {
+          const observed = probe ? await session.query(probe) : undefined;
+          const statementTimeout = observed ? String(observed.rows[0]?.[0] ?? '') || undefined : undefined;
+          const plan = countPlan(ds.config.driver, qualifiedTable, { inTransaction, mariadb, statementTimeout });
+          try {
+            for (const sql of plan.before) await session.query(sql);
+            return await session.query(plan.count);
+          } finally {
+            for (const sql of plan.after) await session.query(sql).catch(() => undefined);
+          }
+        },
+        suffix,
+      )
+      .then((result) => {
+        const value = Number(result.rows[0]?.[0]);
+        return Number.isFinite(value) ? value : undefined;
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Native fallback for scripts and plain .sql files; waits briefly for the
+   * count. A script offers "Run all anyway" so a migration full of unguarded
+   * writes is answered once, for that run only.
+   */
+  private async confirmNatively(warning: UnguardedWriteWarning, script: boolean): Promise<UnguardedWriteAnswer | undefined> {
+    const count = await Promise.race([
+      warning.count,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), COUNT_WAIT_MS)),
+    ]);
+    // Cancel comes first so it is the focused default: ⌘⏎ then a stray ⏎ must not run the statement
+    const buttons = [{ title: 'Cancel', isCloseAffordance: true }, { title: 'Run anyway' }];
+    if (script) buttons.push({ title: 'Run all anyway' });
+    const answer = await vscode.window.showWarningMessage(
+      `Run ${warning.verb} without a WHERE clause?`,
+      { modal: true, detail: unguardedWriteDetail(warning, count) },
+      ...buttons,
+    );
+    if (answer?.title === 'Run anyway') return { run: true, dontAsk: false };
+    if (answer?.title === 'Run all anyway') return { run: true, dontAsk: false, allInRun: true };
+    return undefined;
   }
 
   // ------------------------------------------------------------ editable results
@@ -457,6 +658,7 @@ export class QueryRunner {
     sql: string,
     consoleUri?: vscode.Uri,
     scriptName?: string,
+    scriptRun?: ScriptRun,
   ): Promise<RunOutcome> {
     const config = ds.config;
     const prompt = this.prompt(ds, binding);
@@ -470,6 +672,12 @@ export class QueryRunner {
       config.driver,
       config.color === 'none' ? null : ENV_COLOR_HEX[config.color],
     );
+
+    const declined = await this.confirmUnguardedWrites(ds, binding, sql, consoleUri, scriptRun);
+    if (declined) {
+      this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] not run: ${declined.verb} without WHERE clause` });
+      return { ok: false, cancelled: true };
+    }
 
     const bound = await this.bindStatement(ds, sql, consoleUri);
     if (bound === 'cancelled') return { ok: false, cancelled: true };
@@ -545,7 +753,7 @@ export class QueryRunner {
       try {
         const result = await run(bound.text, bound.params);
         const duration = formatMillis(Date.now() - started);
-        this.syncTxKeyword(consoleUri, cls.keyword);
+        this.syncTxKeyword(config.id, consoleUri, cls.keyword);
         let note: string;
         if (result.columns.length > 0) {
           const provider = new StaticGridProvider(config.driver, result.columns, result.rows);
