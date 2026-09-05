@@ -111,7 +111,10 @@
 
 
   .site { min-height: 100vh; }
-  .site nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; align-self: start; }
+  /* fixed rather than sticky: under CSS zoom Chrome sizes 100vh from the unzoomed viewport, and a sticky panel taller than the window gets pushed up at the end of the page */
+  .site nav { position: fixed; top: 0; bottom: 0; left: 0; width: 220px; overflow-y: auto; }
+  .site .page { grid-column: 2; }
+  .site.collapsed .page { grid-column: 1; }
   .navrail { position: fixed; }
   /* the reviewed mock reads right at about 170%, so that is the default on desktop widths */
   @media (min-width: 1200px) { html { zoom: 1.7; } }
@@ -135,7 +138,7 @@
   .site .page table.w22 th:first-child { width: 22%; } .site .page table.w26 th:first-child { width: 26%; } .site .page table.w34 th:first-child { width: 34%; }
   .site .page pre { margin: 0 0 14px; }
   .site .page pre code { background: none; padding: 0; }
-  @media (max-width: 760px) { .site nav { position: static; height: auto; } .site .page { padding: 20px 16px 32px; } }
+  @media (max-width: 760px) { .site nav { position: static; width: auto; } .site .page { grid-column: auto; padding: 20px 16px 32px; } }
 
   /* changelog */
   :root { --red: #c94b4f; --cream: #f3dfd4; }
