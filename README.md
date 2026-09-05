@@ -1,9 +1,10 @@
 # Tablecloth docs
 
-The `gh-pages` branch. GitHub Pages builds it with Jekyll and the Just the Docs theme; there is nothing to install locally.
+The `gh-pages` branch. GitHub Pages builds it with Jekyll; there is no theme and nothing to install locally.
 
-- One Markdown file per page, ordered by `nav_order` in the front matter.
-- `roadmap.html` is HTML rather than Markdown: the parity list is generated, and its styles live in `_sass/custom/custom.scss` with the interactions in `assets/js/roadmap.js`.
+- `_layouts/default.html` is the whole frame: the sidebar and the page column, as reviewed.
+- One Markdown file per page. Tables, figures and callouts use kramdown attribute lists (`{: .fig}`, `{: .figcaption}`, `{: .callout}`) so they render with the same markup the mock used.
+- `roadmap.html` is generated (see `_tools/README.md`); `assets/css/roadmap.css` and `assets/js/site.js` carry its styles and interactions.
 - Screenshots are in `assets/images/`; the README on `main` uses the same captures.
 
-To preview locally: `gem install bundler jekyll` then `bundle exec jekyll serve` with a Gemfile containing `gem "github-pages", group: :jekyll_plugins`.
+To preview locally: `gem install kramdown kramdown-parser-gfm` and run `_tools/preview.rb`, which renders every page into `_preview/`.

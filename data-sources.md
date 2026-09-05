@@ -1,7 +1,6 @@
 ---
 layout: default
 title: Data sources
-nav_order: 2
 ---
 
 # Data sources
@@ -9,7 +8,10 @@ nav_order: 2
 A data source is a saved connection. **Project** sources are written to the workspace settings and travel with the repo; **Global** sources live in your user settings. Passwords, SSH passwords and key passphrases go to the OS keychain through VS Code's secret storage and never touch a settings file.
 
 ![The Data Sources dialog in its own floating window.]({{ site.baseurl }}/assets/images/screenshot-data-source.png)
+{: .fig style="max-width:700px"}
+
 *The dialog opens in its own floating window, IntelliJ-style. `tablecloth.dialogs.openIn` switches it to an editor tab.*
+{: .figcaption}
 
 ## Creating one
 
@@ -31,6 +33,7 @@ A data source is a saved connection. **Project** sources are written to the work
 | Auto-sync | On: re-introspect on connect. Off: the tree only changes when you press Refresh. |
 | SSH/SSL tab | SSH tunnel with password, key file or agent auth. SSL mode disable, require, verify-ca or verify-full, with an optional CA file. Key and CA files must be on the local disk. |
 | Schemas tab | Which schemas (PostgreSQL) or databases (MySQL) to introspect. Empty means the driver's default. |
+{: .w24}
 
 ## Where it's stored
 

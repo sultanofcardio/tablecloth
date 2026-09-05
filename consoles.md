@@ -1,7 +1,6 @@
 ---
 layout: default
 title: Query consoles
-nav_order: 4
 ---
 
 # Query consoles
@@ -9,13 +8,16 @@ nav_order: 4
 A console is a Monaco editor bound to one data source and one schema, with an IntelliJ toolbar above it and its own database session behind it. Consoles persist across restarts, can be renamed, and reopen from the console dropdown in the toolbar.
 
 ![A console with an inspection warning, a :min_total parameter, and the Parameters dialog.]({{ site.baseurl }}/assets/images/screenshot-console-intel.png)
+{: .fig}
+
 *Inspections, a `:min_total` parameter, and the values dialog that asks for it on run.*
+{: .figcaption}
 
 ## Running SQL
 
-- <kbd>⌘</kbd><kbd>⏎</kbd> runs the selection if there is one, otherwise the statement at the caret. The green frame shows which statement that is.
+- <span class="keys"><kbd>⌘</kbd><kbd>⏎</kbd></span> runs the selection if there is one, otherwise the statement at the caret. The green frame shows which statement that is.
 - **Run script** (the toolbar button) runs the whole console. Multi-statement runs produce one result tab per query.
-- <kbd>⌘</kbd><kbd>F2</kbd> cancels the running statement by killing it server-side (`pg_cancel_backend`, `KILL QUERY`). SQLite runs in-process and can't be cancelled.
+- <span class="keys"><kbd>⌘</kbd><kbd>F2</kbd></span> cancels the running statement by killing it server-side (`pg_cancel_backend`, `KILL QUERY`). SQLite runs in-process and can't be cancelled.
 - Statements with parameters ask for values first. `:name` and `${name}` work everywhere; `?` works on MySQL and SQLite and `$1` on PostgreSQL. Values are remembered per data source.
 
 ## Toolbar
@@ -39,4 +41,4 @@ The **Tablecloth** panel is shaped like IntelliJ's Services window: a tree of Da
 You don't need a console for everything:
 
 - **Run File on Data Source…** in the explorer context menu of any `.sql` file runs it against a source you pick.
-- **Attach File to Data Source…** in the editor context menu binds an open `.sql` file to a source. From then on <kbd>⌘</kbd><kbd>⏎</kbd>, **Run File on Bound Data Source**, <kbd>⌘</kbd><kbd>F2</kbd>, completion and inspections all work in that file as they would in a console.
+- **Attach File to Data Source…** in the editor context menu binds an open `.sql` file to a source. From then on <span class="keys"><kbd>⌘</kbd><kbd>⏎</kbd></span>, **Run File on Bound Data Source**, <span class="keys"><kbd>⌘</kbd><kbd>F2</kbd></span>, completion and inspections all work in that file as they would in a console.

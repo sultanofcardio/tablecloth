@@ -1,7 +1,0 @@
-/* sidebar collapse: the button lives in _includes/header_custom.html, the script in assets/js/roadmap.js */
-.tc-navhide { background: none; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: inherit; width: 30px; height: 30px; display: inline-grid; place-items: center; cursor: pointer; padding: 0; margin-left: 8px; }
-.tc-navhide svg { width: 16px; height: 16px; fill: currentColor; }
-@media (min-width: 50rem) {
-  body.tc-nav-collapsed .side-bar { display: none; }
-  body.tc-nav-collapsed .main { margin-left: 0 !important; max-width: none; }
-}

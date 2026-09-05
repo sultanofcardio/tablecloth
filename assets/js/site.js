@@ -1,4 +1,4 @@
-// Roadmap page interactions and the sidebar toggle. Each block checks for its own elements, so this is safe on every page.
+// The roadmap page interactions and the sidebar toggle. Each block checks for its own elements, so this is safe on every page.
 (function(){
   // the cloth
   (function(){
@@ -81,11 +81,9 @@
       row.scrollIntoView({block:'center',behavior:'smooth'}); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); };
   })();
 
-  // sidebar collapse (Just the Docs)
-  (function(){
-    const btn=document.getElementById('tc-navhide'); if(!btn) return;
+  // sidebar collapse
+  (function(){ const hide=document.getElementById('navhide'), rail=document.getElementById('navrail'), site=document.querySelector('.site'); if(!hide) return;
     let c=false; try { c=localStorage.getItem('tc-nav')==='collapsed'; } catch(e) {}
-    function set(v){ c=v; document.body.classList.toggle('tc-nav-collapsed',c); btn.title=c?'Show sidebar':'Hide sidebar'; btn.setAttribute('aria-pressed',String(c)); try { localStorage.setItem('tc-nav',c?'collapsed':'open'); } catch(e) {} }
-    set(c); btn.addEventListener('click',()=>set(!c));
-  })();
+    function set(v){ c=v; site.classList.toggle('collapsed',c); rail.hidden=!c; try { localStorage.setItem('tc-nav',c?'collapsed':'open'); } catch(e) {} }
+    set(c); hide.addEventListener('click',()=>set(true)); rail.addEventListener('click',()=>set(false)); })();
 })();

@@ -1,38 +1,4 @@
-/* Tablecloth docs: tokens and the roadmap page. Plain CSS on purpose, so nothing here goes through Sass. */
-  :root {
-    --page-bg: #121218;
-    --card-bg: #1a1a22;
-    --card-bg-2: #20202a;
-    --card-border: #2b2b36;
-    --ink: #d6d6dd;
-    --ink-dim: #8b8b98;
-    --ink-faint: #63636e;
-    --accent: #3574f0;
-    --accent-ink: #9dbcff;
-    --accent-soft: rgba(53,116,240,.12);
-    --green: #4ec9a0;
-    --amber: #e2b93d;
-    --red: #f26d78;
-    --purple: #b18aff;
-    --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  }
-
-.tc-roadmap { color: var(--ink); line-height: 1.6; }
-.tc-roadmap h1, .tc-roadmap h2, .tc-roadmap h3, .tc-roadmap h4 { color: var(--ink); }
-.tc-roadmap h2 { margin-top: 30px; padding-top: 10px; border-top: 1px solid var(--card-border); }
-.tc-roadmap p, .tc-roadmap li { max-width: 760px; }
-.tc-roadmap table, .tc-roadmap .g, .tc-roadmap .dt { display: table; width: 100%; font-size: inherit; }
-.tc-roadmap th, .tc-roadmap td { background: transparent; border: 0; padding: 0; min-width: 0; }
-.tc-roadmap .kicker { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6f9dff; margin-bottom: 8px; }
-.tc-roadmap code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; border: 0; color: inherit; }
-.tc-roadmap kbd { background: #26262f; border: 1px solid #3a3a48; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; white-space: nowrap; font-family: var(--mono); }
-.tc-roadmap .dim { color: var(--ink-dim); }
-.tc-roadmap svg { display: inline-block; }
-.tc-roadmap [hidden] { display: none !important; }
-.tc-roadmap .legend { padding-left: 0; } .tc-roadmap .legend li::before { content: none; } .tc-roadmap .legend li { padding-left: 0; margin: 0; }
-.tc-roadmap .prow .feat, .tc-roadmap .tags, .tc-roadmap .lane ul { padding-left: 0; }
-.tc-roadmap ul li::before { content: none; }
-
+/* The roadmap page: the cloth, the ranked list, and the VS Code scenes. Plain CSS, straight from the reviewed mock. */
   .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; vertical-align: middle; white-space: nowrap; }
   .badge.blue   { color: #9dbcff; background: rgba(53,116,240,.13); border-color: rgba(53,116,240,.38); }
   .badge.green  { color: #8fe6c8; background: rgba(78,201,160,.12); border-color: rgba(78,201,160,.35); }
@@ -337,5 +303,4 @@
   .vsc-status svg { width: 13px; height: 13px; }
   .vsc-status .sb-remote { background: #0078d4; color: #fff; height: 24px; display: inline-grid; place-items: center; padding: 0 8px; }
   .vsc-status .right { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-
 

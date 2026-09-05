@@ -1,7 +1,6 @@
 ---
 layout: default
 title: Import & export
-nav_order: 7
 ---
 
 # Import &amp; export
@@ -16,13 +15,17 @@ An extractor turns rows into text. The active one drives **Copy** in the grid, a
 | CSV family | CSV · TSV · pipe · semicolon, plus **Configure CSV Formats…** for the null text and quoting (`tablecloth.export.nullText`, `tablecloth.export.csvQuoteAll`) |
 | Scripted | HTML · JSON · Markdown · One-row · Pretty · Python-DataFrame · XML |
 | Export Data only | Excel (xlsx). It's binary, so it doesn't appear under Copy. |
+{: .w22}
 
 SQL Updates keeps the primary-key values in the WHERE clause even when you didn't select the key column, while SET covers only the columns you did select. If everything you selected is part of the key there's nothing to set, so you get one comment naming the key columns instead of an empty export.
 
 ## Import Data from File
 
 ![The Import Data dialog: format settings, a column mapping table, and the Import button.]({{ site.baseurl }}/assets/images/screenshot-import.png)
+{: .fig}
+
 *Format settings, the mapping from file columns to table columns with types and sample values, and the row count on the button.*
+{: .figcaption}
 
 Right-click a table or schema in the explorer and choose **Import Data from File…**. The dialog opens in its own window (or a tab, per `tablecloth.dialogs.openIn`).
 

@@ -1,7 +1,6 @@
 ---
 layout: default
 title: Known limits
-nav_order: 9
 ---
 
 # Known limits

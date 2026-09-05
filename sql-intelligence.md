@@ -1,7 +1,6 @@
 ---
 layout: default
 title: SQL intelligence
-nav_order: 5
 ---
 
 # SQL intelligence
@@ -40,11 +39,12 @@ Type the abbreviation at the start of a statement and accept it; tab through the
 | `col` | `name type` (a column definition) |
 | `ind` | `CREATE INDEX name ON table (columns)` |
 | `view` | `CREATE VIEW name AS SELECT * FROM table` |
+{: .w18}
 
 ## Inspections
 
-Unresolved tables and qualified columns get a warning squiggle, and so do bare columns in single-table statements. The quick fix (<kbd>⌘</kbd><kbd>.</kbd>) offers **Change to 'x'** for the closest existing name. Turn them off with `tablecloth.inspections.enabled`.
+Unresolved tables and qualified columns get a warning squiggle, and so do bare columns in single-table statements. The quick fix (<span class="keys"><kbd>⌘</kbd><kbd>.</kbd></span>) offers **Change to 'x'** for the closest existing name. Turn them off with `tablecloth.inspections.enabled`.
 
 ## Format SQL
 
-<kbd>⌘</kbd><kbd>⌥</kbd><kbd>L</kbd>, or VS Code's own **Format Document**. The style follows IntelliJ's defaults: one clause per line, `AND`/`OR` indented under their clause, lists that pass 100 columns wrap aligned under the first item, subqueries as indented blocks, aligned column names in `CREATE TABLE`, and type names keep the case you wrote them in.
+<span class="keys"><kbd>⌘</kbd><kbd>⌥</kbd><kbd>L</kbd></span>, or VS Code's own **Format Document**. The style follows IntelliJ's defaults: one clause per line, `AND`/`OR` indented under their clause, lists that pass 100 columns wrap aligned under the first item, subqueries as indented blocks, aligned column names in `CREATE TABLE`, and type names keep the case you wrote them in.
