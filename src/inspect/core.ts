@@ -8,7 +8,7 @@ import type { CatalogModel, DriverId, RelationModel } from '../core/types';
 import { findRelation } from '../edit/relations';
 import { splitStatements } from '../sql/splitter';
 import { SQL_FUNCTIONS, SQL_KEYWORDS, significant, tokenize, type Token } from '../sql/tokens';
-import { findUnguardedWrites } from '../sql/unguarded';
+import { unguardedWritesIn } from '../sql/unguarded';
 
 export interface Inspection {
   start: number;
@@ -199,9 +199,12 @@ export function unguardedWriteMessage(verb: 'DELETE' | 'UPDATE', table?: { schem
  */
 export function inspectSql(catalog: CatalogModel | undefined, dialect: DriverId, text: string, defaultSchema?: string): Inspection[] {
   const out: Inspection[] = [];
-  const statements = splitStatements(text, dialect);
+  const statements = splitStatements(text, dialect).map((stmt) => ({
+    ...stmt,
+    tokens: significant(tokenize(stmt.sql, dialect)),
+  }));
   for (const stmt of statements) {
-    for (const write of findUnguardedWrites(stmt.sql, dialect)) {
+    for (const write of unguardedWritesIn(stmt.tokens)) {
       out.push({
         start: stmt.start + write.start,
         end: stmt.start + write.end,
@@ -216,7 +219,7 @@ export function inspectSql(catalog: CatalogModel | undefined, dialect: DriverId,
   const knownSchemaNames = new Set(catalog.databases.flatMap((db) => db.allSchemaNames.map((s) => s.toLowerCase())));
 
   for (const stmt of statements) {
-    const tokens = significant(tokenize(stmt.sql, dialect));
+    const tokens = stmt.tokens;
     if (tokens.length === 0) continue;
     const scope: StatementScope = {
       refs: parseTableRefs(stmt.sql),

@@ -11,7 +11,7 @@ import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
 import { splitStatements, statementAt } from '../sql/splitter';
-import { countPlan, COUNT_TIMEOUT_MS, findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
+import { countPlan, countProbe, COUNT_TIMEOUT_MS, findUnguardedWrites, type UnguardedWrite } from '../sql/unguarded';
 import { defaultPageSize, StaticGridProvider, type GridMeta, type RunQuery } from '../ui/grid';
 import type { ReferencingDto } from '../ui/gridProtocol';
 import { ConsoleGridProvider, makeRunQuery, runChangeBatch, type ConsoleEditingOptions } from '../ui/providers';
@@ -463,7 +463,8 @@ export class QueryRunner {
       warning.table = write.table.schema ? `${write.table.schema}.${write.table.name}` : write.table.name;
       return warning;
     }
-    warning.table = found.schema.implicit ? found.relation.name : `${found.schema.name}.${found.relation.name}`;
+    warning.table =
+      ds.config.driver === 'sqlite' ? found.relation.name : `${found.schema.name}.${found.relation.name}`;
     const schemaForSql = ds.config.driver === 'sqlite' ? undefined : found.schema.name;
     const mariadb = ds.config.driver === 'mysql' && isMariaDb(catalog?.serverVersion ?? '');
     warning.count = this.countRows(ds, qualify(ds.config.driver, schemaForSql, found.relation.name), mariadb, consoleUri);
@@ -484,11 +485,15 @@ export class QueryRunner {
     consoleUri?: vscode.Uri,
   ): Promise<number | undefined> {
     const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
-    const plan = countPlan(ds.config.driver, qualifiedTable, this.isInTx(ds.config.id, consoleUri), mariadb);
+    const inTransaction = this.isInTx(ds.config.id, consoleUri);
+    const probe = countProbe(ds.config.driver, inTransaction);
     return this.sessions
       .run(
         ds.config,
         async (session) => {
+          const observed = probe ? await session.query(probe) : undefined;
+          const statementTimeout = observed ? String(observed.rows[0]?.[0] ?? '') || undefined : undefined;
+          const plan = countPlan(ds.config.driver, qualifiedTable, { inTransaction, mariadb, statementTimeout });
           try {
             for (const sql of plan.before) await session.query(sql);
             return await session.query(plan.count);

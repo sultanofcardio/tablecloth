@@ -29,6 +29,23 @@ function nameOf(token: Token | undefined): string | undefined {
   return undefined;
 }
 
+/** Whether the token at `j` is the given keyword. */
+function isWord(tokens: Token[], j: number, value: string): boolean {
+  const t = tokens[j];
+  return t?.kind === 'word' && t.value === value;
+}
+
+/**
+ * Whether the '(' at `open` starts a CTE body: `AS (`, with Postgres's
+ * optional `MATERIALIZED` / `NOT MATERIALIZED` hint in between.
+ */
+function opensCteBody(tokens: Token[], open: number): boolean {
+  let j = open - 1;
+  if (isWord(tokens, j, 'materialized')) j--;
+  if (isWord(tokens, j, 'not')) j--;
+  return isWord(tokens, j, 'as');
+}
+
 /**
  * Whether the DELETE/UPDATE word at `i` begins a statement that will run:
  * the head of the text, the body of a CTE (`WITH x AS (DELETE …)`), the
@@ -39,7 +56,7 @@ function nameOf(token: Token | undefined): string | undefined {
 function isStatementHead(tokens: Token[], i: number, stmtStart: number, depth: number): boolean {
   const prev = tokens[i - 1];
   if (!prev || prev.text === ';') return true;
-  if (prev.text === '(') return tokens[i - 2]?.kind === 'word' && tokens[i - 2]!.value === 'as';
+  if (prev.text === '(') return opensCteBody(tokens, i - 1);
   if (depth !== 0) return false;
   const first = tokens[stmtStart];
   if (first?.kind !== 'word') return false;
@@ -146,7 +163,11 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
  * an UPDATE whose every assignment reads its own column are left alone.
  */
 export function findUnguardedWrites(sql: string, dialect: DriverId): UnguardedWrite[] {
-  const tokens = significant(tokenize(sql, dialect));
+  return unguardedWritesIn(significant(tokenize(sql, dialect)));
+}
+
+/** The same detector for a caller that already tokenized the statement. */
+export function unguardedWritesIn(tokens: Token[]): UnguardedWrite[] {
   const out: UnguardedWrite[] = [];
   let depth = 0;
   let stmtStart = 0;
@@ -177,6 +198,28 @@ export const COUNT_TIMEOUT_MS = 3000;
 
 const COUNT_SAVEPOINT = 'tablecloth_count';
 
+export interface CountPlanOptions {
+  /** Whether a transaction is already open on the session the count will run on. */
+  inTransaction: boolean;
+  /** MariaDB ignores MySQL's MAX_EXECUTION_TIME hint and needs a SET STATEMENT prefix. */
+  mariadb?: boolean;
+  /** The session's own statement_timeout, as read by `countProbe`, to put back afterwards. */
+  statementTimeout?: string;
+}
+
+/**
+ * The setting the bounded count has to read before it overwrites it, when the
+ * plan will change the session rather than a transaction. Undefined when the
+ * count leaves the session alone.
+ */
+export function countProbe(dialect: DriverId, inTransaction: boolean): string | undefined {
+  return dialect === 'postgres' && !inTransaction ? 'SHOW statement_timeout' : undefined;
+}
+
+function quoteLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 /**
  * How to count the rows a DELETE or UPDATE without WHERE would touch, on the
  * session the statement will run on, without disturbing it. The count is
@@ -185,22 +228,22 @@ const COUNT_SAVEPOINT = 'tablecloth_count';
  * hint) a SET STATEMENT prefix, SQLite nothing (it counts in process). While a
  * transaction is open the count runs under a savepoint that is rolled back
  * afterwards, so it sees the transaction's uncommitted rows and leaves neither
- * the timeout setting nor an aborted transaction behind. `after` runs whether
- * the count succeeded or not, best effort.
+ * the timeout setting nor an aborted transaction behind. Outside one, Postgres
+ * restores the session's own statement_timeout, which the user may have set.
+ * `after` runs whether the count succeeded or not, best effort.
  */
 export function countPlan(
   dialect: DriverId,
   qualifiedTable: string,
-  inTransaction: boolean,
-  mariadb = false,
+  options: CountPlanOptions,
 ): { before: string[]; count: string; after: string[] } {
   let count = `SELECT count(*) FROM ${qualifiedTable}`;
   if (dialect === 'mysql') {
-    count = mariadb
+    count = options.mariadb
       ? `SET STATEMENT max_statement_time=${COUNT_TIMEOUT_MS / 1000} FOR ${count}`
       : `SELECT /*+ MAX_EXECUTION_TIME(${COUNT_TIMEOUT_MS}) */ count(*) FROM ${qualifiedTable}`;
   }
-  if (inTransaction) {
+  if (options.inTransaction) {
     const before = [`SAVEPOINT ${COUNT_SAVEPOINT}`];
     if (dialect === 'postgres') before.push(`SET LOCAL statement_timeout = ${COUNT_TIMEOUT_MS}`);
     return {
@@ -210,7 +253,8 @@ export function countPlan(
     };
   }
   if (dialect === 'postgres') {
-    return { before: [`SET statement_timeout = ${COUNT_TIMEOUT_MS}`], count, after: ['SET statement_timeout = DEFAULT'] };
+    const restore = options.statementTimeout ? quoteLiteral(options.statementTimeout) : 'DEFAULT';
+    return { before: [`SET statement_timeout = ${COUNT_TIMEOUT_MS}`], count, after: [`SET statement_timeout = ${restore}`] };
   }
   return { before: [], count, after: [] };
 }

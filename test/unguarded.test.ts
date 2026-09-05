@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { countPlan, findUnguardedWrites } from '../src/sql/unguarded';
+import { countPlan, countProbe, findUnguardedWrites } from '../src/sql/unguarded';
 import type { DriverId } from '../src/core/types';
 
 const found = (sql: string, dialect: DriverId = 'postgres') =>
@@ -92,49 +92,80 @@ test('an UPDATE still being typed is not reported until it has a SET clause', ()
 });
 
 test('the row count is bounded server-side per dialect and never opens a transaction', () => {
-  const outside = countPlan('postgres', 'public.orders', false);
+  const outside = countPlan('postgres', 'public.orders', { inTransaction: false });
   assert.deepEqual(outside.before, ['SET statement_timeout = 3000']);
   assert.equal(outside.count, 'SELECT count(*) FROM public.orders');
   assert.deepEqual(outside.after, ['SET statement_timeout = DEFAULT']);
 
-  const mysql = countPlan('mysql', '`shop`.`orders`', false);
+  const mysql = countPlan('mysql', '`shop`.`orders`', { inTransaction: false });
   assert.deepEqual(mysql.before, []);
   assert.equal(mysql.count, 'SELECT /*+ MAX_EXECUTION_TIME(3000) */ count(*) FROM `shop`.`orders`');
   assert.deepEqual(mysql.after, []);
 
   // MariaDB parses the MySQL hint as a plain comment and would run unbounded
-  const mariadb = countPlan('mysql', '`shop`.`orders`', false, true);
+  const mariadb = countPlan('mysql', '`shop`.`orders`', { inTransaction: false, mariadb: true });
   assert.deepEqual(mariadb.before, []);
   assert.equal(mariadb.count, 'SET STATEMENT max_statement_time=3 FOR SELECT count(*) FROM `shop`.`orders`');
   assert.deepEqual(mariadb.after, []);
 
-  const sqlite = countPlan('sqlite', '"orders"', false);
+  const sqlite = countPlan('sqlite', '"orders"', { inTransaction: false });
   assert.deepEqual(sqlite.before, []);
   assert.equal(sqlite.count, 'SELECT count(*) FROM "orders"');
   assert.deepEqual(sqlite.after, []);
 
-  for (const plan of [countPlan('postgres', 'public.orders', false), mysql, mariadb, sqlite]) {
+  for (const plan of [outside, mysql, mariadb, sqlite]) {
     assert.equal([...plan.before, plan.count, ...plan.after].some((sql) => /^(BEGIN|START|COMMIT|ROLLBACK)\b/i.test(sql)), false);
   }
 });
 
 test('inside an open transaction the count runs under a savepoint that is always undone', () => {
-  const pg = countPlan('postgres', 'public.orders', true);
+  const pg = countPlan('postgres', 'public.orders', { inTransaction: true });
   assert.deepEqual(pg.before, ['SAVEPOINT tablecloth_count', 'SET LOCAL statement_timeout = 3000']);
   assert.equal(pg.count, 'SELECT count(*) FROM public.orders');
   assert.deepEqual(pg.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
 
-  const mysql = countPlan('mysql', 'orders', true);
+  const mysql = countPlan('mysql', 'orders', { inTransaction: true });
   assert.deepEqual(mysql.before, ['SAVEPOINT tablecloth_count']);
   assert.equal(mysql.count, 'SELECT /*+ MAX_EXECUTION_TIME(3000) */ count(*) FROM orders');
   assert.deepEqual(mysql.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
 
-  const mariadb = countPlan('mysql', 'orders', true, true);
+  const mariadb = countPlan('mysql', 'orders', { inTransaction: true, mariadb: true });
   assert.deepEqual(mariadb.before, ['SAVEPOINT tablecloth_count']);
   assert.equal(mariadb.count, 'SET STATEMENT max_statement_time=3 FOR SELECT count(*) FROM orders');
   assert.deepEqual(mariadb.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
 
-  const sqlite = countPlan('sqlite', 'orders', true);
+  const sqlite = countPlan('sqlite', 'orders', { inTransaction: true });
   assert.deepEqual(sqlite.before, ['SAVEPOINT tablecloth_count']);
   assert.deepEqual(sqlite.after, ['ROLLBACK TO SAVEPOINT tablecloth_count', 'RELEASE SAVEPOINT tablecloth_count']);
+});
+
+test("the count puts back the session's own statement_timeout instead of the server default", () => {
+  assert.equal(countProbe('postgres', false), 'SHOW statement_timeout');
+  // inside a transaction SET LOCAL is undone by the savepoint, so nothing is read
+  assert.equal(countProbe('postgres', true), undefined);
+  assert.equal(countProbe('mysql', false), undefined);
+  assert.equal(countProbe('sqlite', false), undefined);
+
+  const kept = countPlan('postgres', 'public.orders', { inTransaction: false, statementTimeout: '10min' });
+  assert.deepEqual(kept.before, ['SET statement_timeout = 3000']);
+  assert.deepEqual(kept.after, ["SET statement_timeout = '10min'"]);
+  assert.deepEqual(countPlan('postgres', 'public.orders', { inTransaction: false, statementTimeout: '0' }).after, [
+    "SET statement_timeout = '0'",
+  ]);
+  assert.deepEqual(countPlan('postgres', 'public.orders', { inTransaction: false, statementTimeout: "it's" }).after, [
+    "SET statement_timeout = 'it''s'",
+  ]);
+});
+
+test('a data-modifying CTE is a statement head even with a materialization hint', () => {
+  assert.deepEqual(found('WITH gone AS MATERIALIZED (DELETE FROM orders RETURNING id) SELECT count(*) FROM gone'), [
+    ['DELETE', 'DELETE FROM orders RETURNING id', { name: 'orders' }],
+  ]);
+  assert.deepEqual(found('WITH gone AS NOT MATERIALIZED (DELETE FROM orders RETURNING id) SELECT count(*) FROM gone'), [
+    ['DELETE', 'DELETE FROM orders RETURNING id', { name: 'orders' }],
+  ]);
+  assert.deepEqual(
+    found('WITH bumped AS MATERIALIZED (UPDATE orders SET total = 0 WHERE id = 1 RETURNING id) SELECT * FROM bumped'),
+    [],
+  );
 });

@@ -129,7 +129,7 @@ test('the without-WHERE row count sees an open transaction and leaves it open', 
   const session = await sqliteDriver.connect({ config: config(dbFile), secrets: {} });
   await session.query('BEGIN');
   await session.query("INSERT INTO customers (id, email) VALUES (60, 'count@example.com')");
-  const plan = countPlan('sqlite', 'customers', true);
+  const plan = countPlan('sqlite', 'customers', { inTransaction: true });
   for (const sql of plan.before) await session.query(sql);
   const counted = await session.query(plan.count);
   for (const sql of plan.after) await session.query(sql);
