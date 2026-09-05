@@ -137,7 +137,7 @@ npm run lint
 npm run package          # build the .vsix
 ```
 
-Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces (`SHOT_NAMES` narrows either list).
+Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces; `SHOT_SUITE=withoutWhere.cjs` the DELETE-without-WHERE inspection and its warning dialog (`SHOT_NAMES` narrows any of the lists).
 
 **Docs.** The site at [sultanofcardio.github.io/tablecloth](https://sultanofcardio.github.io/tablecloth/) is built by GitHub Pages from the `gh-pages` branch; edit the Markdown there. The roadmap page is generated, see `_tools/README.md` on that branch.
 
