@@ -284,6 +284,23 @@ function qualifiedUpdateTarget(relations: WriteTarget[], setTokens: Token[]): Wr
   return relations.find((relation) => relation.names.has(only!)) ?? unnamedTarget(relations);
 }
 
+/** Where a DELETE's USING list starts, when it has one: the joins live there, not in the target list. */
+function usingList(tokens: Token[], start: number): number | undefined {
+  let depth = 0;
+  for (let j = start; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') depth++;
+    else if (t.text === ')') {
+      if (depth === 0) return undefined;
+      depth--;
+    } else if (depth !== 0) continue;
+    else if (t.text === ';') return undefined;
+    else if (t.kind === 'word' && t.value === 'using') return j + 1;
+    else if (t.kind === 'word' && FROM_LIST_ENDS.has(t.value)) return undefined;
+  }
+  return undefined;
+}
+
 /** The table the statement writes to, and the names it answers to. */
 function parseTarget(tokens: Token[], i: number, setTokens: Token[]): WriteTarget {
   let j = i + 1;
@@ -295,7 +312,7 @@ function parseTarget(tokens: Token[], i: number, setTokens: Token[]): WriteTarge
   if (tokens[i]!.value === 'delete') {
     // `DELETE alias FROM …` names its target first; `DELETE FROM t1, t2 USING …` deletes from every table listed
     if (!sawFrom) return multiTableDelete(tokens, j);
-    if (listsMoreThanOne(tokens, j)) return unnamedTarget(relationsIn(tokens, j));
+    if (listsMoreThanOne(tokens, j)) return unnamedTarget(relationsIn(tokens, usingList(tokens, j) ?? j));
   } else {
     const relations = relationsIn(tokens, j);
     if (relations.length > 1) return qualifiedUpdateTarget(relations, setTokens);
@@ -353,7 +370,7 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
   const hits = (names: Set<string>) => [...names].some((name) => referred.has(name));
   let depth = 0;
   let chainIsTarget = isTarget(tableAt(tokens, start));
-  let pendingJoin = false;
+  let pendingJoin = -1;
   let constrained = false;
   for (let j = start; j < stop; j++) {
     const t = tokens[j]!;
@@ -368,18 +385,19 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
     if (depth !== 0) continue;
     if (t.text === ',') {
       chainIsTarget = isTarget(tableAt(tokens, j + 1));
-      pendingJoin = false;
+      pendingJoin = -1;
       continue;
     }
     if (t.kind !== 'word') continue;
     if (t.value === 'join') {
-      pendingJoin = true;
-    } else if (pendingJoin && (t.value === 'on' || t.value === 'using')) {
-      constrained ||= chainIsTarget || hits(conditionQualifiers(tokens, j + 1, stop));
-      pendingJoin = false;
+      pendingJoin = j;
+    } else if (pendingJoin >= 0 && (t.value === 'on' || t.value === 'using')) {
+      // the condition holds both sides of the join, so either one being the target is enough
+      constrained ||= chainIsTarget || isTarget(tableAt(tokens, pendingJoin + 1)) || hits(conditionQualifiers(tokens, j + 1, stop));
+      pendingJoin = -1;
     } else if (t.value === 'from' || t.value === 'using') {
       chainIsTarget = isTarget(tableAt(tokens, j + 1));
-      pendingJoin = false;
+      pendingJoin = -1;
     }
   }
   return constrained;

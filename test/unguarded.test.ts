@@ -211,6 +211,8 @@ test("MySQL's multi-table UPDATE names the table its SET clause writes", () => {
   assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET total = 0', 'mysql'), []);
   assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c ON c.id = o.customer_id SET c.seen = 1, o.total = 0', 'mysql'), []);
   assert.deepEqual(found('DELETE a, b FROM a JOIN b ON a.id = b.id', 'mysql'), []);
+  // a multi-target DELETE joins in its USING list, which is where the condition has to be read
+  assert.deepEqual(found('DELETE FROM t1, t2 USING t1 JOIN t2 ON t1.id = t2.id', 'mysql'), []);
   // writing several relations, or none of them qualified: name no table rather than the wrong one
   assert.deepEqual(found('UPDATE customers c, orders o SET c.seen = 1, o.total = 0', 'mysql'), [
     ['UPDATE', 'UPDATE customers c, orders o SET c.seen = 1, o.total = 0', undefined],
@@ -270,6 +272,11 @@ test('a join is read for what it restricts, not for names that look like the tar
     ['UPDATE'],
   );
   assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET o.total = 0', 'mysql'), []);
+  // a condition holds both sides of its join, so the joined relation being the target also exempts
+  assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET c.total = 0', 'mysql'), []);
+  assert.deepEqual(found('UPDATE orders o LEFT JOIN customers c USING (customer_id) SET c.seen = 1', 'mysql'), []);
+  assert.deepEqual(found('UPDATE orders JOIN customers USING (id) SET customers.seen = 1', 'mysql'), []);
+  assert.deepEqual(found('DELETE c FROM orders o JOIN customers c USING (id)', 'mysql'), []);
   // the same table joined as a second row source is not the target it writes
   assert.deepEqual(
     found('UPDATE orders o SET total = o2.total FROM orders o2 JOIN lines l ON l.order_id = o2.id').map((w) => w[0]),
