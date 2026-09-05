@@ -1,0 +1,32 @@
+title: Tablecloth
+description: IntelliJ-grade database tools, laid over VS Code
+url: https://sultanofcardio.github.io
+baseurl: /tablecloth
+
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+plugins:
+  - jekyll-remote-theme
+
+color_scheme: dark
+search_enabled: true
+heading_anchors: true
+back_to_top: true
+back_to_top_text: Back to top
+
+aux_links:
+  GitHub: https://github.com/sultanofcardio/tablecloth
+  Marketplace: https://marketplace.visualstudio.com/items?itemName=sultanofcardio.tablecloth
+nav_external_links:
+  - title: GitHub
+    url: https://github.com/sultanofcardio/tablecloth
+  - title: Marketplace
+    url: https://marketplace.visualstudio.com/items?itemName=sultanofcardio.tablecloth
+  - title: Changelog
+    url: https://github.com/sultanofcardio/tablecloth/blob/main/CHANGELOG.md
+  - title: Report an issue
+    url: https://github.com/sultanofcardio/tablecloth/issues
+
+footer_content: "Tablecloth is an independent open-source project with no affiliation to JetBrains or Microsoft. MIT licensed."
+
+exclude:
+  - README.md
