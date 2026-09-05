@@ -202,6 +202,35 @@ test("MySQL's multi-table DELETE names the table, not the target alias", () => {
   assert.deepEqual(found('DELETE o.* FROM orders o', 'mysql'), [['DELETE', 'DELETE o.* FROM orders o', { name: 'orders' }]]);
   // more than one target, or more than one table to delete from: name neither
   assert.deepEqual(found('DELETE a, b FROM a JOIN b', 'mysql'), [['DELETE', 'DELETE a, b FROM a JOIN b', undefined]]);
-  assert.deepEqual(found('DELETE a FROM a, b', 'mysql'), [['DELETE', 'DELETE a FROM a, b', undefined]]);
+  assert.deepEqual(found('DELETE a FROM a, b', 'mysql'), [['DELETE', 'DELETE a FROM a, b', { name: 'a' }]]);
+  assert.deepEqual(found('DELETE FROM t1, t2 USING t1, t2', 'mysql'), [['DELETE', 'DELETE FROM t1, t2 USING t1, t2', undefined]]);
   assert.deepEqual(found('DELETE x FROM orders o', 'mysql'), [['DELETE', 'DELETE x FROM orders o', undefined]]);
+});
+
+test('a conditioned JOIN exempts the statement only when it restricts the target', () => {
+  // the join is between two other tables: every row of orders is still rewritten
+  assert.deepEqual(found("UPDATE orders SET status = 'x' FROM customers c JOIN regions r ON r.id = c.region_id"), [
+    ['UPDATE', "UPDATE orders SET status = 'x' FROM customers c JOIN regions r ON r.id = c.region_id", { name: 'orders' }],
+  ]);
+  assert.deepEqual(found('DELETE FROM orders USING customers c JOIN regions r ON r.id = c.region_id'), [
+    ['DELETE', 'DELETE FROM orders USING customers c JOIN regions r ON r.id = c.region_id', { name: 'orders' }],
+  ]);
+  assert.deepEqual(found('UPDATE orders o JOIN customers c ON c.id = o.customer_id SET o.total = 0', 'mysql'), []);
+  assert.deepEqual(found('DELETE o FROM orders o JOIN customers c ON c.id = o.customer_id', 'mysql'), []);
+  assert.deepEqual(
+    found('UPDATE orders o JOIN customers c ON c.id = o.customer_id JOIN regions r ON r.id = c.region_id SET o.total = 0', 'mysql'),
+    [],
+  );
+});
+
+test('an assignment reading a subquery is not reading its own column', () => {
+  assert.deepEqual(found('UPDATE orders SET total = (SELECT total FROM defaults)'), [
+    ['UPDATE', 'UPDATE orders SET total = (SELECT total FROM defaults)', { name: 'orders' }],
+  ]);
+  assert.deepEqual(
+    found('UPDATE orders SET total = (SELECT max(total) FROM archive), note = note').map((w) => w[0]),
+    ['UPDATE'],
+  );
+  assert.deepEqual(found('UPDATE orders SET total = coalesce(total, 0)'), []);
+  assert.deepEqual(found('UPDATE counters SET hits = hits + 1'), []);
 });

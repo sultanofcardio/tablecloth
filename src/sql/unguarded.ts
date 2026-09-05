@@ -131,10 +131,61 @@ function tableAt(tokens: Token[], j: number): WriteTarget {
   return { table, names };
 }
 
+/** The relations of a FROM/USING list at `start`, comma- and JOIN-separated. */
+function relationsIn(tokens: Token[], start: number): WriteTarget[] {
+  const out: WriteTarget[] = [];
+  let depth = 0;
+  let expect = true;
+  for (let j = start; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') {
+      depth++;
+      continue;
+    }
+    if (t.text === ')') {
+      if (depth === 0) break;
+      depth--;
+      continue;
+    }
+    if (depth !== 0) continue;
+    if (t.text === ';') break;
+    if (expect) {
+      const relation = tableAt(tokens, j);
+      if (relation.table) out.push(relation);
+      expect = false;
+      continue;
+    }
+    if (t.text === ',' || (t.kind === 'word' && t.value === 'join')) {
+      expect = true;
+      continue;
+    }
+    if (t.kind === 'word' && FROM_LIST_ENDS.has(t.value)) break;
+  }
+  return out;
+}
+
+/** Whether the relation list at `start` names more than one relation. */
+function listsMoreThanOne(tokens: Token[], start: number): boolean {
+  let depth = 0;
+  for (let j = start; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') depth++;
+    else if (t.text === ')') {
+      if (depth === 0) return false;
+      depth--;
+    } else if (depth !== 0) continue;
+    else if (t.text === ';') return false;
+    else if (t.text === ',') return true;
+    else if (t.kind === 'word' && (FROM_LIST_ENDS.has(t.value) || t.value === 'using' || t.value === 'join')) return false;
+  }
+  return false;
+}
+
 /**
  * MySQL's `DELETE alias[, alias] FROM tables …`: the word after the verb is a
- * target, not a table. Only a single target over a single-table FROM resolves;
- * anything else names no table rather than naming an alias.
+ * target, not a table, and it is the FROM list that says which table it stands
+ * for. One target that resolves there names its table; anything else names no
+ * table rather than naming an alias.
  */
 function multiTableDelete(tokens: Token[], start: number): WriteTarget {
   const target = nameOf(tokens[start])?.toLowerCase();
@@ -152,18 +203,7 @@ function multiTableDelete(tokens: Token[], start: number): WriteTarget {
     }
   }
   if (from < 0) return NO_TARGET;
-  for (let j = from + 1; j < tokens.length; j++) {
-    const t = tokens[j]!;
-    if (t.text === '(') depth++;
-    else if (t.text === ')') depth = Math.max(0, depth - 1);
-    else if (depth !== 0) continue;
-    else if (t.text === ';') break;
-    else if (t.text === ',') return NO_TARGET;
-    else if (t.kind === 'word' && t.value === 'join') return NO_TARGET;
-    else if (t.kind === 'word' && FROM_LIST_ENDS.has(t.value)) break;
-  }
-  const table = tableAt(tokens, from + 1);
-  return table.names.has(target) ? table : NO_TARGET;
+  return relationsIn(tokens, from + 1).find((relation) => relation.names.has(target)) ?? NO_TARGET;
 }
 
 /** The table the statement writes to, and the names it answers to. */
@@ -174,8 +214,81 @@ function parseTarget(tokens: Token[], i: number): WriteTarget {
     if (tokens[j]!.value === 'from') sawFrom = true;
     j++;
   }
-  if (tokens[i]!.value === 'delete' && !sawFrom) return multiTableDelete(tokens, j);
+  if (tokens[i]!.value === 'delete') {
+    // `DELETE alias FROM …` names its target first; `DELETE FROM t1, t2 USING …` deletes from every table listed
+    if (!sawFrom) return multiTableDelete(tokens, j);
+    if (listsMoreThanOne(tokens, j)) return NO_TARGET;
+  }
   return tableAt(tokens, j);
+}
+
+/** The names an ON/USING condition mentions, up to the next join or clause. */
+function conditionNames(tokens: Token[], start: number, stop: number): Set<string> {
+  const names = new Set<string>();
+  let depth = 0;
+  for (let j = start; j < stop; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') {
+      depth++;
+      continue;
+    }
+    if (t.text === ')') {
+      if (depth === 0) break;
+      depth--;
+      continue;
+    }
+    if (depth === 0 && t.kind === 'word' && (t.value === 'join' || t.value === 'set' || t.value === 'where' || FROM_LIST_ENDS.has(t.value))) {
+      break;
+    }
+    const name = nameOf(t);
+    if (name) names.add(name.toLowerCase());
+  }
+  return names;
+}
+
+/**
+ * Whether a JOIN with an ON/USING condition restricts the write target, the
+ * exemption IntelliJ makes. The join has to involve the target: the relation
+ * list it belongs to starts at the target, the joined relation is the target,
+ * or the condition names it. A join between two other tables
+ * (`UPDATE orders SET … FROM customers c JOIN regions r ON r.id = c.region_id`)
+ * still leaves every row of the target in play.
+ */
+function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targetNames: Set<string>): boolean {
+  const hits = (names: Set<string>) => [...names].some((name) => targetNames.has(name));
+  let depth = 0;
+  let chainRoot = targetNames;
+  let joined: Set<string> | undefined;
+  let constrained = false;
+  for (let j = start; j < stop; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') {
+      depth++;
+      continue;
+    }
+    if (t.text === ')') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth !== 0) continue;
+    if (t.text === ',') {
+      chainRoot = tableAt(tokens, j + 1).names;
+      joined = undefined;
+      continue;
+    }
+    if (t.kind !== 'word') continue;
+    if (t.value === 'join') {
+      joined = tableAt(tokens, j + 1).names;
+      constrained = false;
+    } else if (joined && (t.value === 'on' || t.value === 'using')) {
+      constrained = hits(chainRoot) || hits(joined) || hits(conditionNames(tokens, j + 1, stop));
+      joined = undefined;
+    } else if (t.value === 'from' || t.value === 'using') {
+      chainRoot = tableAt(tokens, j + 1).names;
+      joined = undefined;
+    }
+  }
+  return constrained;
 }
 
 /**
@@ -184,6 +297,32 @@ function parseTarget(tokens: Token[], i: number): WriteTarget {
  * which IntelliJ leaves alone. It has to be the target's own column, so
  * `SET status = c.status FROM customers c` is still a whole-table rewrite.
  */
+/**
+ * Which tokens of an assignment's right-hand side read the target's own row:
+ * those at depth 0, plus the arguments of a function call. A subquery reads
+ * another table, so `SET total = (SELECT total FROM defaults)` reads nothing
+ * of the target's.
+ */
+function readsOwnRow(read: Token[]): boolean[] {
+  const own = new Array<boolean>(read.length).fill(false);
+  const groups: boolean[] = [];
+  for (let k = 0; k < read.length; k++) {
+    const t = read[k]!;
+    if (t.text === '(') {
+      const before = read[k - 1];
+      const call = !!before && (before.kind === 'word' || before.kind === 'ident') && !isWord(read, k + 1, 'select');
+      groups.push(call && (groups[groups.length - 1] ?? true));
+      continue;
+    }
+    if (t.text === ')') {
+      groups.pop();
+      continue;
+    }
+    own[k] = groups[groups.length - 1] ?? true;
+  }
+  return own;
+}
+
 function selfReferencing(setTokens: Token[], targetNames: Set<string>): boolean {
   const assignments: Token[][] = [[]];
   let depth = 0;
@@ -203,8 +342,9 @@ function selfReferencing(setTokens: Token[], targetNames: Set<string>): boolean 
     const column = nameOf(assignment[eq - 1])?.toLowerCase();
     if (!column) return false;
     const read = assignment.slice(eq + 1);
+    const own = readsOwnRow(read);
     return read.some((t, k) => {
-      if (nameOf(t)?.toLowerCase() !== column) return false;
+      if (!own[k] || nameOf(t)?.toLowerCase() !== column) return false;
       if (read[k - 1]?.text !== '.') return true;
       const qualifier = nameOf(read[k - 2])?.toLowerCase();
       return !!qualifier && targetNames.has(qualifier);
@@ -217,8 +357,6 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
   let depth = 0;
   let guarded = false;
   let limited = false;
-  let joined = false;
-  let lastJoinConditioned = false;
   let setStart = -1;
   let setEnd = -1;
   let end = verb.end;
@@ -239,17 +377,14 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
     } else if (depth === 0 && t.kind === 'word') {
       if (t.value === 'where') guarded = true;
       else if (t.value === 'limit') limited = true;
-      else if (t.value === 'join') {
-        joined = true;
-        lastJoinConditioned = false;
-      } else if ((t.value === 'on' || t.value === 'using') && joined) lastJoinConditioned = true;
       else if (t.value === 'set' && setStart < 0) setStart = j + 1;
       else if (setStart >= 0 && setEnd < 0 && SET_CLAUSE_ENDS.has(t.value)) setEnd = j;
     }
     end = t.end;
   }
-  if (guarded || limited || (joined && lastJoinConditioned)) return undefined;
+  if (guarded || limited) return undefined;
   const target = parseTarget(tokens, i);
+  if (joinConstrainsTarget(tokens, i + 1, stop, target.names)) return undefined;
   if (verb.value === 'update') {
     if (setStart < 0) return undefined; // not a complete statement yet
     if (selfReferencing(tokens.slice(setStart, setEnd < 0 ? stop : setEnd), target.names)) return undefined;
