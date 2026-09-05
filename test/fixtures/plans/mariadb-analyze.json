@@ -1,0 +1,73 @@
+{
+  "query_optimization": {
+    "r_total_time_ms": 0.091530512
+  },
+  "query_block": {
+    "select_id": 1,
+    "cost": 0.014184855,
+    "r_loops": 1,
+    "r_total_time_ms": 0.054275841,
+    "filesort": {
+      "sort_key": "count(0) desc",
+      "r_loops": 1,
+      "r_total_time_ms": 0.004463885,
+      "r_limit": 5,
+      "r_used_priority_queue": true,
+      "r_output_rows": 3,
+      "r_sort_mode": "sort_key,rowid",
+      "temporary_table": {
+        "nested_loop": [
+          {
+            "table": {
+              "table_name": "c",
+              "access_type": "index",
+              "possible_keys": ["PRIMARY"],
+              "key": "email",
+              "key_length": "482",
+              "used_key_parts": ["email"],
+              "loops": 1,
+              "r_loops": 1,
+              "rows": 3,
+              "r_rows": 3,
+              "cost": 0.007085975,
+              "r_table_time_ms": 0.00750934,
+              "r_other_time_ms": 0.003546077,
+              "r_engine_stats": {
+                "pages_accessed": 1
+              },
+              "filtered": 100,
+              "r_total_filtered": 100,
+              "r_filtered": 100,
+              "using_index": true
+            }
+          },
+          {
+            "table": {
+              "table_name": "o",
+              "access_type": "ref",
+              "possible_keys": ["customer_id"],
+              "key": "customer_id",
+              "key_length": "4",
+              "used_key_parts": ["customer_id"],
+              "ref": ["acme.c.id"],
+              "loops": 3,
+              "r_loops": 3,
+              "rows": 1,
+              "r_rows": 9,
+              "cost": 0.00709888,
+              "r_table_time_ms": 0.012807597,
+              "r_other_time_ms": 0.016103363,
+              "r_engine_stats": {
+                "pages_accessed": 30
+              },
+              "filtered": 100,
+              "r_total_filtered": 44.44444444,
+              "attached_condition": "o.`status` = 'shipped'",
+              "r_filtered": 44.44444444
+            }
+          }
+        ]
+      }
+    }
+  }
+}

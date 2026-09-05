@@ -1,0 +1,9 @@
+-> Limit: 5 row(s)  (actual time=0.115..0.115 rows=3 loops=1)
+    -> Sort: `count(*)` DESC, limit input to 5 row(s) per chunk  (actual time=0.114..0.114 rows=3 loops=1)
+        -> Table scan on <temporary>  (actual time=0.103..0.104 rows=3 loops=1)
+            -> Aggregate using temporary table  (actual time=0.103..0.103 rows=3 loops=1)
+                -> Nested loop inner join  (cost=3.9 rows=2.7) (actual time=0.029..0.0386 rows=16 loops=1)
+                    -> Filter: (o.`status` = 'shipped')  (cost=2.95 rows=2.7) (actual time=0.0208..0.0248 rows=16 loops=1)
+                        -> Table scan on o  (cost=2.95 rows=27) (actual time=0.0182..0.0211 rows=27 loops=1)
+                    -> Single-row index lookup on c using PRIMARY (id=o.customer_id)  (cost=0.287 rows=1) (actual time=667e-6..682e-6 rows=1 loops=16)
+

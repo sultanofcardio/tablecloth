@@ -504,6 +504,7 @@ export function applyView(): void {
   const showGrid = S.view === 'grid';
   el('output').hidden = S.view !== 'output';
   el('infopane').hidden = S.view !== 'info';
+  el('planview').hidden = S.view !== 'plan';
   el('gridarea').hidden = !showGrid;
   el('valueeditor').hidden = !showGrid || !S.prefs.valueEditor || !S.data;
   const message = el('message');

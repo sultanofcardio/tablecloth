@@ -16,7 +16,7 @@ export interface ServicesMessage {
     selected: boolean;
     consoles: { key: string; label: string; status: string; active: boolean; running?: boolean }[];
   }[];
-  tabs: { id: string; title: string; active: boolean; closable: boolean }[];
+  tabs: { id: string; title: string; active: boolean; closable: boolean; kind?: 'grid' | 'plan' }[];
   dsActions: string | null;
   error: boolean;
 }
@@ -35,7 +35,7 @@ export interface ChromeHandlers {
    * which case `proceed` runs if the user discards them.
    */
   beforeSwitch(proceed: () => void): boolean;
-  setView(view: 'grid' | 'output' | 'info'): void;
+  setView(view: 'grid' | 'output' | 'info' | 'plan'): void;
 }
 
 let menuAnchor: HTMLElement | undefined;
@@ -91,7 +91,7 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
   const active = msg.tabs.find((t) => t.active);
   if (msg.dsActions) handlers.setView('info');
   else if (msg.error) handlers.setView('grid');
-  else if (active) handlers.setView(active.id === '__output' ? 'output' : 'grid');
+  else if (active) handlers.setView(active.id === '__output' ? 'output' : active.kind === 'plan' ? 'plan' : 'grid');
 
   const streeEl = el('stree');
   streeEl.textContent = '';

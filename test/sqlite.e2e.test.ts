@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { sqliteDriver } from '../src/drivers/sqlite';
 import { tablePageQuery, wrapCount, wrapPaged } from '../src/sql/paging';
 import { countPlan } from '../src/sql/unguarded';
+import { explainRequest } from '../src/plan/explain';
+import { parsePlan } from '../src/plan/parse';
 import type { DataSourceConfig } from '../src/core/types';
 
 function config(file: string, readOnly = false): DataSourceConfig {
@@ -100,6 +102,19 @@ test('sqlite end to end: DDL, introspection, paging, read-only', async (t) => {
     );
     assert.equal(wrapped.rows.length, 2);
     assert.equal(wrapped.columns.map((c) => c.name).join(','), 'customer_id,n');
+  });
+
+  await t.test('explain plan: EXPLAIN QUERY PLAN rows become a tree', async () => {
+    const request = explainRequest('sqlite', 'SELECT c.email, count(*) FROM orders o JOIN customers c ON c.id = o.customer_id GROUP BY c.email;', 'analyse');
+    assert.equal(request.shape, 'sqlite');
+    assert.equal(request.executes, false, 'SQLite only ever plans');
+    const raw = await session.queryRaw(request.sql);
+    const plan = parsePlan('sqlite', request.shape, raw.columns, raw.rows as never);
+    assert.equal(plan.dialect, 'sqlite');
+    const ops = plan.roots.map((n) => n.op);
+    assert.ok(ops.some((op) => op === 'SCAN' || op === 'SEARCH'), `a scan or search is planned: ${ops.join(', ')}`);
+    assert.ok(plan.roots.some((n) => /customers|orders|c\b|o\b/.test(n.detail)), 'the relations are named');
+    assert.equal(plan.roots[0]!.cost, undefined, 'SQLite reports no costs');
   });
 
   await session.close();

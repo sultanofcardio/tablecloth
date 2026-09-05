@@ -1,0 +1,72 @@
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "3.89"
+    },
+    "ordering_operation": {
+      "using_filesort": true,
+      "grouping_operation": {
+        "using_temporary_table": true,
+        "using_filesort": false,
+        "nested_loop": [
+          {
+            "table": {
+              "table_name": "o",
+              "access_type": "ALL",
+              "possible_keys": [
+                "customer_id"
+              ],
+              "rows_examined_per_scan": 27,
+              "rows_produced_per_join": 2,
+              "filtered": "10.00",
+              "cost_info": {
+                "read_cost": "2.68",
+                "eval_cost": "0.27",
+                "prefix_cost": "2.95",
+                "data_read_per_join": "259"
+              },
+              "used_columns": [
+                "id",
+                "customer_id",
+                "status"
+              ],
+              "attached_condition": "(`acme`.`o`.`status` = 'shipped')"
+            }
+          },
+          {
+            "table": {
+              "table_name": "c",
+              "access_type": "eq_ref",
+              "possible_keys": [
+                "PRIMARY",
+                "email"
+              ],
+              "key": "PRIMARY",
+              "used_key_parts": [
+                "id"
+              ],
+              "key_length": "4",
+              "ref": [
+                "acme.o.customer_id"
+              ],
+              "rows_examined_per_scan": 1,
+              "rows_produced_per_join": 2,
+              "filtered": "100.00",
+              "cost_info": {
+                "read_cost": "0.68",
+                "eval_cost": "0.27",
+                "prefix_cost": "3.90",
+                "data_read_per_join": "1K"
+              },
+              "used_columns": [
+                "id",
+                "email"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

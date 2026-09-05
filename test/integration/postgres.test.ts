@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { postgresDriver } from '../../src/drivers/postgres';
 import { SessionManager } from '../../src/drivers/sessions';
 import { wrapCount, wrapPaged } from '../../src/sql/paging';
+import { explainRequest } from '../../src/plan/explain';
+import { planNodes } from '../../src/plan/model';
+import { parsePlan } from '../../src/plan/parse';
 import type { DataSourceConfig } from '../../src/core/types';
 
 // Gated: set TABLECLOTH_PG_PORT (and optionally _HOST/_USER/_PASSWORD/_DB) to run,
@@ -114,6 +117,26 @@ test('postgres end to end', { skip: !PORT }, async (t) => {
     const res = await session.query("UPDATE tc_test.orders SET status = 'delivered' WHERE total <= 10");
     assert.equal(res.hasRows, false);
     assert.equal(res.affectedRows, 10);
+  });
+
+  await t.test('explain plan and explain analyse parse into the shared model', async () => {
+    const sql = "SELECT c.email, count(*) FROM tc_test.orders o JOIN tc_test.customers c ON c.id = o.customer_id WHERE o.status = 'shipped' GROUP BY c.email";
+    const cell = (rows: unknown[][]) => rows.map((row) => [typeof row[0] === 'string' ? row[0] : JSON.stringify(row[0])]);
+
+    const plan = explainRequest('postgres', sql, 'plan');
+    const raw = await session.queryRaw(plan.sql);
+    const parsed = parsePlan('postgres', plan.shape, raw.columns, cell(raw.rows));
+    assert.equal(parsed.analysed, false);
+    assert.ok(parsed.roots[0]!.cost! > 0, 'the root carries a total cost');
+    const scans = [...planNodes(parsed.roots)].filter((n) => /Scan/.test(n.op));
+    assert.ok(scans.some((n) => n.detail.startsWith('orders o')), 'the orders scan names its relation and alias');
+
+    const analyse = explainRequest('postgres', sql, 'analyse');
+    const rawAnalyse = await session.queryRaw(analyse.sql);
+    const analysed = parsePlan('postgres', analyse.shape, rawAnalyse.columns, cell(rawAnalyse.rows));
+    assert.equal(analysed.analysed, true);
+    assert.ok(analysed.executionMs! > 0 && analysed.planningMs! > 0);
+    assert.ok([...planNodes(analysed.roots)].every((n) => n.timeMs !== undefined && n.actualRows !== undefined), 'every node has runtime figures');
   });
 
   await session.close();

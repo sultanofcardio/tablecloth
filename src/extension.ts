@@ -395,6 +395,18 @@ export function activate(context: vscode.ExtensionContext): {
     await runner.runStatement(editor);
   });
 
+  register('tablecloth.explainPlan', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'sql') return;
+    await runner.explainStatement(editor, 'plan');
+  });
+
+  register('tablecloth.explainAnalyse', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'sql') return;
+    await runner.explainStatement(editor, 'analyse');
+  });
+
   register('tablecloth.runFile', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'sql') return;
@@ -511,6 +523,7 @@ export function activate(context: vscode.ExtensionContext): {
       return ds ? (await consoles.newConsole(ds)).toString() : undefined;
     },
     runScript: (uriString: string, sql: string) => runner.runScriptFor(vscode.Uri.parse(uriString), sql, 'console'),
+    explain: (uriString: string, sql: string, mode: 'plan' | 'analyse') => runner.explainSql(vscode.Uri.parse(uriString), sql, mode),
     openTable: async (dsId: string, tableName: string) => {
       const ds = store.get(dsId);
       if (!ds) return;

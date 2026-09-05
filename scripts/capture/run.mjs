@@ -18,6 +18,7 @@ const suiteShots = {
   'suite.cjs': 'hero,grid,dialog',
   'phase2.cjs': 'grid-changes,grid-submit,grid-filter,grid-transposed,console-inspections,console-parameters,import',
   'withoutWhere.cjs': 'console-without-where,console-without-where-dialog',
+  'explainPlan.cjs': 'console-explain-plan,console-explain-analyse',
 };
 const shotNames = (process.env.SHOT_NAMES ?? suiteShots[suiteFile] ?? '').split(',').filter(Boolean);
 if (shotNames.length === 0) throw new Error(`set SHOT_NAMES: no known shots for ${suiteFile}`);

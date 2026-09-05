@@ -769,3 +769,73 @@ body.vscode-light .tc-li.selected .tc-li-detail { color: #6c707e; }
 
 /* display:flex on classes would otherwise beat the UA [hidden] rule */
 [hidden] { display: none !important; }
+
+/* ------------------------------------------------------------ plan tab */
+.planview { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.ptool {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--ij-border);
+  flex: none;
+}
+.ptool .seg { display: inline-flex; border: 1px solid var(--ij-border-strong); border-radius: 999px; padding: 2px; background: var(--ij-bg); }
+.ptool .seg button {
+  background: none;
+  border: 0;
+  color: var(--ij-fg-dim);
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.ptool .seg button.on { background: var(--ij-border-strong); color: var(--ij-fg); }
+.ptool-r { font-size: 11px; color: var(--ij-fg-dim); display: inline-flex; align-items: center; }
+.ptool-r .ebtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  color: var(--ij-fg-dim);
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ptool-r .ebtn:hover { background: var(--ij-btn-hover); color: var(--ij-fg); }
+.ptool-r .ebtn svg { width: 12px; height: 12px; color: var(--ij-green); }
+.plan { flex: 1; overflow: auto; font-size: 12px; }
+.plh, .plr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 92px 110px;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--ij-panel);
+}
+.plan.analysed .plh, .plan.analysed .plr { grid-template-columns: minmax(0, 1fr) 72px 92px 170px; }
+.plh { color: var(--ij-fg-dim); font-size: 11px; background: var(--ij-bg); position: sticky; top: 0; z-index: 1; }
+.plh span:nth-child(2), .plh span:nth-child(3) { text-align: right; }
+.plr { padding-left: calc(12px + var(--d) * 18px); white-space: nowrap; color: var(--ij-fg); }
+.plr:hover { background: var(--ij-hover); }
+.plop { overflow: hidden; text-overflow: ellipsis; min-width: 0; display: flex; align-items: center; }
+.plchev { width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ij-fg-dim); }
+.plchev svg { width: 12px; height: 12px; transition: transform 0.12s; }
+.plchev.closed svg { transform: rotate(-90deg); }
+.plchev.none { cursor: default; }
+.plop em { font-style: normal; color: var(--ij-fg-dim); margin-left: 8px; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
+.plc { font-family: var(--ij-mono); font-size: 11.5px; text-align: right; color: var(--ij-fg-cell); }
+.pltime { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.heat { display: block; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #4ec9a0, #e2b93d, #f26d78); width: var(--w); flex: none; max-width: 100px; }
+.plms { font-family: var(--ij-mono); font-size: 11px; color: var(--ij-fg-dim); white-space: nowrap; }
+.plempty { padding: 16px 14px; color: var(--ij-fg-dim); }
+.pltable { border-collapse: collapse; width: 100%; font-size: 12px; }
+.pltable th { position: sticky; top: 0; background: var(--ij-bg); color: var(--ij-fg-dim); font-weight: 500; font-size: 11px; text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--ij-border); white-space: nowrap; }
+.pltable td { padding: 3px 10px; border-bottom: 1px solid var(--ij-panel); white-space: pre; color: var(--ij-fg); max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
+.pltable td:nth-child(2) { color: var(--ij-fg-dim); white-space: nowrap; }
+.pltable th.num, .pltable td.num { text-align: right; font-family: var(--ij-mono); font-size: 11.5px; }
+.pltable tbody tr:hover { background: var(--ij-hover); }

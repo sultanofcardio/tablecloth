@@ -92,6 +92,7 @@ export function gridHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode
     <textarea id="ve-text" spellcheck="false"></textarea>
   </div>
   <div id="infopane" class="infopane" hidden></div>
+  <div id="planview" class="planview" hidden></div>
   <div id="message" class="msgline" data-empty="1" hidden></div>
   <div id="output" class="output" hidden></div>
   </div>

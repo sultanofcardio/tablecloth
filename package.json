@@ -146,6 +146,16 @@
         "icon": "$(play)"
       },
       {
+        "command": "tablecloth.explainPlan",
+        "title": "Explain Plan",
+        "category": "Tablecloth"
+      },
+      {
+        "command": "tablecloth.explainAnalyse",
+        "title": "Explain Analyse",
+        "category": "Tablecloth"
+      },
+      {
         "command": "tablecloth.runFile",
         "title": "Run File on Bound Data Source",
         "category": "Tablecloth"
@@ -261,9 +271,19 @@
           "group": "tablecloth@2"
         },
         {
-          "command": "tablecloth.attachFile",
+          "command": "tablecloth.explainPlan",
           "when": "editorLangId == sql",
           "group": "tablecloth@3"
+        },
+        {
+          "command": "tablecloth.explainAnalyse",
+          "when": "editorLangId == sql",
+          "group": "tablecloth@4"
+        },
+        {
+          "command": "tablecloth.attachFile",
+          "when": "editorLangId == sql",
+          "group": "tablecloth@5"
         }
       ],
       "explorer/context": [
