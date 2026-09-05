@@ -1,0 +1,99 @@
+{
+  "0.1.0|Added|**Editable data grid**": [
+    [
+      "cl-grid-changes.png",
+      "Two edited cells, a deleted row and a new row: four pending changes, nothing sent yet."
+    ],
+    [
+      "cl-grid-submit.png",
+      "Submit shows the four statements before they run, as one batch."
+    ]
+  ],
+  "0.1.0|Added|Row operations in the grid toolbar": [
+    [
+      "cl-added-row.png",
+      "A new row with its auto and default placeholders, and the Submit button counting the changes."
+    ]
+  ],
+  "0.1.0|Added|WHERE and ORDER BY fields": [
+    [
+      "cl-where-lookup.png",
+      "The WHERE lookup offering a column and a table after three letters."
+    ]
+  ],
+  "0.1.0|Added|Sorting and filtering from the header": [
+    [
+      "cl-grid-filter.png",
+      "Sorted by created_at from its header, with the status funnel open."
+    ]
+  ],
+  "0.1.0|Added|Alternate views of a result": [
+    [
+      "cl-grid-transposed.png",
+      "The same page transposed, one column per row."
+    ]
+  ],
+  "0.1.0|Added|**Console intelligence**": [
+    [
+      "cl-console-alias.png",
+      "Alias and keyword suggestions after a table name."
+    ],
+    [
+      "cl-console-inspections.png",
+      "An unresolved column flagged in the console, and a :min_total parameter waiting for a value."
+    ],
+    [
+      "cl-console-quickfix.png",
+      "The Change-to quick fix on the flagged column."
+    ],
+    [
+      "cl-console-parameters.png",
+      "The Parameters dialog on run."
+    ]
+  ],
+  "0.1.0|Added|**Import Data from File**": [
+    [
+      "screenshot-import.png",
+      "Import Data in its own window: format settings, the column mapping, and the row count on the button."
+    ]
+  ],
+  "0.0.3|Changed|New data sources default to Project scope": [
+    [
+      "cl-scope.png",
+      "The Scope selector next to the name, defaulting to Project.",
+      700
+    ]
+  ],
+  "0.0.2|Added|Marketplace listing": [
+    [
+      "cl-marketplace.png",
+      "The listing on the Marketplace."
+    ]
+  ],
+  "0.0.1|Added|**Connect**": [
+    [
+      "screenshot-data-source.png",
+      "The Data Sources dialog in its own floating window.",
+      700
+    ]
+  ],
+  "0.0.1|Added|**Explore**": [
+    [
+      "screenshot-explorer.png",
+      "The Database tool window with a PostgreSQL source expanded to its columns.",
+      360
+    ]
+  ],
+  "0.0.1|Added|**Query**": [
+    [
+      "screenshot-console.png",
+      "A console bound to acme.public, the statement frame on the caret's statement."
+    ]
+  ],
+  "0.0.1|Added|**Results**": [
+    [
+      "cl-panel.png",
+      "The Tablecloth panel: the console tree, a result tab per statement, the grid and the extractor picker."
+    ]
+  ]
+}
