@@ -71,8 +71,22 @@ export interface UnguardedWriteWarning {
   count: Promise<number | undefined>;
 }
 
-/** The answer to that warning: run it, and optionally stop asking on this console. */
-export type UnguardedWritePrompt = (warning: UnguardedWriteWarning) => Promise<{ run: boolean; dontAsk: boolean } | undefined>;
+/** The answer to that warning: run it, and optionally stop asking. */
+export interface UnguardedWriteAnswer {
+  run: boolean;
+  /** "Don't ask again for this console", remembered with the console's other state. */
+  dontAsk: boolean;
+  /** "Run all anyway": stop asking for the rest of this script run only. */
+  allInRun?: boolean;
+}
+
+export type UnguardedWritePrompt = (warning: UnguardedWriteWarning) => Promise<UnguardedWriteAnswer | undefined>;
+
+/** What one Run File (or script) run remembers while it lasts; nothing is persisted. */
+interface ScriptRun {
+  /** "Run all anyway" was answered: the remaining statements run without asking. */
+  skipUnguardedWarnings: boolean;
+}
 
 function warnWithoutWhereEnabled(): boolean {
   return vscode.workspace.getConfiguration('tablecloth.execution').get<boolean>('warnWithoutWhere', true);
@@ -216,9 +230,10 @@ export class QueryRunner {
     }
     const { key: consoleKey } = this.consoleIdentity(ds, consoleUri, fileName);
     const started = Date.now();
+    const scriptRun: ScriptRun = { skipUnguardedWarnings: false };
     let done = 0;
     for (const stmt of statements) {
-      const outcome = await this.execute(ds, binding, stmt.sql, consoleUri, fileName);
+      const outcome = await this.execute(ds, binding, stmt.sql, consoleUri, fileName, scriptRun);
       if (!outcome.ok) {
         if (outcome.cancelled) return;
         this.services.appendOutput(consoleKey, {
@@ -433,13 +448,20 @@ export class QueryRunner {
     binding: ConsoleBinding,
     sql: string,
     consoleUri?: vscode.Uri,
+    scriptRun?: ScriptRun,
   ): Promise<UnguardedWrite | undefined> {
     if (!warnWithoutWhereEnabled()) return undefined;
+    if (scriptRun?.skipUnguardedWarnings) return undefined;
     if (consoleUri && !this.consoles.asksBeforeUnguardedWrite(consoleUri)) return undefined;
-    const prompt = (consoleUri && this.unguardedPrompters.get(consoleUri.toString())) ?? this.confirmNatively.bind(this);
+    const webview = consoleUri && this.unguardedPrompters.get(consoleUri.toString());
+    const prompt: UnguardedWritePrompt = webview ?? ((warning) => this.confirmNatively(warning, !!scriptRun));
     for (const write of findUnguardedWrites(sql, ds.config.driver)) {
       const answer = await prompt(this.describeUnguardedWrite(ds, binding, write, consoleUri));
       if (!answer?.run) return write;
+      if (answer.allInRun && scriptRun) {
+        scriptRun.skipUnguardedWarnings = true;
+        return undefined;
+      }
       if (answer.dontAsk && consoleUri) {
         await this.consoles.setAsksBeforeUnguardedWrite(consoleUri, false);
         return undefined;
@@ -510,20 +532,27 @@ export class QueryRunner {
       .catch(() => undefined);
   }
 
-  /** Native fallback for scripts and plain .sql files; waits briefly for the count. */
-  private async confirmNatively(warning: UnguardedWriteWarning): Promise<{ run: boolean; dontAsk: boolean } | undefined> {
+  /**
+   * Native fallback for scripts and plain .sql files; waits briefly for the
+   * count. A script offers "Run all anyway" so a migration full of unguarded
+   * writes is answered once, for that run only.
+   */
+  private async confirmNatively(warning: UnguardedWriteWarning, script: boolean): Promise<UnguardedWriteAnswer | undefined> {
     const count = await Promise.race([
       warning.count,
       new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), COUNT_WAIT_MS)),
     ]);
     // Cancel comes first so it is the focused default: ⌘⏎ then a stray ⏎ must not run the statement
+    const buttons = [{ title: 'Cancel', isCloseAffordance: true }, { title: 'Run anyway' }];
+    if (script) buttons.push({ title: 'Run all anyway' });
     const answer = await vscode.window.showWarningMessage(
       `Run ${warning.verb} without a WHERE clause?`,
       { modal: true, detail: unguardedWriteDetail(warning, count) },
-      { title: 'Cancel', isCloseAffordance: true },
-      { title: 'Run anyway' },
+      ...buttons,
     );
-    return answer?.title === 'Run anyway' ? { run: true, dontAsk: false } : undefined;
+    if (answer?.title === 'Run anyway') return { run: true, dontAsk: false };
+    if (answer?.title === 'Run all anyway') return { run: true, dontAsk: false, allInRun: true };
+    return undefined;
   }
 
   // ------------------------------------------------------------ editable results
@@ -622,6 +651,7 @@ export class QueryRunner {
     sql: string,
     consoleUri?: vscode.Uri,
     scriptName?: string,
+    scriptRun?: ScriptRun,
   ): Promise<RunOutcome> {
     const config = ds.config;
     const prompt = this.prompt(ds, binding);
@@ -636,7 +666,7 @@ export class QueryRunner {
       config.color === 'none' ? null : ENV_COLOR_HEX[config.color],
     );
 
-    const declined = await this.confirmUnguardedWrites(ds, binding, sql, consoleUri);
+    const declined = await this.confirmUnguardedWrites(ds, binding, sql, consoleUri, scriptRun);
     if (declined) {
       this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] not run: ${declined.verb} without WHERE clause` });
       return { ok: false, cancelled: true };

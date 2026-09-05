@@ -109,6 +109,10 @@ interface WriteTarget {
   table?: { schema?: string; name: string };
   /** The names that target answers to in the statement: its table name and its alias. */
   names: Set<string>;
+  /** The alias it was given, lowercased. */
+  alias?: string;
+  /** Where this occurrence of the relation starts, which tells two instances of one table apart. */
+  at?: number;
 }
 
 const NO_TARGET: WriteTarget = { names: new Set() };
@@ -129,9 +133,45 @@ function tableAt(tokens: Token[], j: number): WriteTarget {
   const names = new Set([table.name.toLowerCase()]);
   if (isWord(tokens, k, 'as')) k++;
   const aliasToken = tokens[k];
-  const alias = nameOf(aliasToken);
-  if (alias && !(aliasToken!.kind === 'word' && NOT_ALIAS.has(aliasToken!.value))) names.add(alias.toLowerCase());
-  return { table, names };
+  const written = nameOf(aliasToken);
+  const alias = written && !(aliasToken!.kind === 'word' && NOT_ALIAS.has(aliasToken!.value)) ? written.toLowerCase() : undefined;
+  if (alias) names.add(alias);
+  return { table, names, alias, at: j };
+}
+
+/** Every relation the statement names between `start` and `stop`, in order. */
+function relationOccurrences(tokens: Token[], start: number, stop: number): WriteTarget[] {
+  const out: WriteTarget[] = [];
+  let depth = 0;
+  let inList = false;
+  for (let j = start; j < stop; j++) {
+    const t = tokens[j]!;
+    if (t.text === '(') {
+      depth++;
+      continue;
+    }
+    if (t.text === ')') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth !== 0) continue;
+    if (t.text === ',') {
+      if (inList) {
+        const relation = tableAt(tokens, j + 1);
+        if (relation.table) out.push(relation);
+      }
+      continue;
+    }
+    if (t.kind !== 'word') continue;
+    if (t.value === 'from' || t.value === 'using' || t.value === 'join') {
+      const relation = tableAt(tokens, j + 1);
+      if (relation.table) out.push(relation);
+      inList = true;
+    } else if (t.value === 'set' || FROM_LIST_ENDS.has(t.value)) {
+      inList = false;
+    }
+  }
+  return out;
 }
 
 /** The relations of a FROM/USING list at `start`, comma- and JOIN-separated. */
@@ -256,16 +296,25 @@ function conditionQualifiers(tokens: Token[], start: number, stop: number): Set<
 
 /**
  * Whether any JOIN with an ON/USING condition restricts the write target, the
- * exemption IntelliJ makes. The join has to involve the target: it joins onto
- * the relation list the target heads, or its condition qualifies a column with
- * the target's name or alias. A join between two other tables
+ * exemption IntelliJ makes. The join has to involve the target itself: it joins
+ * onto the relation list that very occurrence heads, or its condition qualifies
+ * a column with the name that occurrence answers to. A second instance of the
+ * same table (`FROM orders o2`) is another row source, and a join between two
+ * other tables
  * (`UPDATE orders SET … FROM customers c JOIN regions r ON r.id = c.region_id`)
  * still leaves every row of the target in play.
  */
-function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targetNames: Set<string>): boolean {
-  const hits = (names: Set<string>) => [...names].some((name) => targetNames.has(name));
+function joinConstrainsTarget(tokens: Token[], start: number, stop: number, target: WriteTarget): boolean {
+  const isTarget = (relation: WriteTarget) => target.at !== undefined && relation.at === target.at;
+  const others = relationOccurrences(tokens, start, stop).filter((relation) => !isTarget(relation));
+  const bare = target.table?.name.toLowerCase();
+  // the target answers to its alias; to its bare name only when nothing else in the statement does
+  const referred = new Set<string>();
+  if (target.alias) referred.add(target.alias);
+  else if (bare && !others.some((relation) => relation.names.has(bare))) referred.add(bare);
+  const hits = (names: Set<string>) => [...names].some((name) => referred.has(name));
   let depth = 0;
-  let chainRoot = targetNames;
+  let chainIsTarget = target.at !== undefined;
   let pendingJoin = false;
   let constrained = false;
   for (let j = start; j < stop; j++) {
@@ -280,7 +329,7 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
     }
     if (depth !== 0) continue;
     if (t.text === ',') {
-      chainRoot = tableAt(tokens, j + 1).names;
+      chainIsTarget = isTarget(tableAt(tokens, j + 1));
       pendingJoin = false;
       continue;
     }
@@ -288,10 +337,10 @@ function joinConstrainsTarget(tokens: Token[], start: number, stop: number, targ
     if (t.value === 'join') {
       pendingJoin = true;
     } else if (pendingJoin && (t.value === 'on' || t.value === 'using')) {
-      constrained ||= hits(chainRoot) || hits(conditionQualifiers(tokens, j + 1, stop));
+      constrained ||= chainIsTarget || hits(conditionQualifiers(tokens, j + 1, stop));
       pendingJoin = false;
     } else if (t.value === 'from' || t.value === 'using') {
-      chainRoot = tableAt(tokens, j + 1).names;
+      chainIsTarget = isTarget(tableAt(tokens, j + 1));
       pendingJoin = false;
     }
   }
@@ -334,8 +383,8 @@ function selfReferencing(setTokens: Token[], targetNames: Set<string>): boolean 
   const assignments: Token[][] = [[]];
   let depth = 0;
   for (const t of setTokens) {
-    if (t.text === '(') depth++;
-    else if (t.text === ')') depth = Math.max(0, depth - 1);
+    if (t.text === '(' || t.text === '[') depth++;
+    else if (t.text === ')' || t.text === ']') depth = Math.max(0, depth - 1);
     if (t.text === ',' && depth === 0) {
       assignments.push([]);
       continue;
@@ -391,7 +440,7 @@ function analyze(tokens: Token[], i: number): UnguardedWrite | undefined {
   }
   if (guarded || limited) return undefined;
   const target = parseTarget(tokens, i);
-  if (joinConstrainsTarget(tokens, i + 1, stop, target.names)) return undefined;
+  if (joinConstrainsTarget(tokens, i + 1, stop, target)) return undefined;
   if (verb.value === 'update') {
     if (setStart < 0) return undefined; // not a complete statement yet
     if (selfReferencing(tokens.slice(setStart, setEnd < 0 ? stop : setEnd), target.names)) return undefined;

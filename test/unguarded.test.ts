@@ -241,6 +241,19 @@ test('a join is read for what it restricts, not for names that look like the tar
     ['UPDATE'],
   );
   assert.deepEqual(found('UPDATE orders o JOIN customers c USING (id) SET o.total = 0', 'mysql'), []);
+  // the same table joined as a second row source is not the target it writes
+  assert.deepEqual(
+    found('UPDATE orders o SET total = o2.total FROM orders o2 JOIN lines l ON l.order_id = o2.id').map((w) => w[0]),
+    ['UPDATE'],
+  );
+  assert.deepEqual(
+    found('UPDATE orders SET x = 1 FROM orders o2 JOIN t ON t.id = o2.id').map((w) => w[0]),
+    ['UPDATE'],
+  );
+  assert.deepEqual(
+    found('DELETE FROM orders USING orders o2 JOIN t ON t.id = o2.id').map((w) => w[0]),
+    ['DELETE'],
+  );
 });
 
 test('an assignment reading a subquery is not reading its own column', () => {
@@ -257,4 +270,6 @@ test('an assignment reading a subquery is not reading its own column', () => {
   assert.deepEqual(found('UPDATE counters SET hits = (hits + 1)'), []);
   assert.deepEqual(found('UPDATE counters SET hits = -(hits)'), []);
   assert.deepEqual(found('UPDATE counters SET hits = (hits + 1)::int'), []);
+  // a comma inside an array literal does not start a second assignment
+  assert.deepEqual(found('UPDATE counters SET tags = tags || ARRAY[1,2]'), []);
 });
