@@ -4,7 +4,7 @@ All notable changes to Tablecloth are recorded here. The format follows [Keep a 
 
 ## [0.1.0] - 2026-09-04
 
-Phase 2 (daily driver) of [the plan](./docs/plan.html): edit data in the grid, and trust the SQL the console writes for you.
+Phase 2 (daily driver) of [the plan](https://sultanofcardio.github.io/tablecloth/roadmap.html): edit data in the grid, and trust the SQL the console writes for you.
 
 ### Added
 
@@ -34,7 +34,7 @@ Phase 2 (daily driver) of [the plan](./docs/plan.html): edit data in the grid, a
 
 ### Known limits
 
-The grid is no longer read-only. The limits this release still carries are listed in [ROADMAP.md](./ROADMAP.md#known-limits-after-phase-2).
+The grid is no longer read-only. The limits this release still carries are listed in [the known limits page](https://sultanofcardio.github.io/tablecloth/known-limits.html).
 
 ## [0.0.3] - 2026-09-03
 
@@ -56,7 +56,7 @@ The grid is no longer read-only. The limits this release still carries are liste
 
 - The `datagrip` keyword no longer appears in the manifest.
 - The vsix no longer ships the README screenshots or repository tooling files.
-- README rewritten for the Marketplace, with an Open in VS Code button and live Marketplace badges; the roadmap moved to [ROADMAP.md](./ROADMAP.md).
+- README rewritten for the Marketplace, with an Open in VS Code button and live Marketplace badges; the roadmap moved to [its own page](https://sultanofcardio.github.io/tablecloth/roadmap.html).
 
 ### Security
 
@@ -64,7 +64,7 @@ The grid is no longer read-only. The limits this release still carries are liste
 
 ## [0.0.1] - 2026-09-01
 
-First release: Phase 1 (MVP) of [the plan](./docs/plan.html).
+First release: Phase 1 (MVP) of [the plan](https://sultanofcardio.github.io/tablecloth/roadmap.html).
 
 ### Added
 

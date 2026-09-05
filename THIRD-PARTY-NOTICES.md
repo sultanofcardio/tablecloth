@@ -4,7 +4,7 @@ Tablecloth bundles or derives from the following third-party work. Each item kee
 
 ## Tabler Icons
 
-Icon shapes used in the explorer tree (`media/icons/`, `src/webview/`) and in the plan document's mock-ups (`docs/plan.html`) are derived from [Tabler Icons](https://tabler.io/icons).
+Icon shapes used in the explorer tree (`media/icons/`, `src/webview/`) are derived from [Tabler Icons](https://tabler.io/icons).
 
 MIT License. Copyright (c) 2020-2024 Paweł Kuna.
 

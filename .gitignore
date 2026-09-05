@@ -1,7 +1,7 @@
 # Local reference material — never committed
 intellij-screenshots/
 
-# Lavish working artifacts (docs/plan.html is the committed export)
+# Lavish review surfaces (the docs themselves live on the gh-pages branch)
 .lavish/
 
 node_modules/
