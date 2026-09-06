@@ -1379,6 +1379,10 @@ window.addEventListener('message', (event) => {
     case 'plan':
       cancelEdit();
       closeDialog();
+      S.data = null;
+      clearChanges();
+      clearSelection();
+      updateStatus();
       renderPlan(msg as PlanMessage);
       if (msg.meta) {
         el('status-context').textContent = msg.meta.contextLabel ?? '';

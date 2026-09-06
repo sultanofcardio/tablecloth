@@ -149,6 +149,35 @@ test('a MySQL ANALYZE line whose trailing clause has a colon still names the ope
   assert.equal(node.actualRows, 9);
 });
 
+test('an unaliased scan names its relation once', () => {
+  const plan = parsePostgresPlan(
+    JSON.stringify([
+      {
+        Plan: {
+          'Node Type': 'Index Scan',
+          'Relation Name': 'orders',
+          Alias: 'orders',
+          'Index Name': 'orders_pkey',
+          'Index Cond': '(id = 1)',
+          'Total Cost': 8.3,
+          'Plan Rows': 1,
+          Plans: [
+            { 'Node Type': 'CTE Scan', 'CTE Name': 'recent', Alias: 'recent', 'Total Cost': 2 },
+            { 'Node Type': 'Function Scan', 'Function Name': 'generate_series', Alias: 'generate_series', 'Total Cost': 1 },
+            { 'Node Type': 'Seq Scan', 'Relation Name': 'orders', Alias: 'o', 'Total Cost': 48 },
+          ],
+        },
+      },
+    ]),
+  );
+  assert.deepEqual(outline(plan.roots), [
+    'Index Scan | orders · using orders_pkey · id = 1',
+    '  CTE Scan | cte recent',
+    '  Function Scan | generate_series',
+    '  Seq Scan | orders o',
+  ]);
+});
+
 test('a looped node reports the rows its filter removed over all loops', () => {
   const plan = parsePostgresPlan(
     JSON.stringify([

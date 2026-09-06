@@ -96,10 +96,14 @@ function pgNode(node: { [key: string]: Json }, analysed: boolean): PlanNode {
     const v = node[key];
     return typeof v === 'string' ? v : undefined;
   };
-  const relation = [str('Relation Name'), str('Alias')].filter(Boolean).join(' ') || undefined;
-  const index = str('Index Name') ? `using ${str('Index Name')}` : undefined;
-  const cte = str('CTE Name') ? `cte ${str('CTE Name')}` : undefined;
+  const cteName = str('CTE Name');
   const fn = str('Function Name');
+  const relationName = str('Relation Name');
+  const named = str('Alias');
+  const alias = named && ![relationName, cteName, fn].some((n) => n?.toLowerCase() === named.toLowerCase()) ? named : undefined;
+  const relation = [relationName, alias].filter(Boolean).join(' ') || undefined;
+  const index = str('Index Name') ? `using ${str('Index Name')}` : undefined;
+  const cte = cteName ? `cte ${cteName}` : undefined;
   const subplan = str('Subplan Name');
   const conditions = PG_CONDITIONS.map(([key, label]) => {
     const v = str(key);

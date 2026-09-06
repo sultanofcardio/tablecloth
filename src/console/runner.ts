@@ -336,7 +336,8 @@ export class QueryRunner {
       async (session) => {
         if (consoleUri) {
           await this.ensureSchemaContext(session, ds, consoleUri);
-          if (!rollBack) await this.ensureManualTransaction(session, ds, consoleUri);
+          if (rollBack) await this.applyIsolation(session, ds, consoleUri);
+          else await this.ensureManualTransaction(session, ds, consoleUri);
         }
         const inTx = this.isInTx(ds.config.id, consoleUri);
         if (inTx) {
@@ -471,17 +472,22 @@ export class QueryRunner {
   }
 
   /** Open the console's manual transaction if its mode asks for one and none is open. */
-  private async ensureManualTransaction(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
+  /** The console's configured isolation level, applied once per session. */
+  private async applyIsolation(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
     const tx = this.consoles.getTxState(consoleUri);
-    if (tx.isolation !== 'default' && this.appliedIsolation.get(session) !== tx.isolation) {
-      const level = ISOLATION_SQL[tx.isolation];
-      const sql =
-        ds.config.driver === 'postgres'
-          ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
-          : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
-      await session.query(sql);
-      this.appliedIsolation.set(session, tx.isolation);
-    }
+    if (tx.isolation === 'default' || this.appliedIsolation.get(session) === tx.isolation) return;
+    const level = ISOLATION_SQL[tx.isolation];
+    const sql =
+      ds.config.driver === 'postgres'
+        ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
+        : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
+    await session.query(sql);
+    this.appliedIsolation.set(session, tx.isolation);
+  }
+
+  private async ensureManualTransaction(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
+    await this.applyIsolation(session, ds, consoleUri);
+    const tx = this.consoles.getTxState(consoleUri);
     if (tx.mode === 'manual' && !this.consoles.isInTx(consoleUri)) {
       await session.query(this.beginSql(ds));
       this.consoles.setInTx(consoleUri, true);
