@@ -2,6 +2,18 @@
 
 All notable changes to Tablecloth are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may change the settings format.
 
+## [0.2.0] - 2026-09-06
+
+### Added
+
+- **Explain Plan** and **Explain Analyse**, from the console toolbar's Explain dropdown, the editor's context menu, and the Tablecloth: Explain Plan and Tablecloth: Explain Analyse commands. The plan opens in a Plan tab next to the results: a tree of operations with what each works on, its cost and its row estimate, or the same nodes as a table with every figure. Explain Analyse runs the statement and adds the actual rows and the time per node, with a heat bar so the node that lied stands out. Every analyse is rolled back (a savepoint inside an open transaction, a transaction of its own otherwise), so a `DELETE` or `UPDATE` can be analysed without losing data on a transactional engine. PostgreSQL, MySQL and MariaDB (through its `ANALYZE`) give the full plan; SQLite has no analyse and shows its query plan instead, with a note in the Output.
+- A `DELETE` or `UPDATE` with no `WHERE` clause gets a warning squiggle in consoles and attached `.sql` files, and asks before it runs. The dialog names the table and how many rows it holds, counted on the console's own session so an open transaction's changes are included. **Cancel** is the default button, so a stray ⏎ after ⌘⏎ cancels; **Run anyway** runs it, and **Don't ask again for this console** silences it for that console. Run File on Data Source asks the same question with a **Run all anyway** answer for the rest of the run. The check follows IntelliJ's exemptions: a `LIMIT`, a `JOIN` whose condition constrains the table being written, and an `UPDATE` whose every assignment reads its own column are left alone.
+- Setting `tablecloth.execution.warnWithoutWhere` turns the question off everywhere. Changing it, in either direction, resets every console's "Don't ask again" choice.
+
+### Changed
+
+- `tablecloth.inspections.enabled` now also governs the DELETE or UPDATE without WHERE inspection.
+
 ## [0.1.1] - 2026-09-05
 
 ### Changed
@@ -87,6 +99,7 @@ First release: Phase 1 (MVP) of [the plan](https://sultanofcardio.github.io/tabl
 - An isolation level is not reapplied after a silent reconnect.
 - Paste in the console uses the keyboard; Monaco's context-menu Paste is inert inside webviews.
 
+[0.2.0]: https://github.com/sultanofcardio/tablecloth/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/sultanofcardio/tablecloth/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sultanofcardio/tablecloth/compare/v0.0.3...v0.1.0
 [0.0.3]: https://github.com/sultanofcardio/tablecloth/compare/v0.0.2...v0.0.3
