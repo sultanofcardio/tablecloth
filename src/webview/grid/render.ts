@@ -509,7 +509,7 @@ export function applyView(): void {
   el('valueeditor').hidden = !showGrid || !S.prefs.valueEditor || !S.data;
   const message = el('message');
   message.hidden = showGrid ? message.dataset.empty === '1' : true;
-  el('statement').hidden = !showGrid || !el('statement').textContent;
+  el('statement').hidden = (!showGrid && S.view !== 'plan') || !el('statement').textContent;
   updateToolbar();
   updatePager();
 }

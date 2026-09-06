@@ -8,7 +8,7 @@ import { el, h } from './widgets';
 export interface PlanMessage {
   type: 'plan';
   plan: QueryPlan;
-  /** The statement the plan is for, shown above the plan like a result's. */
+  /** The statement the plan is for: shown above the plan like a result's, and identifies the tab's plan. */
   statement: string | null;
   /** The dialect can produce runtime figures, so the Explain Analyse button is offered. */
   canAnalyse: boolean;
@@ -43,14 +43,12 @@ function rootTime(plan: QueryPlan): number {
 }
 
 export function renderPlan(msg: PlanMessage): void {
+  // Explain Analyse replaces the same statement's plan in the same tab, so the
+  // Tree/Table choice only resets for a plan of a different statement.
+  if (!current || current.statement !== msg.statement) view = 'tree';
   current = msg;
-  view = 'tree';
+  el('statement').textContent = msg.statement ?? '';
   draw();
-}
-
-/** Repaint the current plan, if any (a view reload replays the last message). */
-export function redrawPlan(): void {
-  if (current) draw();
 }
 
 function draw(): void {

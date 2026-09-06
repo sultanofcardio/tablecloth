@@ -323,7 +323,7 @@ export class QueryRunner {
           await this.ensureSchemaContext(session, ds, consoleUri);
           if (!rollBack) await this.ensureManualTransaction(session, ds, consoleUri);
         }
-        const inTx = consoleUri ? this.consoles.isInTx(consoleUri) : this.scriptsInTx.has(ds.config.id);
+        const inTx = this.isInTx(ds.config.id, consoleUri);
         if (inTx) {
           await session.query('SAVEPOINT tablecloth_explain');
           let failed = false;

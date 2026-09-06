@@ -139,6 +139,37 @@ test('MySQL EXPLAIN ANALYZE text is a tree with estimates and actuals per line',
   assert.ok(plan.executionMs! > 0);
 });
 
+test('a MySQL ANALYZE line whose trailing clause has a colon still names the operation', () => {
+  const line =
+    '-> Index range scan on orders using PRIMARY over (10 < id), with index condition: (orders.id > 10)  (cost=1.16 rows=9) (actual time=0.0312..0.0403 rows=9 loops=1)';
+  const node = parseMySqlAnalyzeTree(line).roots[0]!;
+  assert.equal(node.op, 'Index range scan');
+  assert.equal(node.detail, 'orders using PRIMARY over (10 < id), with index condition: (orders.id > 10)');
+  assert.equal(node.cost, 1.16);
+  assert.equal(node.actualRows, 9);
+});
+
+test('a MySQL plan of a table named r_rows is not mistaken for an analysed one', () => {
+  const raw = JSON.stringify({
+    query_block: {
+      select_id: 1,
+      cost_info: { query_cost: '0.55' },
+      table: {
+        table_name: 'r_rows',
+        access_type: 'ALL',
+        rows_examined_per_scan: 3,
+        rows_produced_per_join: 3,
+        filtered: '100.00',
+        cost_info: { read_cost: '0.25', eval_cost: '0.30', prefix_cost: '0.55', data_read_per_join: '48' },
+      },
+    },
+  });
+  const plan = parseMySqlPlan(raw);
+  assert.equal(plan.analysed, false, 'no node carries runtime figures');
+  assert.equal(plan.executionMs, undefined);
+  assert.ok([...planNodes(plan.roots)].every((n) => n.actualRows === undefined && n.timeMs === undefined));
+});
+
 test('MariaDB EXPLAIN and ANALYZE FORMAT=JSON', () => {
   const plan = parseMySqlPlan(fixture('mariadb-plan.json'));
   assert.equal(plan.analysed, false);

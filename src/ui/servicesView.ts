@@ -79,6 +79,8 @@ interface ConsoleEntry {
   /** The content pane shows the error message instead of a tab's content. */
   showingError: boolean;
   resultCounter: number;
+  /** Monotonic like resultCounter, so a closed plan tab's number is never reused. */
+  planCounter: number;
   /** This console's own Output log, like IntelliJ's per-console output. */
   output: OutputEntry[];
 }
@@ -292,6 +294,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
           activeTabId: OUTPUT_TAB,
           showingError: false,
           resultCounter: 0,
+          planCounter: 0,
           output: [],
         }),
         label: entry.label,
@@ -337,6 +340,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
         activeTabId: OUTPUT_TAB,
         showingError: false,
         resultCounter: 0,
+        planCounter: 0,
         output: [],
       });
     }
@@ -419,8 +423,14 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
       tab.page = undefined;
       tab.state = undefined;
     } else {
-      const planTabs = entry.tabs.filter((t) => t.plan).length;
-      tab = { id: randomBytes(6).toString('hex'), sqlKey, title: planTabs === 0 ? 'Plan' : `Plan ${planTabs + 1}`, meta, plan };
+      entry.planCounter += 1;
+      tab = {
+        id: randomBytes(6).toString('hex'),
+        sqlKey,
+        title: entry.planCounter === 1 ? 'Plan' : `Plan ${entry.planCounter}`,
+        meta,
+        plan,
+      };
       entry.tabs.push(tab);
     }
     entry.activeTabId = tab.id;

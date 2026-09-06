@@ -2,7 +2,7 @@
 // Pure and vscode-free; exercised against captured server output in
 // test/fixtures/plans.
 import type { CellValue, DriverId } from '../core/types';
-import type { PlanNode, QueryPlan } from './model';
+import { planNodes, type PlanNode, type QueryPlan } from './model';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -305,16 +305,17 @@ function mysqlOpNode(key: string, obj: { [key: string]: Json }): PlanNode {
 export function parseMySqlPlan(raw: string): QueryPlan {
   const parsed = JSON.parse(raw) as Json;
   if (!isObject(parsed)) throw new Error('Unexpected EXPLAIN output');
-  const analysed = raw.includes('"r_total_time_ms"') || raw.includes('"r_rows"');
   const optimization = isObject(parsed['query_optimization']) ? parsed['query_optimization'] : undefined;
   const roots = mysqlChildren(parsed);
+  const planningMs = num(optimization?.['r_total_time_ms']);
+  const analysed = planningMs !== undefined || [...planNodes(roots)].some((n) => n.actualRows !== undefined || n.timeMs !== undefined);
   const executionMs = analysed ? roots.map((r) => r.timeMs ?? 0).reduce((a, b) => a + b, 0) : undefined;
   return {
     dialect: 'mysql',
     analysed,
     roots,
     executionMs: executionMs !== undefined && executionMs > 0 ? executionMs : undefined,
-    planningMs: num(optimization?.['r_total_time_ms']),
+    planningMs,
     raw,
   };
 }
@@ -361,12 +362,12 @@ export function parseMySqlAnalyzeTree(raw: string): QueryPlan {
     text = text.trim();
     const colon = text.indexOf(': ');
     const on = text.indexOf(' on ');
-    if (colon > 0) {
-      node.op = text.slice(0, colon);
-      node.detail = text.slice(colon + 2);
-    } else if (on > 0) {
+    if (on > 0 && (colon < 0 || on < colon)) {
       node.op = text.slice(0, on);
       node.detail = text.slice(on + 4);
+    } else if (colon > 0) {
+      node.op = text.slice(0, colon);
+      node.detail = text.slice(colon + 2);
     } else {
       node.op = text;
     }
