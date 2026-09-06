@@ -48,12 +48,14 @@ export function renderPlan(msg: PlanMessage): void {
   if (!current || current.statement !== msg.statement) view = 'tree';
   current = msg;
   el('statement').textContent = msg.statement ?? '';
+  el('planview').textContent = '';
   draw();
 }
 
 function draw(): void {
   const msg = current;
   const root = el('planview');
+  const scrollTop = root.querySelector('.plan')?.scrollTop ?? 0;
   root.textContent = '';
   if (!msg) return;
   const plan = msg.plan;
@@ -97,6 +99,7 @@ function draw(): void {
     body.appendChild(tableView(plan));
   }
   root.appendChild(body);
+  body.scrollTop = scrollTop;
 }
 
 // ------------------------------------------------------------ tree

@@ -149,6 +149,52 @@ test('a MySQL ANALYZE line whose trailing clause has a colon still names the ope
   assert.equal(node.actualRows, 9);
 });
 
+test('a MySQL subquery attached to a table becomes a child of that table', () => {
+  const raw = JSON.stringify({
+    query_block: {
+      select_id: 1,
+      cost_info: { query_cost: '3.65' },
+      table: {
+        table_name: 'o',
+        access_type: 'ALL',
+        rows_examined_per_scan: 27,
+        rows_produced_per_join: 9,
+        filtered: '33.33',
+        cost_info: { read_cost: '2.75', eval_cost: '0.90', prefix_cost: '3.65', data_read_per_join: '144' },
+        used_columns: ['id', 'total'],
+        attached_condition: '(`acme`.`o`.`total` > (/* select#2 */ select avg(`acme`.`orders`.`total`) from `acme`.`orders`))',
+        attached_subqueries: [
+          {
+            dependent: false,
+            cacheable: true,
+            query_block: {
+              select_id: 2,
+              cost_info: { query_cost: '3.65' },
+              table: {
+                table_name: 'orders',
+                access_type: 'ALL',
+                rows_examined_per_scan: 27,
+                rows_produced_per_join: 27,
+                filtered: '100.00',
+                cost_info: { read_cost: '0.95', eval_cost: '2.70', prefix_cost: '3.65', data_read_per_join: '432' },
+                used_columns: ['total'],
+              },
+            },
+          },
+        ],
+      },
+    },
+  });
+  const plan = parseMySqlPlan(raw);
+  const lines = outline(plan.roots);
+  assert.equal(lines.length, 4, 'the subquery block and its table access are in the tree');
+  assert.equal(lines[0], 'Query block | #1');
+  assert.ok(lines[1]!.startsWith('  Table scan | o · filter'), lines[1]);
+  assert.equal(lines[2], '    Query block | #2');
+  assert.equal(lines[3], '      Table scan | orders');
+  assert.equal(planSize(plan), 4);
+});
+
 test('a MySQL plan of a table named r_rows is not mistaken for an analysed one', () => {
   const raw = JSON.stringify({
     query_block: {

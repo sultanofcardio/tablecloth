@@ -185,12 +185,13 @@ const MYSQL_OPS: Record<string, string> = {
   group_by_subqueries: 'GROUP BY subqueries',
   select_list_subqueries: 'Select list subqueries',
   update_value_subqueries: 'Update value subqueries',
+  attached_subqueries: 'Attached subqueries',
   insert_from: 'Insert from',
   table_function: 'Table function',
 };
 
 /** Keys whose value is a list of operations, folded into their parent (no node of their own). */
-const MYSQL_TRANSPARENT = new Set(['subqueries', 'optimized_away_subqueries', 'query_specifications', 'having_subqueries', 'order_by_subqueries', 'group_by_subqueries', 'select_list_subqueries', 'update_value_subqueries']);
+const MYSQL_TRANSPARENT = new Set(['subqueries', 'optimized_away_subqueries', 'query_specifications', 'having_subqueries', 'order_by_subqueries', 'group_by_subqueries', 'select_list_subqueries', 'update_value_subqueries', 'attached_subqueries']);
 
 const MYSQL_ACCESS: Record<string, string> = {
   ALL: 'Table scan',
@@ -210,7 +211,7 @@ const MYSQL_ACCESS: Record<string, string> = {
 const MYSQL_TABLE_HANDLED = new Set([
   'table_name', 'access_type', 'key', 'used_key_parts', 'ref', 'rows_examined_per_scan', 'rows_produced_per_join', 'rows',
   'cost_info', 'cost', 'attached_condition', 'loops', 'r_loops', 'r_rows', 'r_total_time_ms', 'r_table_time_ms', 'r_other_time_ms',
-  'materialized_from_subquery', 'used_columns', 'possible_keys', 'key_length', 'r_engine_stats',
+  'materialized_from_subquery', 'attached_subqueries', 'used_columns', 'possible_keys', 'key_length', 'r_engine_stats',
 ]);
 
 function isObject(value: Json | undefined): value is { [key: string]: Json } {
@@ -240,8 +241,6 @@ function mysqlTableNode(table: { [key: string]: Json }): PlanNode {
     pushProp(props, k, v);
   }
   if (costInfo) for (const [k, v] of Object.entries(costInfo)) pushProp(props, k, v);
-  const children: PlanNode[] = [];
-  if (isObject(table['materialized_from_subquery'])) children.push(mysqlOpNode('materialized_from_subquery', table['materialized_from_subquery']));
   return {
     op: MYSQL_ACCESS[access] ?? (access ? `${access} access` : 'Table'),
     detail: join([String(table['table_name'] ?? ''), key ? `using ${key}${ref ? ` (${ref})` : ''}` : undefined, condition]),
@@ -250,7 +249,7 @@ function mysqlTableNode(table: { [key: string]: Json }): PlanNode {
     actualRows: rRows !== undefined ? rRows * (loops ?? 1) : undefined,
     timeMs: mysqlTime(table),
     loops,
-    children,
+    children: mysqlChildren(table),
     props,
   };
 }
