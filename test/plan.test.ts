@@ -180,6 +180,62 @@ test('an unaliased scan names its relation once', () => {
   ]);
 });
 
+test('a never executed node keeps the estimate the planner made', () => {
+  const plan = parsePostgresPlan(
+    JSON.stringify([
+      {
+        Plan: {
+          'Node Type': 'Nested Loop',
+          'Total Cost': 12,
+          'Plan Rows': 1,
+          'Actual Rows': 0,
+          'Actual Loops': 1,
+          'Actual Total Time': 0.02,
+          Plans: [
+            {
+              'Node Type': 'Index Scan',
+              'Relation Name': 'orders',
+              Alias: 'o',
+              'Index Name': 'orders_customer',
+              'Total Cost': 8,
+              'Plan Rows': 1000,
+              'Actual Rows': 0,
+              'Actual Loops': 0,
+              'Actual Total Time': 0,
+            },
+          ],
+        },
+        'Execution Time': 0.1,
+        'Planning Time': 0.3,
+      },
+    ]),
+  );
+  const inner = plan.roots[0]!.children[0]!;
+  assert.equal(inner.rows, 1000, 'the estimate is not multiplied away by zero loops');
+  assert.equal(inner.actualRows, 0);
+  assert.equal(inner.timeMs, 0);
+  assert.equal(inner.loops, 0);
+  assert.ok(inner.detail.endsWith('never executed'), inner.detail);
+});
+
+test('a condition keeps a :: inside a string literal', () => {
+  const plan = parsePostgresPlan(
+    JSON.stringify([
+      {
+        Plan: {
+          'Node Type': 'Seq Scan',
+          'Relation Name': 'orders',
+          Alias: 'o',
+          Filter: "((note)::text = 'a::b'::text)",
+          'Total Cost': 48,
+          'Plan Rows': 1,
+        },
+      },
+    ]),
+  );
+  assert.equal(plan.roots[0]!.detail, "orders o · filter (note) = 'a::b'");
+});
+
 test('a looped node reports the rows its filter removed over all loops', () => {
   const plan = parsePostgresPlan(
     JSON.stringify([

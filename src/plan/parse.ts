@@ -28,15 +28,49 @@ function pushProp(props: [string, string][], name: string, value: Json | undefin
   if (text !== undefined) props.push([name, text]);
 }
 
+const PG_CAST =
+  /::(?:character varying|double precision|timestamp(?: with| without) time zone|time(?: with| without) time zone|bit varying|[a-z_][a-z0-9_.]*)(?:\(\d+(?:,\d+)?\))?(?:\[\])?/gi;
+
+/** The end of the single-quoted literal starting at `from`, doubled quotes included. */
+function quotedEnd(s: string, from: number): number {
+  let i = from + 1;
+  while (i < s.length) {
+    if (s[i] === "'") {
+      if (s[i + 1] === "'") {
+        i += 2;
+        continue;
+      }
+      return i + 1;
+    }
+    i++;
+  }
+  return s.length;
+}
+
+/** Casts go, but a `::` inside a string literal is the user's own text. */
+function stripCasts(text: string): string {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "'") {
+      const end = quotedEnd(text, i);
+      out += text.slice(i, end);
+      i = end;
+      continue;
+    }
+    const quote = text.indexOf("'", i);
+    const stop = quote === -1 ? text.length : quote;
+    out += text.slice(i, stop).replace(PG_CAST, '');
+    i = stop;
+  }
+  return out;
+}
+
 /** `(status = 'shipped'::order_status)` -> `status = 'shipped'`: the planner's outer parens and casts go. */
 function tidyCondition(text: string): string {
   let s = text.trim();
   if (s.startsWith('(') && s.endsWith(')') && balanced(s.slice(1, -1))) s = s.slice(1, -1);
-  s = s.replace(
-    /::(?:character varying|double precision|timestamp(?: with| without) time zone|time(?: with| without) time zone|bit varying|[a-z_][a-z0-9_.]*)(?:\(\d+(?:,\d+)?\))?(?:\[\])?/gi,
-    '',
-  );
-  return s;
+  return stripCasts(s);
 }
 
 function balanced(s: string): boolean {
@@ -114,11 +148,13 @@ function pgNode(node: { [key: string]: Json }, analysed: boolean): PlanNode {
   const sortKey = Array.isArray(node['Sort Key']) ? `sort key ${(node['Sort Key'] as Json[]).map(String).join(', ')}` : undefined;
   const groupKey = Array.isArray(node['Group Key']) ? `group by ${(node['Group Key'] as Json[]).map(String).join(', ')}` : undefined;
   const loops = num(node['Actual Loops']);
+  // "Actual Loops": 0 is the text format's "(never executed)", so its per-loop figures scale by nothing.
+  const perLoop = loops !== undefined && loops > 0 ? loops : 1;
+  const neverRan = analysed && loops === 0 ? 'never executed' : undefined;
   const removed = ['Rows Removed by Filter', 'Rows Removed by Join Filter', 'Rows Removed by Index Recheck']
     .map((key) => num(node[key]))
     .filter((n): n is number => n !== undefined && n > 0);
-  const removedText =
-    analysed && removed.length > 0 ? `rows removed ${formatInt(removed.reduce((a, b) => a + b, 0) * (loops ?? 1))}` : undefined;
+  const removedText = analysed && removed.length > 0 ? `rows removed ${formatInt(removed.reduce((a, b) => a + b, 0) * perLoop)}` : undefined;
   const op = [pgOpName(node), str('Join Type') && str('Join Type') !== 'Inner' ? str('Join Type') : undefined]
     .filter(Boolean)
     .join(' ');
@@ -134,10 +170,10 @@ function pgNode(node: { [key: string]: Json }, analysed: boolean): PlanNode {
   const children = Array.isArray(node['Plans']) ? (node['Plans'] as Json[]).map((child) => pgNode(child as { [key: string]: Json }, analysed)) : [];
   return {
     op,
-    detail: join([relation, index, cte, fn, subplan, ...conditions, sortKey, groupKey, removedText]),
+    detail: join([relation, index, cte, fn, subplan, ...conditions, sortKey, groupKey, removedText, neverRan]),
     cost: num(node['Total Cost']),
     startupCost: num(node['Startup Cost']),
-    rows: planRows !== undefined && analysed ? planRows * (loops ?? 1) : planRows,
+    rows: planRows !== undefined && analysed ? planRows * perLoop : planRows,
     actualRows: actualRows !== undefined ? actualRows * (loops ?? 1) : undefined,
     timeMs: totalTime !== undefined ? totalTime * (loops ?? 1) : undefined,
     loops,
@@ -253,9 +289,14 @@ function mysqlTableNode(table: { [key: string]: Json }): PlanNode {
   if (costInfo) for (const [k, v] of Object.entries(costInfo)) pushProp(props, k, v);
   return {
     op: MYSQL_ACCESS[access] ?? (access ? `${access} access` : 'Table'),
-    detail: join([String(table['table_name'] ?? ''), key ? `using ${key}${ref ? ` (${ref})` : ''}` : undefined, condition]),
+    detail: join([
+      String(table['table_name'] ?? ''),
+      key ? `using ${key}${ref ? ` (${ref})` : ''}` : undefined,
+      condition,
+      rLoops === 0 ? 'never executed' : undefined,
+    ]),
     cost: num(costInfo?.['prefix_cost']) ?? num(table['cost']),
-    rows: rows !== undefined && rLoops !== undefined ? rows * rLoops : rows,
+    rows: rows !== undefined && rLoops !== undefined && rLoops > 0 ? rows * rLoops : rows,
     actualRows: rRows !== undefined ? rRows * (loops ?? 1) : undefined,
     timeMs: mysqlTime(table),
     loops,
