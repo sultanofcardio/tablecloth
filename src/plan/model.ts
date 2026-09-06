@@ -11,7 +11,10 @@ export interface PlanNode {
   /** Planner estimate of the total cost, in the dialect's units. */
   cost?: number;
   startupCost?: number;
-  /** Planner estimate of the rows this node produces. */
+  /**
+   * Planner estimate of the rows this node produces; summed over its loops
+   * once the plan is analysed, so it compares like for like with actualRows.
+   */
   rows?: number;
   /** Rows the node really produced (Explain Analyse), summed over its loops. */
   actualRows?: number;

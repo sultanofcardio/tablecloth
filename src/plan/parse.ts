@@ -124,6 +124,7 @@ function pgNode(node: { [key: string]: Json }, analysed: boolean): PlanNode {
     .join(' ');
 
   const actualRows = num(node['Actual Rows']);
+  const planRows = num(node['Plan Rows']);
   const totalTime = num(node['Actual Total Time']);
   const props: [string, string][] = [];
   for (const [key, value] of Object.entries(node)) {
@@ -136,7 +137,7 @@ function pgNode(node: { [key: string]: Json }, analysed: boolean): PlanNode {
     detail: join([relation, index, cte, fn, subplan, ...conditions, sortKey, groupKey, removedText]),
     cost: num(node['Total Cost']),
     startupCost: num(node['Startup Cost']),
-    rows: num(node['Plan Rows']),
+    rows: planRows !== undefined && analysed ? planRows * (loops ?? 1) : planRows,
     actualRows: actualRows !== undefined ? actualRows * (loops ?? 1) : undefined,
     timeMs: totalTime !== undefined ? totalTime * (loops ?? 1) : undefined,
     loops,
@@ -240,8 +241,10 @@ function mysqlTableNode(table: { [key: string]: Json }): PlanNode {
   const ref = Array.isArray(table['ref']) ? (table['ref'] as Json[]).map(String).join(', ') : undefined;
   const condition = typeof table['attached_condition'] === 'string' ? `filter ${tidyCondition(table['attached_condition'].replace(/`/g, ''))}` : undefined;
   const costInfo = isObject(table['cost_info']) ? table['cost_info'] : undefined;
-  const loops = num(table['r_loops']) ?? num(table['loops']);
+  const rLoops = num(table['r_loops']);
+  const loops = rLoops ?? num(table['loops']);
   const rRows = num(table['r_rows']);
+  const rows = num(table['rows_produced_per_join']) ?? num(table['rows']);
   const props: [string, string][] = [];
   for (const [k, v] of Object.entries(table)) {
     if (MYSQL_TABLE_HANDLED.has(k)) continue;
@@ -252,7 +255,7 @@ function mysqlTableNode(table: { [key: string]: Json }): PlanNode {
     op: MYSQL_ACCESS[access] ?? (access ? `${access} access` : 'Table'),
     detail: join([String(table['table_name'] ?? ''), key ? `using ${key}${ref ? ` (${ref})` : ''}` : undefined, condition]),
     cost: num(costInfo?.['prefix_cost']) ?? num(table['cost']),
-    rows: num(table['rows_produced_per_join']) ?? num(table['rows']),
+    rows: rows !== undefined && rLoops !== undefined ? rows * rLoops : rows,
     actualRows: rRows !== undefined ? rRows * (loops ?? 1) : undefined,
     timeMs: mysqlTime(table),
     loops,
@@ -362,6 +365,7 @@ export function parseMySqlAnalyzeTree(raw: string): QueryPlan {
         const rows = num(fields['rows']);
         node.actualRows = rows !== undefined ? rows * loops : undefined;
         node.timeMs = last !== undefined ? last * loops : undefined;
+        if (node.rows !== undefined) node.rows *= loops;
       }
       return '';
     });

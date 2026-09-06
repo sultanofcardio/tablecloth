@@ -136,6 +136,7 @@ test('MySQL EXPLAIN ANALYZE text is a tree with estimates and actuals per line',
   const lookup = [...planNodes(plan.roots)].find((n) => n.op === 'Single-row index lookup')!;
   assert.equal(lookup.loops, 16);
   assert.equal(lookup.actualRows, 16, 'rows are summed over loops');
+  assert.equal(lookup.rows, 16, 'so is the estimate, so the two columns compare');
   assert.ok(Math.abs(lookup.timeMs! - 682e-6 * 16) < 1e-9, 'time is summed over loops');
   assert.ok(plan.executionMs! > 0);
 });
@@ -202,6 +203,7 @@ test('a looped node reports the rows its filter removed over all loops', () => {
   );
   const scan = plan.roots[0]!;
   assert.equal(scan.actualRows, 200);
+  assert.equal(scan.rows, 200, 'the estimate is summed over loops too, so it compares with the actual');
   assert.ok(scan.detail.endsWith('rows removed 500'), scan.detail);
 });
 
@@ -336,6 +338,7 @@ test('MariaDB EXPLAIN and ANALYZE FORMAT=JSON', () => {
   const lookup = [...planNodes(analysed.roots)].find((n) => n.op === 'Index lookup')!;
   assert.equal(lookup.loops, 3);
   assert.equal(lookup.actualRows, 27, 'r_rows is per loop, so 9 × 3');
+  assert.equal(lookup.rows, 3, 'the estimate is scaled by r_loops as well, so 1 × 3');
   assert.ok(lookup.timeMs! > 0);
 });
 
