@@ -1,4 +1,24 @@
 {
+  "0.2.0|Added|**Explain Plan** and **Explain Analyse**": [
+    [
+      "cl-explain-plan.png",
+      "Explain Plan on a join: the operations as a tree, costs and row estimates, Explain Analyse a click away."
+    ],
+    [
+      "cl-explain-analyse.png",
+      "Explain Analyse: the real numbers, rows removed by the filter, and the time per node."
+    ]
+  ],
+  "0.2.0|Added|A `DELETE` or `UPDATE` with no `WHERE` clause": [
+    [
+      "cl-without-where.png",
+      "The whole statement is marked, comment excluded."
+    ],
+    [
+      "cl-without-where-dialog.png",
+      "The dialog names the table and its row count; Cancel has focus."
+    ]
+  ],
   "0.1.1|Changed|The README and the Marketplace listing": [
     [
       "cl-docs-site.png",

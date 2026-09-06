@@ -331,8 +331,8 @@ Notes on method:
 
 | Feature | What it does | Doc URL | Status |
 |---|---|---|---|
-| Explain Plan (tree + table Query Plan tab, costs) | Plan without executing | I/query-execution-plan.html | PLANNED |
-| Explain Analyse | Plan with runtime stats | I/query-execution-plan.html | PLANNED |
+| Explain Plan (tree + table Query Plan tab, costs) | Plan without executing | I/query-execution-plan.html | SHIPPED |
+| Explain Analyse | Plan with runtime stats | I/query-execution-plan.html | SHIPPED |
 | Explain Plan (Raw) / Explain Analyse (Raw); Copy Original Query Plan | Native JSON/XML/text plan | I/query-execution-plan.html | PLANNED |
 | Plan diagram visualisation | Graph of operations | I/query-execution-plan.html | PLANNED |
 | Flame graph (Total Cost / Startup Cost) | Cost profile | I/query-execution-plan.html | MISSING |

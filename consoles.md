@@ -27,6 +27,24 @@ A console is a Monaco editor bound to one data source and one schema, with an In
 *Cancel has focus; Run anyway needs a Tab or a click.*
 {: .figcaption}
 
+## Explain Plan
+
+**Explain Plan** asks the server for the plan of the statement at the caret and shows it in a **Plan** tab next to the results: a tree of operations with what each works on, its cost and its row estimate, or the same nodes as a table with every figure. **Explain Analyse** runs the statement and adds the actual rows and the time per node, with a heat bar so the node that lied stands out and the total and planning time on the right. Both live in the Explain dropdown on the toolbar and in the editor's context menu, and as commands for attached `.sql` files.
+
+![The Plan tab after Explain Plan: the statement above, a Tree and Table toggle, an Explain Analyse button, and a tree of Hash Join, Seq Scan, Hash and Seq Scan with cost and rows.]({{ site.baseurl }}/assets/images/cl-explain-plan.png)
+{: .fig}
+
+*Explain Plan on a join: the operations as a tree, costs and row estimates, Explain Analyse a click away.*
+{: .figcaption}
+
+![The same Plan tab after Explain Analyse: actual rows, a heat bar and the time per node, and the total and planning time on the right.]({{ site.baseurl }}/assets/images/cl-explain-analyse.png)
+{: .fig}
+
+*Explain Analyse: the real numbers, and rows removed by the filter.*
+{: .figcaption}
+
+An analyse is always rolled back (a savepoint inside an open transaction, a transaction of its own otherwise), so a `DELETE` or `UPDATE` can be analysed without losing data on a transactional engine. It still executes, so a statement without a `WHERE` clause asks first. SQLite has no analyse and shows the plan instead; MariaDB uses its `ANALYZE`.
+
 ## Toolbar
 
 Run statement, run script, cancel, the schema switcher, transaction mode, commit and roll back, query history, and data source properties. The schema switcher really switches: it sets `search_path` on PostgreSQL and runs `USE` on MySQL.
