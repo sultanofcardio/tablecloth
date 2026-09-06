@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { explainRequest, supportsAnalyse } from '../src/plan/explain';
 import { planNodes, planSize, type PlanNode } from '../src/plan/model';
 import { parseMySqlAnalyzeTree, parseMySqlPlan, parsePlan, parsePostgresPlan, parseSqlitePlan } from '../src/plan/parse';
+import { fmtCost } from '../src/webview/grid/plan';
 
 const fixture = (name: string) => readFileSync(join(__dirname, '..', '..', 'test', 'fixtures', 'plans', name), 'utf8');
 
@@ -324,6 +325,10 @@ test('MariaDB EXPLAIN and ANALYZE FORMAT=JSON', () => {
     '        Index scan | c · using email',
     "        Index lookup | o · using customer_id (acme.c.id) · filter o.status = 'shipped'",
   ]);
+  const costs = [...planNodes(plan.roots)].map((n) => n.cost).filter((c): c is number => c !== undefined);
+  assert.ok(costs.length === 3 && costs.every((c) => c > 0 && c < 1), 'MariaDB costs are fractions of a unit');
+  assert.deepEqual(costs.map(fmtCost), ['0.0142', '0.00709', '0.0071'], 'a fractional cost keeps significant digits');
+
   const analysed = parseMySqlPlan(fixture('mariadb-analyze.json'));
   assert.equal(analysed.analysed, true);
   assert.ok(analysed.planningMs! > 0, 'query_optimization time is the planning time');
@@ -332,6 +337,17 @@ test('MariaDB EXPLAIN and ANALYZE FORMAT=JSON', () => {
   assert.equal(lookup.loops, 3);
   assert.equal(lookup.actualRows, 27, 'r_rows is per loop, so 9 × 3');
   assert.ok(lookup.timeMs! > 0);
+});
+
+test('the Cost column reads across dialect cost units', () => {
+  assert.equal(fmtCost(undefined), '');
+  assert.equal(fmtCost(0.014184855), '0.0142', 'MariaDB fractions keep three significant digits');
+  assert.equal(fmtCost(0.007085975), '0.00709');
+  assert.equal(fmtCost(3.5), '3.5', 'MySQL query_cost reads as before');
+  assert.equal(fmtCost(48.04), '48.0', 'PostgreSQL total cost reads as before');
+  assert.equal(fmtCost(61.32), '61.3');
+  assert.equal(fmtCost(12345.6), '12,346', 'large costs group and drop the decimal');
+  assert.equal(fmtCost(0), '0.0');
 });
 
 test('SQLite EXPLAIN QUERY PLAN rows nest by parent id', () => {

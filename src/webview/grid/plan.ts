@@ -31,6 +31,19 @@ function fmtNumber(n: number | undefined, digits = 1): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+/**
+ * Costs span dialects: MariaDB's are fractions of a unit, PostgreSQL's and
+ * MySQL's are tens or thousands. Below 1 keep three significant digits, up to
+ * 1000 one decimal, above that whole units.
+ */
+export function fmtCost(n: number | undefined): string {
+  if (n === undefined) return '';
+  const abs = Math.abs(n);
+  if (abs > 0 && abs < 1) return n.toLocaleString('en-US', { maximumSignificantDigits: 3 });
+  if (abs < 1000) return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
 function fmtMs(n: number | undefined): string {
   if (n === undefined) return '';
   if (n < 0.01) return `${(n * 1000).toLocaleString('en-US', { maximumFractionDigits: 0 })} µs`;
@@ -132,7 +145,7 @@ function treeRows(container: HTMLElement, node: PlanNode, depth: number, total: 
   const isAnalysed = current?.plan.analysed ?? false;
   row.append(
     op,
-    h('span', { class: 'plc' }, fmtNumber(node.cost)),
+    h('span', { class: 'plc' }, fmtCost(node.cost)),
     h('span', { class: 'plc' }, isAnalysed ? fmtNumber(node.actualRows, 0) : fmtNumber(node.rows, 0)),
   );
   if (isAnalysed) {
@@ -158,8 +171,8 @@ function tableView(plan: PanelPlan): HTMLElement {
   const columns: { label: string; cell: (n: PlanNode, depth: number) => string; numeric?: boolean }[] = [
     { label: 'Operation', cell: (n, depth) => `${'  '.repeat(depth)}${n.op}` },
     { label: 'Detail', cell: (n) => n.detail },
-    { label: 'Startup cost', cell: (n) => fmtNumber(n.startupCost), numeric: true },
-    { label: 'Cost', cell: (n) => fmtNumber(n.cost), numeric: true },
+    { label: 'Startup cost', cell: (n) => fmtCost(n.startupCost), numeric: true },
+    { label: 'Cost', cell: (n) => fmtCost(n.cost), numeric: true },
     { label: 'Rows', cell: (n) => fmtNumber(n.rows, 0), numeric: true },
   ];
   if (plan.analysed) {

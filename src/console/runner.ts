@@ -471,7 +471,6 @@ export class QueryRunner {
     this.appliedSchemaContext.set(session, key);
   }
 
-  /** Open the console's manual transaction if its mode asks for one and none is open. */
   /** The console's configured isolation level, applied once per session. */
   private async applyIsolation(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
     const tx = this.consoles.getTxState(consoleUri);
@@ -485,6 +484,7 @@ export class QueryRunner {
     this.appliedIsolation.set(session, tx.isolation);
   }
 
+  /** Open the console's manual transaction if its mode asks for one and none is open. */
   private async ensureManualTransaction(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
     await this.applyIsolation(session, ds, consoleUri);
     const tx = this.consoles.getTxState(consoleUri);
