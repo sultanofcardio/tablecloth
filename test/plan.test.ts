@@ -221,6 +221,48 @@ test('a MySQL subquery attached to a table becomes a child of that table', () =>
   assert.equal(planSize(plan), 4);
 });
 
+test('a MariaDB derived table keeps the query block it materialises', () => {
+  const raw = JSON.stringify({
+    query_block: {
+      select_id: 1,
+      cost: 0.0175,
+      table: {
+        table_name: '<derived2>',
+        access_type: 'ALL',
+        rows: 2,
+        cost: 0.0102,
+        filtered: 100,
+        materialized: {
+          query_block: {
+            select_id: 2,
+            cost: 0.0173,
+            having_condition: 'count(0) > 1',
+            temporary_table: {
+              table: {
+                table_name: 'orders',
+                access_type: 'ALL',
+                rows: 27,
+                cost: 0.0158,
+                filtered: 100,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  const plan = parseMySqlPlan(raw);
+  assert.deepEqual(outline(plan.roots), [
+    'Query block | #1',
+    '  Table scan | <derived2>',
+    '    Materialize',
+    '      Query block | #2',
+    '        Temporary table',
+    '          Table scan | orders',
+  ]);
+  assert.equal(planSize(plan), 6);
+});
+
 test('a MySQL plan of a table named r_rows is not mistaken for an analysed one', () => {
   const raw = JSON.stringify({
     query_block: {

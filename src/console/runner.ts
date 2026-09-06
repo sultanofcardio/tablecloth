@@ -234,8 +234,8 @@ export class QueryRunner {
 
   /**
    * Ask the server for the statement's plan and show it in a Plan tab.
-   * Explain Analyse executes the statement, so a data-modifying one runs
-   * inside a transaction that is rolled back (a savepoint when one is open).
+   * Explain Analyse executes the statement, so it always runs inside a
+   * transaction that is rolled back (a savepoint when one is open).
    */
   private async explain(
     ds: StoredDataSource,
@@ -270,7 +270,7 @@ export class QueryRunner {
     try {
       const request = explainRequest(config.driver, bound.text, effectiveMode, await this.isMariaDbServer(ds, consoleUri));
       this.services.appendOutput(key, { kind: 'cmd', prompt, text: truncate(request.sql, 160) });
-      const rollBack = request.executes && classifyStatement(sql).mutating;
+      const rollBack = request.executes;
       const result = await this.runExplain(ds, request.sql, bound.params, consoleUri, rollBack);
       // the drivers parse JSON columns for the grid; the plan wants the document itself
       const rows: CellValue[][] =

@@ -170,6 +170,8 @@ const MYSQL_OPS: Record<string, string> = {
   duplicates_removal: 'Distinct',
   windowing: 'Window',
   materialized_from_subquery: 'Materialize',
+  materialized: 'Materialize',
+  expression_cache: 'Expression cache',
   buffer_result: 'Buffer result',
   union_result: 'Union',
   intersect_result: 'Intersect',
@@ -212,7 +214,7 @@ const MYSQL_ACCESS: Record<string, string> = {
 const MYSQL_TABLE_HANDLED = new Set([
   'table_name', 'access_type', 'key', 'used_key_parts', 'ref', 'rows_examined_per_scan', 'rows_produced_per_join', 'rows',
   'cost_info', 'cost', 'attached_condition', 'loops', 'r_loops', 'r_rows', 'r_total_time_ms', 'r_table_time_ms', 'r_other_time_ms',
-  'materialized_from_subquery', 'attached_subqueries', 'used_columns', 'possible_keys', 'key_length', 'r_engine_stats',
+  'materialized_from_subquery', 'materialized', 'expression_cache', 'attached_subqueries', 'used_columns', 'possible_keys', 'key_length', 'r_engine_stats',
 ]);
 
 function isObject(value: Json | undefined): value is { [key: string]: Json } {
