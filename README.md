@@ -100,6 +100,7 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 - Console result grids are editable only for single-table SELECTs whose key columns are in the result; table data editors always are.
 - Header funnels list the first 200 distinct values.
 - Cancelling a running statement is unavailable for SQLite, which runs in-process.
+- SQLite has no Explain Analyse; asking for one there shows the plan, with a note in the Output.
 - MySQL `DELIMITER` blocks are not understood by the statement splitter.
 - SQLite empty results lose their column headers.
 - Paste in the console uses the keyboard; Monaco's context-menu Paste is inert inside webviews.
@@ -137,7 +138,7 @@ npm run lint
 npm run package          # build the .vsix
 ```
 
-Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces; `SHOT_SUITE=withoutWhere.cjs` the DELETE-without-WHERE inspection and its warning dialog (`SHOT_NAMES` narrows any of the lists).
+Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces; `SHOT_SUITE=withoutWhere.cjs` the DELETE-without-WHERE inspection and its warning dialog; `SHOT_SUITE=explainPlan.cjs` the Plan tab after Explain Plan and Explain Analyse (`SHOT_NAMES` narrows any of the lists).
 
 **Docs.** The site at [sultanofcardio.github.io/tablecloth](https://sultanofcardio.github.io/tablecloth/) is built by GitHub Pages from the `gh-pages` branch; edit the Markdown there. The roadmap page is generated, see `_tools/README.md` on that branch.
 
