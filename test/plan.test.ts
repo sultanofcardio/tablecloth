@@ -149,6 +149,32 @@ test('a MySQL ANALYZE line whose trailing clause has a colon still names the ope
   assert.equal(node.actualRows, 9);
 });
 
+test('a looped node reports the rows its filter removed over all loops', () => {
+  const plan = parsePostgresPlan(
+    JSON.stringify([
+      {
+        Plan: {
+          'Node Type': 'Seq Scan',
+          'Relation Name': 'orders',
+          Alias: 'o',
+          Filter: '(o.customer_id = c.id)',
+          'Rows Removed by Filter': 5,
+          'Total Cost': 48,
+          'Plan Rows': 2,
+          'Actual Rows': 2,
+          'Actual Loops': 100,
+          'Actual Total Time': 0.04,
+        },
+        'Execution Time': 6.2,
+        'Planning Time': 0.3,
+      },
+    ]),
+  );
+  const scan = plan.roots[0]!;
+  assert.equal(scan.actualRows, 200);
+  assert.ok(scan.detail.endsWith('rows removed 500'), scan.detail);
+});
+
 test('a MySQL subquery attached to a table becomes a child of that table', () => {
   const raw = JSON.stringify({
     query_block: {

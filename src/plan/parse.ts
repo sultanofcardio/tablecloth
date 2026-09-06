@@ -109,15 +109,16 @@ function pgNode(node: { [key: string]: Json }, analysed: boolean): PlanNode {
   });
   const sortKey = Array.isArray(node['Sort Key']) ? `sort key ${(node['Sort Key'] as Json[]).map(String).join(', ')}` : undefined;
   const groupKey = Array.isArray(node['Group Key']) ? `group by ${(node['Group Key'] as Json[]).map(String).join(', ')}` : undefined;
+  const loops = num(node['Actual Loops']);
   const removed = ['Rows Removed by Filter', 'Rows Removed by Join Filter', 'Rows Removed by Index Recheck']
     .map((key) => num(node[key]))
     .filter((n): n is number => n !== undefined && n > 0);
-  const removedText = analysed && removed.length > 0 ? `rows removed ${formatInt(removed.reduce((a, b) => a + b, 0))}` : undefined;
+  const removedText =
+    analysed && removed.length > 0 ? `rows removed ${formatInt(removed.reduce((a, b) => a + b, 0) * (loops ?? 1))}` : undefined;
   const op = [pgOpName(node), str('Join Type') && str('Join Type') !== 'Inner' ? str('Join Type') : undefined]
     .filter(Boolean)
     .join(' ');
 
-  const loops = num(node['Actual Loops']);
   const actualRows = num(node['Actual Rows']);
   const totalTime = num(node['Actual Total Time']);
   const props: [string, string][] = [];
