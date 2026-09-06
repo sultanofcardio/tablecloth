@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitStatements, statementAt } from '../src/sql/splitter';
+import { firstStatement, splitStatements, statementAt } from '../src/sql/splitter';
 
 test('splits simple statements on semicolons', () => {
   const result = splitStatements('SELECT 1; SELECT 2;\nSELECT 3', 'postgres');
@@ -102,4 +102,14 @@ test('statement offsets are exact', () => {
   const [a, b] = splitStatements(sql, 'postgres');
   assert.equal(sql.slice(a!.start, a!.end), 'SELECT 1');
   assert.equal(sql.slice(b!.start, b!.end), 'SELECT 2');
+});
+
+test('firstStatement drops everything after the first terminator', () => {
+  assert.equal(firstStatement('SELECT 1;\nDELETE FROM orders;', 'postgres'), 'SELECT 1');
+  assert.equal(firstStatement("SELECT 'a;b'; DROP TABLE t", 'postgres'), "SELECT 'a;b'");
+});
+
+test('firstStatement falls back to the trimmed text when nothing splits out', () => {
+  assert.equal(firstStatement('  \n ', 'postgres'), '');
+  assert.equal(firstStatement('  SELECT 1  ', 'postgres'), 'SELECT 1');
 });

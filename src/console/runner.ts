@@ -1,16 +1,19 @@
 import * as vscode from 'vscode';
 import { basename } from 'node:path';
-import type { ConsoleBinding, StoredDataSource, TxIsolation, TxMode } from '../core/types';
+import type { CellValue, ConsoleBinding, StoredDataSource, TxIsolation, TxMode } from '../core/types';
 import { ENV_COLOR_HEX, TX_ISOLATION_LABELS } from '../core/types';
 import { errorMessage, formatMillis, qualify, quoteIdent, timestamp, truncate } from '../core/util';
 import { makeEditTarget, resultColumnOrigins, singleSourceRelation, type ChangeStatement } from '../edit/changeSet';
 import { findRelation, findWrittenRelation, referencingColumns } from '../edit/relations';
-import { isCancellationError, type DbSession } from '../drivers/driver';
+import { isCancellationError, normalizeRows, type DbSession } from '../drivers/driver';
 import { isMariaDb } from '../drivers/info';
 import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
-import { splitStatements, statementAt } from '../sql/splitter';
+import { firstStatement, splitStatements, statementAt } from '../sql/splitter';
+import { explainRequest, supportsAnalyse, type ExplainMode } from '../plan/explain';
+import { planSize } from '../plan/model';
+import { parsePlan } from '../plan/parse';
 import {
   countPlan,
   countProbe,
@@ -196,6 +199,172 @@ export class QueryRunner {
     }
   }
 
+  /** Explain Plan / Explain Analyse for the selection, else the statement at the caret. */
+  async explainStatement(editor: vscode.TextEditor, mode: ExplainMode): Promise<void> {
+    const resolved = await this.consoles.resolveBinding(editor.document.uri);
+    if (!resolved) return;
+    let sql: string;
+    if (!editor.selection.isEmpty) {
+      sql = firstStatement(editor.document.getText(editor.selection), resolved.ds.config.driver);
+    } else {
+      const text = editor.document.getText();
+      const statements = splitStatements(text, resolved.ds.config.driver);
+      sql = statementAt(statements, editor.document.offsetAt(editor.selection.active), text)?.sql ?? '';
+    }
+    if (!sql) {
+      void vscode.window.showInformationMessage('No statement at the caret.');
+      return;
+    }
+    await this.services.reveal();
+    await this.explain(resolved.ds, resolved.binding, sql, mode, editor.document.uri);
+  }
+
+  /** Explain extracted statement text on a document's data source (the console webview). */
+  async explainSql(uri: vscode.Uri, sql: string, mode: ExplainMode): Promise<void> {
+    const resolved = await this.consoles.resolveBinding(uri);
+    if (!resolved) return;
+    await this.services.reveal();
+    const first = firstStatement(sql, resolved.ds.config.driver);
+    if (!first) {
+      void vscode.window.showInformationMessage('No statement at the caret.');
+      return;
+    }
+    await this.explain(resolved.ds, resolved.binding, first, mode, uri);
+  }
+
+  /**
+   * Ask the server for the statement's plan and show it in a Plan tab.
+   * Explain Analyse executes the statement, so it always runs inside a
+   * transaction that is rolled back (a savepoint when one is open).
+   */
+  private async explain(
+    ds: StoredDataSource,
+    binding: ConsoleBinding,
+    sql: string,
+    mode: ExplainMode,
+    consoleUri?: vscode.Uri,
+  ): Promise<void> {
+    const config = ds.config;
+    const prompt = this.prompt(ds, binding);
+    const meta = this.meta(ds, binding, sql);
+    const { key, label } = this.consoleIdentity(ds, consoleUri);
+    this.services.upsertConsole(key, label, config.id, config.name, config.driver, config.color === 'none' ? null : ENV_COLOR_HEX[config.color]);
+
+    const effectiveMode: ExplainMode = supportsAnalyse(config.driver) ? mode : 'plan';
+    if (effectiveMode === 'analyse') {
+      const declined = await this.confirmUnguardedWrites(ds, binding, sql, consoleUri);
+      if (declined) {
+        this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] not run: ${declined.verb} without WHERE clause` });
+        return;
+      }
+    }
+    const bound = await this.bindStatement(ds, sql, consoleUri);
+    if (bound === 'cancelled') return;
+
+    const verb = effectiveMode === 'analyse' ? 'explain analyse' : 'explain plan';
+    this.services.setStatus(key, 'running…');
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
+    this.running.set(key, { ds, suffix });
+    this.runningEmitter.fire({ key, running: true });
+    const started = Date.now();
+    try {
+      const request = explainRequest(config.driver, bound.text, effectiveMode, await this.isMariaDbServer(ds, consoleUri));
+      this.services.appendOutput(key, { kind: 'cmd', prompt, text: truncate(request.sql, 160) });
+      const rollBack = request.executes;
+      const result = await this.runExplain(ds, request.sql, bound.params, consoleUri, rollBack);
+      // the drivers parse JSON columns for the grid; the plan wants the document itself
+      const rows: CellValue[][] =
+        request.shape === 'sqlite'
+          ? normalizeRows(result.rows)
+          : result.rows.map((row) => [typeof row[0] === 'string' ? row[0] : JSON.stringify(row[0])]);
+      const plan = parsePlan(config.driver, request.shape, result.columns, rows);
+      const duration = formatMillis(Date.now() - started);
+      const freshBinding = consoleUri ? (this.consoles.getBinding(consoleUri) ?? binding) : binding;
+      await this.services.showPlanTab(
+        key,
+        `plan:${sql}`,
+        {
+          plan,
+          canAnalyse: !plan.analysed && supportsAnalyse(config.driver),
+          analyse: () => this.explain(ds, freshBinding, sql, 'analyse', consoleUri),
+        },
+        meta,
+      );
+      this.services.setStatus(key, duration);
+      const nodes = planSize(plan);
+      const figures = plan.executionMs !== undefined ? `, executed in ${formatMillis(plan.executionMs)}` : '';
+      const note = `${verb}: ${nodes} node${nodes === 1 ? '' : 's'}${figures}${rollBack ? ' (rolled back)' : ''}${mode !== effectiveMode ? ' (SQLite has no Explain Analyse)' : ''}`;
+      this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] ${note}` });
+    } catch (err) {
+      const message = errorMessage(err);
+      this.services.showError(key, message, meta);
+      this.services.setStatus(key, 'error');
+      this.services.appendOutput(key, { kind: 'error', text: `[${timestamp()}] ${message}` });
+    } finally {
+      this.running.delete(key);
+      this.runningEmitter.fire({ key, running: false });
+    }
+  }
+
+  /**
+   * Whether the server is MariaDB, read from the session the run would use;
+   * a console never introspects, so the cached catalog may not exist yet.
+   */
+  private async isMariaDbServer(ds: StoredDataSource, consoleUri?: vscode.Uri): Promise<boolean> {
+    if (ds.config.driver !== 'mysql') return false;
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
+    return this.sessions.run(ds.config, async (session) => isMariaDb(session.serverVersion), suffix);
+  }
+
+  /**
+   * Run an EXPLAIN on the console's session, raw (the plan is a document, not
+   * grid cells). Inside an open transaction it runs under a savepoint so a
+   * failure cannot abort the user's transaction. With `rollBack` the
+   * statement's effects are undone too: the savepoint is rolled back, or a
+   * transaction of its own is opened and rolled back.
+   */
+  private runExplain(
+    ds: StoredDataSource,
+    sql: string,
+    params: unknown[] | undefined,
+    consoleUri: vscode.Uri | undefined,
+    rollBack: boolean,
+  ): Promise<{ columns: string[]; rows: unknown[][] }> {
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
+    return this.sessions.run(
+      ds.config,
+      async (session) => {
+        if (consoleUri) {
+          await this.ensureSchemaContext(session, ds, consoleUri);
+          if (rollBack) await this.applyIsolation(session, ds, consoleUri);
+          else await this.ensureManualTransaction(session, ds, consoleUri);
+        }
+        const inTx = this.isInTx(ds.config.id, consoleUri);
+        if (inTx) {
+          await session.query('SAVEPOINT tablecloth_explain');
+          let failed = false;
+          try {
+            return await session.queryRaw(sql, params);
+          } catch (err) {
+            failed = true;
+            throw err;
+          } finally {
+            if (rollBack || failed) await session.query('ROLLBACK TO SAVEPOINT tablecloth_explain').catch(() => undefined);
+            await session.query('RELEASE SAVEPOINT tablecloth_explain').catch(() => undefined);
+          }
+        }
+        if (!rollBack) return session.queryRaw(sql, params);
+        await session.query(this.beginSql(ds));
+        try {
+          return await session.queryRaw(sql, params);
+        } finally {
+          await session.query('ROLLBACK').catch(() => undefined);
+        }
+      },
+      suffix,
+    );
+  }
+
   async runFile(editor: vscode.TextEditor): Promise<void> {
     await this.runScriptFor(editor.document.uri, editor.document.getText(), editor.document.fileName);
   }
@@ -302,18 +471,23 @@ export class QueryRunner {
     this.appliedSchemaContext.set(session, key);
   }
 
+  /** The console's configured isolation level, applied once per session. */
+  private async applyIsolation(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
+    const tx = this.consoles.getTxState(consoleUri);
+    if (tx.isolation === 'default' || this.appliedIsolation.get(session) === tx.isolation) return;
+    const level = ISOLATION_SQL[tx.isolation];
+    const sql =
+      ds.config.driver === 'postgres'
+        ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
+        : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
+    await session.query(sql);
+    this.appliedIsolation.set(session, tx.isolation);
+  }
+
   /** Open the console's manual transaction if its mode asks for one and none is open. */
   private async ensureManualTransaction(session: DbSession, ds: StoredDataSource, consoleUri: vscode.Uri): Promise<void> {
+    await this.applyIsolation(session, ds, consoleUri);
     const tx = this.consoles.getTxState(consoleUri);
-    if (tx.isolation !== 'default' && this.appliedIsolation.get(session) !== tx.isolation) {
-      const level = ISOLATION_SQL[tx.isolation];
-      const sql =
-        ds.config.driver === 'postgres'
-          ? `SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL ${level}`
-          : `SET SESSION TRANSACTION ISOLATION LEVEL ${level}`;
-      await session.query(sql);
-      this.appliedIsolation.set(session, tx.isolation);
-    }
     if (tx.mode === 'manual' && !this.consoles.isInTx(consoleUri)) {
       await session.query(this.beginSql(ds));
       this.consoles.setInTx(consoleUri, true);

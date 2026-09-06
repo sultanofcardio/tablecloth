@@ -151,4 +151,5 @@ export type GridRequest =
   | { type: 'paste' }
   | { type: 'copyText'; text: string }
   | { type: 'openSettings'; section: string }
+  | { type: 'explainAnalyse' }
   | { type: 'notify'; text: string };

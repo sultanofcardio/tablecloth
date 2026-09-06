@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mysqlDriver } from '../../src/drivers/mysql';
 import { wrapCount, wrapPaged } from '../../src/sql/paging';
+import { explainRequest } from '../../src/plan/explain';
+import { isMariaDb } from '../../src/drivers/info';
+import { planNodes } from '../../src/plan/model';
+import { parsePlan } from '../../src/plan/parse';
 import type { DataSourceConfig } from '../../src/core/types';
 
 // Gated: set TABLECLOTH_MYSQL_PORT to run, e.g. against:
@@ -73,6 +77,30 @@ test('mysql end to end', { skip: !PORT }, async (t) => {
     assert.equal(Number(page.rows[0]![3]), 700);
     const count = await session.query(wrapCount('mysql', 'SELECT * FROM orders'));
     assert.equal(Number(count.rows[0]![0]), 700);
+  });
+
+  await t.test('explain plan and explain analyse parse into the shared model', async () => {
+    const mariadb = isMariaDb(session.serverVersion);
+    const sql = "SELECT c.email, count(*) FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'shipped' GROUP BY c.email";
+    const cell = (rows: unknown[][]) => rows.map((row) => [typeof row[0] === 'string' ? row[0] : JSON.stringify(row[0])]);
+
+    const plan = explainRequest('mysql', sql, 'plan', mariadb);
+    const raw = await session.queryRaw(plan.sql);
+    const parsed = parsePlan('mysql', plan.shape, raw.columns, cell(raw.rows));
+    assert.equal(parsed.analysed, false);
+    assert.equal(parsed.roots[0]!.op, 'Query block');
+    const accesses = [...planNodes(parsed.roots)].filter((n) => /scan|lookup/i.test(n.op));
+    assert.equal(accesses.length, 2, 'both tables are accessed');
+    assert.ok(accesses.every((n) => n.rows !== undefined), 'row estimates are present');
+
+    const analyse = explainRequest('mysql', sql, 'analyse', mariadb);
+    assert.equal(analyse.executes, true);
+    const rawAnalyse = await session.queryRaw(analyse.sql);
+    const analysed = parsePlan('mysql', analyse.shape, rawAnalyse.columns, cell(rawAnalyse.rows));
+    assert.equal(analysed.analysed, true);
+    const timed = [...planNodes(analysed.roots)].filter((n) => n.timeMs !== undefined);
+    assert.ok(timed.length > 0, 'nodes carry runtime figures');
+    assert.ok([...planNodes(analysed.roots)].some((n) => n.actualRows !== undefined), 'actual rows are present');
   });
 
   await session.close();

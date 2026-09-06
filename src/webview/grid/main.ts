@@ -22,6 +22,7 @@ import {
   type OutputEntryDto,
   type ServicesMessage,
 } from './chrome';
+import { initPlanView, renderPlan, type PlanMessage } from './plan';
 import { compareCells } from './compare';
 import { composeWhere, funnelClause, resyncWhere, sqlLiteral, toggleSort } from './filters';
 import { ICONS } from './icons';
@@ -85,6 +86,7 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 const post = (message: unknown) => vscode.postMessage(message);
+initPlanView(post);
 const mode = document.body.dataset.mode;
 
 const PAGE_SIZES = [
@@ -104,7 +106,7 @@ function savePrefs(): void {
 }
 
 // ------------------------------------------------------------ chrome & view
-function setView(view: 'grid' | 'output' | 'info'): void {
+function setView(view: 'grid' | 'output' | 'info' | 'plan'): void {
   S.view = view;
   applyView();
 }
@@ -1373,6 +1375,25 @@ window.addEventListener('message', (event) => {
     case 'info':
       renderInfo(msg.lines ?? []);
       setView('info');
+      break;
+    case 'plan':
+      cancelEdit();
+      closeDialog();
+      S.data = null;
+      clearChanges();
+      clearSelection();
+      updateStatus();
+      renderPlan(msg as PlanMessage);
+      if (msg.meta) {
+        el('status-context').textContent = msg.meta.contextLabel ?? '';
+        el('status-ro').hidden = !msg.meta.readOnly;
+        const env = el('status-env');
+        if (msg.meta.envColor) {
+          env.style.background = msg.meta.envColor;
+          env.hidden = false;
+        } else env.hidden = true;
+      }
+      setView('plan');
       break;
     case 'menu':
       showHostMenu(msg, post);

@@ -492,12 +492,13 @@ function wireToolbar(): void {
     el(id).addEventListener('click', () => vscode.postMessage({ type: 'action', name }));
   }
   // dropdowns: the host answers with showMenu, anchored back to the button
-  for (const name of ['tx', 'schema', 'history'] as const) {
+  for (const name of ['tx', 'schema', 'history', 'explain'] as const) {
     el(`tb-${name}`).addEventListener('click', () => vscode.postMessage({ type: 'menu', name }));
   }
 }
 
 const MENU_ANCHORS: Record<string, string> = {
+  explain: 'tb-explain',
   tx: 'tb-tx',
   schema: 'tb-schema',
   schemaDs: 'tb-schema',
@@ -564,7 +565,8 @@ window.addEventListener('message', (event) => {
         footer: msg.footer,
         filter: !!msg.filter,
         minWidth: msg.name === 'history' ? 340 : 240,
-        onPick: (id) => vscode.postMessage({ type: 'menuPick', name: msg.name, id }),
+        // the Explain menu acts on the statement at the caret, which only the editor knows
+        onPick: (id) => vscode.postMessage({ type: 'menuPick', name: msg.name, id, sql: msg.name === 'explain' ? currentSql() : undefined }),
       });
       break;
     }
@@ -610,6 +612,21 @@ function createEditor(initialText: string): void {
   });
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.F2, () => {
     if (state.running) vscode.postMessage({ type: 'action', name: 'cancel' });
+  });
+  // IntelliJ's editor context menu: Explain Plan and Explain Analyse for the statement at the caret
+  editor.addAction({
+    id: 'tablecloth.explainPlan',
+    label: 'Explain Plan',
+    contextMenuGroupId: 'tablecloth',
+    contextMenuOrder: 1,
+    run: () => vscode.postMessage({ type: 'explain', mode: 'plan', sql: currentSql() }),
+  });
+  editor.addAction({
+    id: 'tablecloth.explainAnalyse',
+    label: 'Explain Analyse',
+    contextMenuGroupId: 'tablecloth',
+    contextMenuOrder: 2,
+    run: () => vscode.postMessage({ type: 'explain', mode: 'analyse', sql: currentSql() }),
   });
 
   // Webviews cannot read the OS clipboard directly, so ⌘V round-trips through

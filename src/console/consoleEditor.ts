@@ -206,6 +206,13 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
         case 'runScript':
           await this.runner.runScriptFor(uri, document.getText(), 'console');
           break;
+        case 'explain':
+          if (typeof message.sql === 'string' && message.sql.trim()) {
+            await this.runner.explainSql(uri, message.sql, message.mode === 'analyse' ? 'analyse' : 'plan');
+          } else {
+            void vscode.window.showInformationMessage('No statement at the caret.');
+          }
+          break;
         case 'parameters': {
           const resolve = pendingPrompts.get(Number(message.id));
           if (resolve) {
@@ -240,7 +247,7 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
           await this.openMenu(String(message.name), uri, panel);
           break;
         case 'menuPick':
-          await this.handleMenuPick(String(message.name), String(message.id), uri, panel);
+          await this.handleMenuPick(String(message.name), String(message.id), uri, panel, message.sql);
           break;
       }
     });
@@ -291,11 +298,26 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
       case 'history':
         void panel.webview.postMessage({ type: 'showMenu', name, items: this.history.menuItems(), filter: true });
         break;
+      case 'explain':
+        void panel.webview.postMessage({
+          type: 'showMenu',
+          name,
+          items: [
+            { id: 'plan', label: 'Explain Plan' },
+            { id: 'analyse', label: 'Explain Analyse' },
+          ],
+          footer: 'Explain Analyse runs the statement; changes are rolled back where the engine allows it',
+        });
+        break;
     }
   }
 
-  private async handleMenuPick(name: string, id: string, uri: vscode.Uri, panel: vscode.WebviewPanel): Promise<void> {
+  private async handleMenuPick(name: string, id: string, uri: vscode.Uri, panel: vscode.WebviewPanel, sql?: unknown): Promise<void> {
     switch (name) {
+      case 'explain':
+        if (typeof sql === 'string' && sql.trim()) await this.runner.explainSql(uri, sql, id === 'analyse' ? 'analyse' : 'plan');
+        else void vscode.window.showInformationMessage('No statement at the caret.');
+        break;
       case 'tx':
         await this.runner.handleTxPick(uri, id);
         break;
@@ -346,6 +368,10 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
     </button>
     <button id="tb-runscript" class="tbtn" title="Run the whole console">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5v13l9-6.5z" fill="currentColor" stroke="none"/><path d="M15 5.5v13l6-6.5z" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button id="tb-explain" class="tbtn" title="Explain Plan / Explain Analyse for the statement at the caret">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11"/><path d="M12 12h8"/><path d="M15 18h5"/><path d="M5 6v.01"/><path d="M8 12v.01"/><path d="M11 18v.01"/></svg>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6"/></svg>
     </button>
     <button id="tb-stop" class="tbtn stop" title="Cancel running statement (⌘F2)" disabled>
       <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>

@@ -123,6 +123,14 @@ export function statementAt(statements: SplitStatement[], offset: number, source
   return undefined;
 }
 
+/**
+ * The first statement of a fragment (a selection, or text sent by a webview),
+ * for the single-statement commands; anything after its terminator is dropped.
+ */
+export function firstStatement(source: string, dialect: DriverId): string {
+  return splitStatements(source, dialect)[0]?.sql ?? source.trim();
+}
+
 function skipToLineEnd(source: string, from: number): number {
   const nl = source.indexOf('\n', from);
   return nl === -1 ? source.length : nl + 1;

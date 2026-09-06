@@ -23,6 +23,7 @@ import type {
   ResultMessage,
   SubmitPreviewMessage,
 } from './gridProtocol';
+import { panelPlan, type QueryPlan } from '../plan/model';
 
 export interface GridPage {
   columns: ColumnInfo[];
@@ -175,6 +176,8 @@ export class GridController {
   private pendingSubmit?: ChangeStatement[];
   /** Invoked with each rendered page (the Services view caches pages per result tab). */
   onDidRender?: (page: GridPage, state: GridViewState) => void;
+  /** The Plan tab's "Explain Analyse" button; set by whoever showed the plan. */
+  onExplainAnalyse?: () => void;
 
   constructor(private readonly host: GridHost) {}
 
@@ -249,6 +252,17 @@ export class GridController {
     this.state.offset = 0;
     this.state.total = undefined;
     await this.load();
+  }
+
+  /** Present a query plan in place of a result. */
+  showPlan(plan: QueryPlan, meta: GridMeta, statement: string | null, canAnalyse: boolean): void {
+    this.meta = meta;
+    this.provider = undefined;
+    this.current = undefined;
+    this.pendingSubmit = undefined;
+    const message = { type: 'plan', plan: panelPlan(plan), statement, canAnalyse, meta: this.messageMeta() };
+    this.lastRender = message;
+    this.post(message);
   }
 
   showMessage(text: string, kind: 'info' | 'error', meta?: GridMeta): void {
@@ -621,6 +635,9 @@ export class GridController {
         break;
       case 'openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', String(message.section ?? 'tablecloth'));
+        break;
+      case 'explainAnalyse':
+        this.onExplainAnalyse?.();
         break;
       case 'notify':
         vscode.window.setStatusBarMessage(`Tablecloth: ${String(message.text ?? '')}`, 4000);

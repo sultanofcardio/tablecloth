@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { errorMessage } from '../core/util';
+import type { QueryPlan } from '../plan/model';
 import { GridController, type GridHost, type GridMeta, type GridPage, type GridProvider, type GridViewState } from './grid';
 import { gridHtml } from './gridHtml';
 
@@ -41,16 +42,27 @@ export interface ConsoleSyncEntry {
   envColor: string | null;
 }
 
+/** A Plan tab: the query plan and how to upgrade it to Explain Analyse. */
+export interface PlanTab {
+  plan: QueryPlan;
+  /** The Explain Analyse button is offered (a dialect with runtime figures, plan not yet analysed). */
+  canAnalyse: boolean;
+  analyse: () => Promise<void>;
+}
+
 interface ResultTab {
   id: string;
   /** The statement that produced this tab; re-running it reuses the tab. */
   sqlKey: string;
   title: string;
-  provider: GridProvider;
   meta: GridMeta;
-  page: GridPage;
+  /** A result grid … */
+  provider?: GridProvider;
+  page?: GridPage;
   /** Paging and filter state, so switching tabs restores the view as it was. */
   state?: GridViewState;
+  /** … or a query plan. */
+  plan?: PlanTab;
 }
 
 interface ConsoleEntry {
@@ -67,6 +79,8 @@ interface ConsoleEntry {
   /** The content pane shows the error message instead of a tab's content. */
   showingError: boolean;
   resultCounter: number;
+  /** Monotonic like resultCounter, so a closed plan tab's number is never reused. */
+  planCounter: number;
   /** This console's own Output log, like IntelliJ's per-console output. */
   output: OutputEntry[];
 }
@@ -98,11 +112,23 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     this.grid = new GridController(host);
     this.grid.onDidRender = (page, state) => {
       const tab = this.activeTab();
-      if (tab) {
+      if (tab && !tab.plan) {
         tab.page = page;
         tab.state = state;
       }
     };
+  }
+
+  /** Put a tab's content in the pane: its cached page, or its plan. */
+  private async showTab(tab: ResultTab): Promise<void> {
+    if (tab.plan) {
+      const plan = tab.plan;
+      this.grid.onExplainAnalyse = () => void plan.analyse();
+      this.grid.showPlan(plan.plan, tab.meta, tab.meta.statement ?? null, plan.canAnalyse);
+      return;
+    }
+    this.grid.onExplainAnalyse = undefined;
+    if (tab.provider && tab.page) await this.grid.show(tab.provider, tab.meta, { page: tab.page, state: tab.state });
   }
 
   setDataSourceActions(actions: DataSourceActions): void {
@@ -240,6 +266,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
               title: t.title,
               active: !error && t.id === active.activeTabId,
               closable: true,
+              kind: t.plan ? 'plan' : 'grid',
             })),
           ]
         : [{ id: OUTPUT_TAB, title: 'Output', active: true, closable: false }];
@@ -267,6 +294,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
           activeTabId: OUTPUT_TAB,
           showingError: false,
           resultCounter: 0,
+          planCounter: 0,
           output: [],
         }),
         label: entry.label,
@@ -312,6 +340,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
         activeTabId: OUTPUT_TAB,
         showingError: false,
         resultCounter: 0,
+        planCounter: 0,
         output: [],
       });
     }
@@ -337,7 +366,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     if (this.activeConsoleKey === key) {
       this.activeConsoleKey = [...this.consoles.keys()].pop();
       const next = this.activeTab();
-      if (next) void this.grid.show(next.provider, next.meta, { page: next.page, state: next.state });
+      if (next) void this.showTab(next);
       this.postOutputReset();
     }
     this.postChrome();
@@ -362,6 +391,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
       tab.meta = meta;
       tab.page = page;
       tab.state = undefined;
+      tab.plan = undefined;
     } else {
       tab = { id: randomBytes(6).toString('hex'), sqlKey, title: titleFactory(), provider, meta, page };
       entry.tabs.push(tab);
@@ -371,7 +401,44 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     const consoleChanged = this.activeConsoleKey !== key;
     this.activeConsoleKey = key;
     this.selectedDsId = undefined;
+    this.grid.onExplainAnalyse = undefined;
     await this.grid.show(provider, meta, { page });
+    this.postChrome();
+    if (consoleChanged) this.postOutputReset();
+  }
+
+  /**
+   * Show a query plan in its own tab next to the results, like IntelliJ's
+   * Plan tab; explaining the same statement again reuses it. The first plan
+   * tab of a console is "Plan", later ones "Plan 2", "Plan 3" …
+   */
+  async showPlanTab(key: string, sqlKey: string, plan: PlanTab, meta: GridMeta): Promise<void> {
+    const entry = this.consoles.get(key);
+    if (!entry) return;
+    let tab = entry.tabs.find((t) => t.sqlKey === sqlKey);
+    if (tab) {
+      tab.plan = plan;
+      tab.meta = meta;
+      tab.provider = undefined;
+      tab.page = undefined;
+      tab.state = undefined;
+    } else {
+      entry.planCounter += 1;
+      tab = {
+        id: randomBytes(6).toString('hex'),
+        sqlKey,
+        title: entry.planCounter === 1 ? 'Plan' : `Plan ${entry.planCounter}`,
+        meta,
+        plan,
+      };
+      entry.tabs.push(tab);
+    }
+    entry.activeTabId = tab.id;
+    entry.showingError = false;
+    const consoleChanged = this.activeConsoleKey !== key;
+    this.activeConsoleKey = key;
+    this.selectedDsId = undefined;
+    await this.showTab(tab);
     this.postChrome();
     if (consoleChanged) this.postOutputReset();
   }
@@ -396,7 +463,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     this.selectedDsId = undefined;
     this.activeConsoleKey = key;
     const tab = this.activeTab();
-    if (tab) await this.grid.show(tab.provider, tab.meta, { page: tab.page, state: tab.state });
+    if (tab) await this.showTab(tab);
     this.postChrome();
     if (consoleChanged) this.postOutputReset();
   }
@@ -436,7 +503,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     entry.showingError = false;
     if (id !== OUTPUT_TAB) {
       const tab = entry.tabs.find((t) => t.id === id);
-      if (tab) await this.grid.show(tab.provider, tab.meta, { page: tab.page, state: tab.state });
+      if (tab) await this.showTab(tab);
     }
     this.postChrome();
   }
@@ -450,7 +517,7 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
     if (entry.activeTabId === id) {
       const next = entry.tabs[index] ?? entry.tabs[index - 1];
       entry.activeTabId = next?.id ?? OUTPUT_TAB;
-      if (next) await this.grid.show(next.provider, next.meta, { page: next.page, state: next.state });
+      if (next) await this.showTab(next);
     }
     this.postChrome();
   }

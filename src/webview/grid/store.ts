@@ -69,7 +69,7 @@ export const S = {
   editing: null as { r: number; c: number; input: HTMLInputElement } | null,
   busy: false,
   /** Chrome state for the Services panel. */
-  view: 'grid' as 'grid' | 'output' | 'info',
+  view: 'grid' as 'grid' | 'output' | 'info' | 'plan',
   baseStatus: '',
   /** The hand-written part of the WHERE text; funnel clauses are ANDed after it. */
   manualWhere: '',

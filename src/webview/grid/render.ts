@@ -476,7 +476,7 @@ export function updateToolbar(): void {
   el('tb-view').classList.toggle('on', S.prefs.transposed || S.prefs.view !== 'table');
   const extractor = data.extractors.find((e) => e.id === data.activeExtractor);
   el('extractor-label').textContent = extractor?.label ?? data.activeExtractor;
-  el('status-ro').hidden = !meta.readOnly;
+  if (S.view !== 'plan') el('status-ro').hidden = !meta.readOnly;
   el('status-busy').hidden = !S.busy;
   el('f-where').toggleAttribute('data-active', data.where.trim().length > 0);
   el('f-order').toggleAttribute('data-active', data.orderBy.trim().length > 0);
@@ -504,11 +504,12 @@ export function applyView(): void {
   const showGrid = S.view === 'grid';
   el('output').hidden = S.view !== 'output';
   el('infopane').hidden = S.view !== 'info';
+  el('planview').hidden = S.view !== 'plan';
   el('gridarea').hidden = !showGrid;
   el('valueeditor').hidden = !showGrid || !S.prefs.valueEditor || !S.data;
   const message = el('message');
   message.hidden = showGrid ? message.dataset.empty === '1' : true;
-  el('statement').hidden = !showGrid || !el('statement').textContent;
+  el('statement').hidden = (!showGrid && S.view !== 'plan') || !el('statement').textContent;
   updateToolbar();
   updatePager();
 }

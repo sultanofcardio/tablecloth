@@ -1,0 +1,116 @@
+{
+  "query_block": {
+    "union_result": {
+      "using_temporary_table": true,
+      "select_id": 4,
+      "table_name": "<union1,3>",
+      "access_type": "ALL",
+      "query_specifications": [
+        {
+          "dependent": false,
+          "cacheable": true,
+          "query_block": {
+            "select_id": 1,
+            "cost_info": {
+              "query_cost": "2.03"
+            },
+            "nested_loop": [
+              {
+                "table": {
+                  "table_name": "customers",
+                  "access_type": "range",
+                  "possible_keys": [
+                    "PRIMARY",
+                    "email"
+                  ],
+                  "key": "email",
+                  "used_key_parts": [
+                    "email"
+                  ],
+                  "key_length": "482",
+                  "rows_examined_per_scan": 1,
+                  "rows_produced_per_join": 1,
+                  "filtered": "100.00",
+                  "using_index": true,
+                  "cost_info": {
+                    "read_cost": "0.36",
+                    "eval_cost": "0.10",
+                    "prefix_cost": "0.46",
+                    "data_read_per_join": "504"
+                  },
+                  "used_columns": [
+                    "id",
+                    "email"
+                  ],
+                  "attached_condition": "(`acme`.`customers`.`email` like 'a%')"
+                }
+              },
+              {
+                "table": {
+                  "table_name": "orders",
+                  "access_type": "ref",
+                  "possible_keys": [
+                    "customer_id"
+                  ],
+                  "key": "customer_id",
+                  "used_key_parts": [
+                    "customer_id"
+                  ],
+                  "key_length": "4",
+                  "ref": [
+                    "acme.customers.id"
+                  ],
+                  "rows_examined_per_scan": 9,
+                  "rows_produced_per_join": 9,
+                  "filtered": "100.00",
+                  "cost_info": {
+                    "read_cost": "0.68",
+                    "eval_cost": "0.90",
+                    "prefix_cost": "2.04",
+                    "data_read_per_join": "864"
+                  },
+                  "used_columns": [
+                    "id",
+                    "customer_id",
+                    "status",
+                    "total"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "dependent": false,
+          "cacheable": true,
+          "query_block": {
+            "select_id": 3,
+            "cost_info": {
+              "query_cost": "2.95"
+            },
+            "table": {
+              "table_name": "orders",
+              "access_type": "ALL",
+              "rows_examined_per_scan": 27,
+              "rows_produced_per_join": 8,
+              "filtered": "33.33",
+              "cost_info": {
+                "read_cost": "2.05",
+                "eval_cost": "0.90",
+                "prefix_cost": "2.95",
+                "data_read_per_join": "863"
+              },
+              "used_columns": [
+                "id",
+                "customer_id",
+                "status",
+                "total"
+              ],
+              "attached_condition": "(`acme`.`orders`.`total` > 90.00)"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
