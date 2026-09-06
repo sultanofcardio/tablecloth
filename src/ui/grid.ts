@@ -23,7 +23,7 @@ import type {
   ResultMessage,
   SubmitPreviewMessage,
 } from './gridProtocol';
-import type { QueryPlan } from '../plan/model';
+import { panelPlan, type QueryPlan } from '../plan/model';
 
 export interface GridPage {
   columns: ColumnInfo[];
@@ -260,7 +260,7 @@ export class GridController {
     this.provider = undefined;
     this.current = undefined;
     this.pendingSubmit = undefined;
-    const message = { type: 'plan', plan, statement, canAnalyse, meta: this.messageMeta() };
+    const message = { type: 'plan', plan: panelPlan(plan), statement, canAnalyse, meta: this.messageMeta() };
     this.lastRender = message;
     this.post(message);
   }

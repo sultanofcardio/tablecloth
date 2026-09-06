@@ -1,13 +1,13 @@
 // The Plan tab of the Tablecloth panel: a query plan as a collapsible tree
 // with costs and row estimates, or as a flat table, with the runtime figures
 // and a heat bar per node after Explain Analyse.
-import type { PlanNode, QueryPlan } from '../../plan/model';
+import type { PanelPlan, PlanNode } from '../../plan/model';
 import { ICONS } from './icons';
 import { el, h } from './widgets';
 
 export interface PlanMessage {
   type: 'plan';
-  plan: QueryPlan;
+  plan: PanelPlan;
   /** The statement the plan is for: shown above the plan like a result's, and identifies the tab's plan. */
   statement: string | null;
   /** The dialect can produce runtime figures, so the Explain Analyse button is offered. */
@@ -38,7 +38,7 @@ function fmtMs(n: number | undefined): string {
 }
 
 /** Inclusive time of the slowest root, the 100% mark of the heat bars. */
-function rootTime(plan: QueryPlan): number {
+function rootTime(plan: PanelPlan): number {
   return Math.max(0, ...plan.roots.map((r) => r.timeMs ?? 0));
 }
 
@@ -101,7 +101,7 @@ function draw(): void {
 
 // ------------------------------------------------------------ tree
 
-function treeHeader(plan: QueryPlan): HTMLElement {
+function treeHeader(plan: PanelPlan): HTMLElement {
   const cells = [h('span', {}, 'Operation'), h('span', {}, 'Cost'), h('span', {}, plan.analysed ? 'Actual rows' : 'Rows')];
   if (plan.analysed) cells.push(h('span', {}, 'Time'));
   else cells.push(h('span', {}));
@@ -151,7 +151,7 @@ function treeRows(container: HTMLElement, node: PlanNode, depth: number, total: 
 
 // ------------------------------------------------------------ table
 
-function tableView(plan: QueryPlan): HTMLElement {
+function tableView(plan: PanelPlan): HTMLElement {
   const columns: { label: string; cell: (n: PlanNode, depth: number) => string; numeric?: boolean }[] = [
     { label: 'Operation', cell: (n, depth) => `${'  '.repeat(depth)}${n.op}` },
     { label: 'Detail', cell: (n) => n.detail },

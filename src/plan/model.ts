@@ -31,8 +31,21 @@ export interface QueryPlan {
   /** Whole-statement runtime figures, in milliseconds (Explain Analyse). */
   executionMs?: number;
   planningMs?: number;
-  /** The plan as the server returned it (JSON or text). */
+  /** The plan as the server returned it (JSON or text). Host-side only. */
   raw: string;
+}
+
+/** A plan as the panel sees it: the server document stays on the host. */
+export type PanelPlan = Omit<QueryPlan, 'raw'>;
+
+export function panelPlan(plan: QueryPlan): PanelPlan {
+  return {
+    dialect: plan.dialect,
+    analysed: plan.analysed,
+    roots: plan.roots,
+    executionMs: plan.executionMs,
+    planningMs: plan.planningMs,
+  };
 }
 
 /** Walk the nodes depth first. */

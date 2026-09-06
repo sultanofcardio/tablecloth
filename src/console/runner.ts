@@ -10,7 +10,7 @@ import { isMariaDb } from '../drivers/info';
 import type { SessionManager } from '../drivers/sessions';
 import { classifyStatement } from '../sql/classify';
 import { bindParameters, findParameters, parameterNames } from '../sql/params';
-import { splitStatements, statementAt } from '../sql/splitter';
+import { firstStatement, splitStatements, statementAt } from '../sql/splitter';
 import { explainRequest, supportsAnalyse, type ExplainMode } from '../plan/explain';
 import { planSize } from '../plan/model';
 import { parsePlan } from '../plan/parse';
@@ -205,7 +205,7 @@ export class QueryRunner {
     if (!resolved) return;
     let sql: string;
     if (!editor.selection.isEmpty) {
-      sql = editor.document.getText(editor.selection).trim();
+      sql = firstStatement(editor.document.getText(editor.selection), resolved.ds.config.driver);
     } else {
       const text = editor.document.getText();
       const statements = splitStatements(text, resolved.ds.config.driver);
@@ -224,8 +224,7 @@ export class QueryRunner {
     const resolved = await this.consoles.resolveBinding(uri);
     if (!resolved) return;
     await this.services.reveal();
-    const statements = splitStatements(sql, resolved.ds.config.driver);
-    const first = statements[0]?.sql ?? sql.trim();
+    const first = firstStatement(sql, resolved.ds.config.driver);
     if (!first) {
       void vscode.window.showInformationMessage('No statement at the caret.');
       return;
