@@ -833,9 +833,13 @@ body.vscode-light .tc-li.selected .tc-li-detail { color: #6c707e; }
 .heat { display: block; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #4ec9a0, #e2b93d, #f26d78); width: var(--w); flex: none; max-width: 100px; }
 .plms { font-family: var(--ij-mono); font-size: 11px; color: var(--ij-fg-dim); white-space: nowrap; }
 .plempty { padding: 16px 14px; color: var(--ij-fg-dim); }
-.pltable { border-collapse: collapse; width: 100%; font-size: 12px; }
+/* auto layout, so the numeric columns take only what their figures need (width: 1%) and
+   Detail absorbs the rest (width: 100% with max-width: 0, which lets it ellipsize) */
+.pltable { border-collapse: collapse; table-layout: auto; width: 100%; font-size: 12px; }
 .pltable th { position: sticky; top: 0; background: var(--ij-bg); color: var(--ij-fg-dim); font-weight: 500; font-size: 11px; text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--ij-border); white-space: nowrap; }
-.pltable td { padding: 3px 10px; border-bottom: 1px solid var(--ij-panel); white-space: pre; color: var(--ij-fg); max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
+.pltable td { padding: 3px 10px; border-bottom: 1px solid var(--ij-panel); white-space: pre; color: var(--ij-fg); overflow: hidden; text-overflow: ellipsis; }
+.pltable th:first-child, .pltable td:first-child { width: 1%; }
+.pltable th:nth-child(2), .pltable td:nth-child(2) { width: 100%; min-width: 180px; max-width: 0; }
 .pltable td:nth-child(2) { color: var(--ij-fg-dim); white-space: nowrap; }
-.pltable th.num, .pltable td.num { text-align: right; font-family: var(--ij-mono); font-size: 11.5px; }
+.pltable th.num, .pltable td.num { text-align: right; font-family: var(--ij-mono); font-size: 11.5px; white-space: nowrap; width: 1%; }
 .pltable tbody tr:hover { background: var(--ij-hover); }
