@@ -306,7 +306,7 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
             { id: 'plan', label: 'Explain Plan' },
             { id: 'analyse', label: 'Explain Analyse' },
           ],
-          footer: 'Explain Analyse runs the statement; changes are rolled back',
+          footer: 'Explain Analyse runs the statement; changes are rolled back where the engine allows it',
         });
         break;
     }

@@ -251,19 +251,25 @@ export class QueryRunner {
     this.services.upsertConsole(key, label, config.id, config.name, config.driver, config.color === 'none' ? null : ENV_COLOR_HEX[config.color]);
 
     const effectiveMode: ExplainMode = supportsAnalyse(config.driver) ? mode : 'plan';
+    if (effectiveMode === 'analyse') {
+      const declined = await this.confirmUnguardedWrites(ds, binding, sql, consoleUri);
+      if (declined) {
+        this.services.appendOutput(key, { kind: 'meta', text: `[${timestamp()}] not run: ${declined.verb} without WHERE clause` });
+        return;
+      }
+    }
     const bound = await this.bindStatement(ds, sql, consoleUri);
     if (bound === 'cancelled') return;
 
-    const serverVersion = this.sessions.getCatalog(config.id)?.serverVersion ?? '';
-    const request = explainRequest(config.driver, bound.text, effectiveMode, isMariaDb(serverVersion));
     const verb = effectiveMode === 'analyse' ? 'explain analyse' : 'explain plan';
     this.services.setStatus(key, 'running…');
-    this.services.appendOutput(key, { kind: 'cmd', prompt, text: truncate(request.sql, 160) });
     const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
     this.running.set(key, { ds, suffix });
     this.runningEmitter.fire({ key, running: true });
     const started = Date.now();
     try {
+      const request = explainRequest(config.driver, bound.text, effectiveMode, await this.isMariaDbServer(ds, consoleUri));
+      this.services.appendOutput(key, { kind: 'cmd', prompt, text: truncate(request.sql, 160) });
       const rollBack = request.executes && classifyStatement(sql).mutating;
       const result = await this.runExplain(ds, request.sql, bound.params, consoleUri, rollBack);
       // the drivers parse JSON columns for the grid; the plan wants the document itself
@@ -298,6 +304,16 @@ export class QueryRunner {
       this.running.delete(key);
       this.runningEmitter.fire({ key, running: false });
     }
+  }
+
+  /**
+   * Whether the server is MariaDB, read from the session the run would use;
+   * a console never introspects, so the cached catalog may not exist yet.
+   */
+  private async isMariaDbServer(ds: StoredDataSource, consoleUri?: vscode.Uri): Promise<boolean> {
+    if (ds.config.driver !== 'mysql') return false;
+    const suffix = consoleUri ? this.consoles.consoleSuffix(consoleUri) : SCRIPT_SUFFIX;
+    return this.sessions.run(ds.config, async (session) => isMariaDb(session.serverVersion), suffix);
   }
 
   /**

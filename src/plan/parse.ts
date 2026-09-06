@@ -96,7 +96,7 @@ function pgNode(node: { [key: string]: Json }, analysed: boolean): PlanNode {
     const v = node[key];
     return typeof v === 'string' ? v : undefined;
   };
-  const relation = join([[str('Relation Name'), str('Alias')].filter(Boolean).join(' ') || undefined]);
+  const relation = [str('Relation Name'), str('Alias')].filter(Boolean).join(' ') || undefined;
   const index = str('Index Name') ? `using ${str('Index Name')}` : undefined;
   const cte = str('CTE Name') ? `cte ${str('CTE Name')}` : undefined;
   const fn = str('Function Name');
