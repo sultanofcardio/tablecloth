@@ -17,7 +17,7 @@
 
 Tablecloth brings the IntelliJ Ultimate **Database Tools** experience to VS Code: connect to PostgreSQL, MySQL/MariaDB, and SQLite, explore schemas in a real tool window, write SQL in consoles with transactions, completion, and inspections, and edit data in a DataGrip-style grid that previews its DML before it runs. Free, open source, and built by someone who did not want to relearn ten years of muscle memory.
 
-> **Preview.** Tablecloth is pre-1.0. Phases 1 and 2 of three have shipped and are used daily, but some rough edges remain and the settings format may change in a minor version before 1.0. See [what works today](#what-works-today), the [known limits](#known-limits), and the [roadmap](https://sultanofcardio.github.io/tablecloth/roadmap.html). The full docs are at [sultanofcardio.github.io/tablecloth](https://sultanofcardio.github.io/tablecloth/).
+> **Preview.** Tablecloth is pre-1.0. Phases 1 and 2 of three have shipped and are used daily, but some rough edges remain and the settings format may change in a minor version before 1.0. See [what works today](#what-works-today), the [known limits](#known-limits), and the [roadmap](https://tablecloth.kenroy.dev/roadmap.html). The full docs are at [tablecloth.kenroy.dev](https://tablecloth.kenroy.dev/).
 
 > Tablecloth is an independent open-source project and is not affiliated with or endorsed by JetBrains or Microsoft. It uses none of JetBrains' code; the running product serves purely as the behavioral spec.
 
@@ -124,7 +124,7 @@ Found something else? [Open an issue](https://github.com/sultanofcardio/tableclo
 
 ## Why not SQLTools or Database Client?
 
-Because the parts of Database Tools that matter day-to-day do not exist in any VS Code extension: a reviewable change set with DML preview, transaction control per console and per data editor, result tabs per statement, and a schema-aware editor with FK JOIN inference and inspections, all in the IntelliJ look. The [roadmap](https://sultanofcardio.github.io/tablecloth/roadmap.html) ranks every feature JetBrains documents for Database Tools against what Tablecloth does today, and marks where 1.0 gets cut.
+Because the parts of Database Tools that matter day-to-day do not exist in any VS Code extension: a reviewable change set with DML preview, transaction control per console and per data editor, result tabs per statement, and a schema-aware editor with FK JOIN inference and inspections, all in the IntelliJ look. The [roadmap](https://tablecloth.kenroy.dev/roadmap.html) ranks every feature JetBrains documents for Database Tools against what Tablecloth does today, and marks where 1.0 gets cut.
 
 ## Development
 
@@ -140,7 +140,7 @@ npm run package          # build the .vsix
 
 Press F5 in VS Code to launch an Extension Development Host with the extension loaded (other extensions disabled). The README screenshots are reproducible via the rig in `scripts/capture/`: the default suite shoots the hero, grid, and dialog; `SHOT_SUITE=phase2.cjs` stages and shoots the data editor, console, and import surfaces; `SHOT_SUITE=withoutWhere.cjs` the DELETE-without-WHERE inspection and its warning dialog; `SHOT_SUITE=explainPlan.cjs` the Plan tab after Explain Plan and Explain Analyse (`SHOT_NAMES` narrows any of the lists).
 
-**Docs.** The site at [sultanofcardio.github.io/tablecloth](https://sultanofcardio.github.io/tablecloth/) is built by GitHub Pages from the `gh-pages` branch; edit the Markdown there. The roadmap page is generated, see `_tools/README.md` on that branch.
+**Docs.** The site at [tablecloth.kenroy.dev](https://tablecloth.kenroy.dev/) is built by GitHub Pages from the `gh-pages` branch; edit the Markdown there. The roadmap page is generated, see `_tools/README.md` on that branch.
 
 **Releasing.** CI runs on every push and pull request. To release, move the `Unreleased` section of [CHANGELOG.md](./CHANGELOG.md) under the new version, run `npm version <patch|minor|major>`, and `git push --follow-tags`. The `v*` tag triggers the release workflow, which tests, packages, publishes to the Marketplace, and creates the GitHub release with the `.vsix` attached. The workflow needs a `VSCE_PAT` repository secret.
 
