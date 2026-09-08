@@ -1,7 +1,7 @@
 title: Tablecloth
 description: IntelliJ-grade database tools, laid over VS Code
-url: https://sultanofcardio.github.io
-baseurl: /tablecloth
+url: https://tablecloth.kenroy.dev
+baseurl: ""
 markdown: kramdown
 kramdown:
   input: GFM
