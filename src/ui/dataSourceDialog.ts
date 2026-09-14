@@ -264,6 +264,7 @@ export class DataSourceDialog {
   private html(webview: vscode.Webview): string {
     const nonce = randomBytes(16).toString('base64');
     const css = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'dialog.css'));
+    const menuCss = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'menu.css'));
     const js = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'dialog.js'));
     const validationJs = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'validation.js'),
@@ -274,6 +275,7 @@ export class DataSourceDialog {
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+<link rel="stylesheet" href="${menuCss}">
 <link rel="stylesheet" href="${css}">
 </head>
 <body>
@@ -355,9 +357,14 @@ export class DataSourceDialog {
       <label>Introspection:</label>
       <span><input id="f-autosync" type="checkbox" checked> <span class="hint">Auto-sync: re-introspect on connect. Off = only on manual refresh.</span></span>
       <label class="net">Time zone:</label>
-      <span class="net tzrow"><input id="f-timezone" type="text" list="time-zones" placeholder="Local" spellcheck="false" autocomplete="off">
+      <span class="net tzrow">
+        <span class="combo" id="tz-combo">
+          <input id="f-timezone" type="text" placeholder="Local" spellcheck="false" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="tz-list" aria-autocomplete="list">
+          <button id="tz-arrow" type="button" class="combo-arrow" tabindex="-1" aria-label="Show time zones"></button>
+          <div id="tz-menu" class="tc-menu tz-menu" hidden><div id="tz-list" class="tc-menu-list" role="listbox"></div></div>
+        </span>
         <span class="hint" id="tz-hint">Session time zone for values that carry one.</span></span>
-      <datalist id="time-zones"></datalist>
     </div>
   </div>
 
