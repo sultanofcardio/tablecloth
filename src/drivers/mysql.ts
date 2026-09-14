@@ -12,7 +12,7 @@ import type {
   SchemaModel,
 } from '../core/types';
 import type { ConnectContext, DbSession, Driver } from './driver';
-import { makeResult, normalizeRows } from './driver';
+import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { isMariaDb } from './info';
 import { openSshTunnel, type SshTunnel } from './ssh';
 
@@ -116,7 +116,7 @@ class MySqlSession implements DbSession {
 }
 
 function buildSsl(config: DataSourceConfig): mysql.ConnectionOptions['ssl'] {
-  const mode = config.ssl?.mode ?? 'disable';
+  const mode = effectiveSslMode(config);
   if (mode === 'disable') return undefined;
   const ca = config.ssl?.caFile ? readFileSync(config.ssl.caFile).toString() : undefined;
   if (mode === 'require') return { rejectUnauthorized: false };

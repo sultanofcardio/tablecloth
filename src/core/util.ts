@@ -73,6 +73,12 @@ export function formatMillis(ms: number): string {
   return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`;
 }
 
+/** The value trimmed when it is a string, undefined when blank or not a string. */
+export function trimmedString(v: unknown): string | undefined {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return s.length > 0 ? s : undefined;
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);

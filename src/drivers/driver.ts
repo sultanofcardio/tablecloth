@@ -6,6 +6,7 @@ import type {
   DataSourceSecrets,
   DriverId,
   QueryResult,
+  SslMode,
 } from '../core/types';
 
 export interface ConnectContext {
@@ -41,6 +42,16 @@ export interface Driver {
 }
 
 /** Statement that cancels whatever `backendId` is running, issued from another connection. */
+/**
+ * The SSL mode a connection actually uses. RDS refuses an IAM token over
+ * plaintext, and mysql2 only sends mysql_clear_password inside TLS, so IAM
+ * auth lifts an absent or disabled mode to require; every other mode stands.
+ */
+export function effectiveSslMode(config: Pick<DataSourceConfig, 'auth' | 'ssl'>): SslMode {
+  const mode = config.ssl?.mode ?? 'disable';
+  return config.auth === 'awsIam' && mode === 'disable' ? 'require' : mode;
+}
+
 export function cancelStatementSql(dialect: DriverId, backendId: number): string | undefined {
   if (!Number.isInteger(backendId)) return undefined;
   switch (dialect) {

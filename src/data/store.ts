@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
+import { trimmedString } from '../core/util';
 
 const SETTING = 'tablecloth.dataSources';
 
@@ -8,11 +9,6 @@ export type SecretField = (typeof SECRET_FIELDS)[number];
 
 function secretKey(id: string, field: SecretField): string {
   return `tablecloth/${id}/${field}`;
-}
-
-function trimmed(v: unknown): string | undefined {
-  const s = typeof v === 'string' ? v.trim() : '';
-  return s.length > 0 ? s : undefined;
 }
 
 function normalize(raw: any): DataSourceConfig | undefined {
@@ -32,7 +28,7 @@ function normalize(raw: any): DataSourceConfig | undefined {
     auth: raw.auth === 'pgpass' || raw.auth === 'awsIam' || raw.auth === 'none' ? raw.auth : 'userPassword',
     aws:
       raw.aws && typeof raw.aws === 'object'
-        ? { profile: trimmed(raw.aws.profile), region: trimmed(raw.aws.region) }
+        ? { profile: trimmedString(raw.aws.profile), region: trimmedString(raw.aws.region) }
         : undefined,
     file: raw.file,
     ssl: raw.ssl && typeof raw.ssl === 'object' ? { mode: raw.ssl.mode ?? 'disable', caFile: raw.ssl.caFile } : undefined,
