@@ -131,6 +131,24 @@ test('CLI failures become the next action', () => {
   assert.equal(friendlyAwsError('plain string', req).message, 'plain string');
 });
 
+test('a profile named like an SSO one still gets the not-found hint, and the SSO hint when it has expired', () => {
+  const req = { host: 'h', port: 5432, user: 'u', region: 'us-east-1', profile: 'acme-sso' };
+  const errorFor = (stderr: string) => friendlyAwsError(Object.assign(new Error('x'), { stderr }), req).message;
+
+  assert.equal(
+    errorFor('\nThe config profile (acme-sso) could not be found\n'),
+    'The config profile (acme-sso) could not be found. Check the AWS profile on the data source against ~/.aws/config.',
+  );
+  assert.equal(
+    errorFor('Unable to locate credentials. You can configure credentials by running "aws configure".'),
+    'No AWS credentials for profile acme-sso. Check ~/.aws/config, or run: aws sso login --profile acme-sso',
+  );
+  assert.equal(
+    errorFor('Error when retrieving token from sso: Token has expired and refresh failed'),
+    'The AWS SSO session for profile acme-sso has expired. Run: aws sso login --profile acme-sso',
+  );
+});
+
 test('without a profile the sign-in hint falls back to AWS_PROFILE, then to a bare aws sso login', () => {
   const req = { host: 'h', port: 5432, user: 'u', region: 'us-east-1' };
   const stderr = 'Error when retrieving token from sso: Token has expired and refresh failed';

@@ -134,17 +134,17 @@ export function friendlyAwsError(err: unknown, req: RdsTokenRequest): Error {
   if (/EOF when reading|Enter MFA code/i.test(stderr)) {
     return new Error('The AWS CLI asked for input, which it cannot get here. Sign in from a terminal first.');
   }
-  if (/\bsso\b/i.test(stderr) && /does not exist/i.test(stderr)) {
-    return new Error(`No AWS SSO session${forProfile}. Run: ${login}`);
-  }
-  if (/\bsso\b/i.test(stderr) || /token has expired/i.test(stderr)) {
-    return new Error(`The AWS SSO session${forProfile} has expired. Run: ${login}`);
-  }
   if (/config profile \(.*\) could not be found/i.test(stderr)) {
     return new Error(`${stderr}. Check the AWS profile on the data source against ~/.aws/config.`);
   }
   if (/unable to locate credentials/i.test(stderr)) {
     return new Error(`No AWS credentials${forProfile}. Check ~/.aws/config, or run: ${login}`);
+  }
+  if (/\bsso\b/i.test(stderr) && /does not exist/i.test(stderr)) {
+    return new Error(`No AWS SSO session${forProfile}. Run: ${login}`);
+  }
+  if (/\bsso\b/i.test(stderr) || /token has expired/i.test(stderr)) {
+    return new Error(`The AWS SSO session${forProfile} has expired. Run: ${login}`);
   }
   return new Error(stderr || (typeof e.message === 'string' && e.message) || String(err));
 }
