@@ -405,7 +405,6 @@ export class DataSourceDialog {
   }
 }
 
-
 function num(v: unknown): number | undefined {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;

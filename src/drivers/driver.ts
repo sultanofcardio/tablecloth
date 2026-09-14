@@ -41,7 +41,6 @@ export interface Driver {
   introspect(session: DbSession, config: DataSourceConfig, showSystem: boolean): Promise<CatalogModel>;
 }
 
-/** Statement that cancels whatever `backendId` is running, issued from another connection. */
 /**
  * The SSL mode a connection actually uses. RDS refuses an IAM token over
  * plaintext, and mysql2 only sends mysql_clear_password inside TLS, so IAM
@@ -52,6 +51,7 @@ export function effectiveSslMode(config: Pick<DataSourceConfig, 'auth' | 'ssl'>)
   return config.auth === 'awsIam' && mode === 'disable' ? 'require' : mode;
 }
 
+/** Statement that cancels whatever `backendId` is running, issued from another connection. */
 export function cancelStatementSql(dialect: DriverId, backendId: number): string | undefined {
   if (!Number.isInteger(backendId)) return undefined;
   switch (dialect) {
