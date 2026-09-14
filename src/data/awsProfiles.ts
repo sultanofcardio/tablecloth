@@ -47,7 +47,9 @@ export function parseAwsConfig(text: string, source: Source): AwsProfile[] {
 }
 
 /**
- * Config first, then credentials; a name in both keeps the config entry.
+ * Config first, then credentials. A name in both keeps the config entry, its
+ * region and its sign-in kind; only when config says nothing about how the
+ * profile signs in does the credentials file's presence mark it as keys.
  * Missing or unreadable files contribute nothing, so a machine without the
  * CLI set up gets an empty list rather than an error.
  */
@@ -61,7 +63,9 @@ export async function listAwsProfiles(): Promise<AwsProfile[]> {
   for (const [path, source] of files) {
     const text = await readFile(path, 'utf8').catch(() => '');
     for (const profile of parseAwsConfig(text, source)) {
-      if (!seen.has(profile.name)) seen.set(profile.name, profile);
+      const existing = seen.get(profile.name);
+      if (!existing) seen.set(profile.name, profile);
+      else if (existing.kind === 'other' && profile.kind === 'keys') existing.kind = 'keys';
     }
   }
   return [...seen.values()];

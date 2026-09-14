@@ -50,6 +50,12 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 aws_access_key_id = AKIAI44QH8DHBEXAMPLE
 aws_secret_access_key = je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY
 region = ap-southeast-2
+
+; cached keys for a profile that signs in through SSO
+[acme-dev]
+aws_access_key_id = ASIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+aws_session_token = FwoGZXIvYXdzEBYaDEXAMPLETOKEN
 `;
 
 test('the config file yields names, regions and how each profile signs in', () => {
@@ -67,6 +73,7 @@ test('the credentials file contributes names only; its values are never read', (
   assert.deepEqual(parseAwsConfig(CREDENTIALS, 'credentials'), [
     { name: 'default', kind: 'keys' },
     { name: 'ci', kind: 'keys' },
+    { name: 'acme-dev', kind: 'keys' },
   ]);
 });
 
@@ -76,7 +83,7 @@ test('an empty or odd file yields an empty list rather than an error', () => {
   assert.deepEqual(parseAwsConfig('region = us-east-1\n', 'config'), [], 'a key before any section belongs to nothing');
 });
 
-test('both files are read from their environment overrides, config entries winning on a shared name', async () => {
+test('both files are read from their environment overrides; a shared name keeps config region and sso kind and takes keys from credentials otherwise', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tablecloth-aws-'));
   writeFileSync(join(dir, 'config'), CONFIG);
   writeFileSync(join(dir, 'credentials'), CREDENTIALS);
@@ -84,16 +91,13 @@ test('both files are read from their environment overrides, config entries winni
   try {
     process.env.AWS_CONFIG_FILE = join(dir, 'config');
     process.env.AWS_SHARED_CREDENTIALS_FILE = join(dir, 'credentials');
-    const names = (await listAwsProfiles()).map((p) => `${p.name}:${p.kind}`);
-    assert.deepEqual(names, [
-      'default:other',
-      'acme-dev:sso',
-      'acme-legacy:sso',
-      'acme-role:other',
-      'keys-in-config:keys',
-      'bare:other',
-      'ci:keys',
-    ]);
+    const profiles = await listAwsProfiles();
+    assert.deepEqual(
+      profiles.map((p) => `${p.name}:${p.kind}`),
+      ['default:keys', 'acme-dev:sso', 'acme-legacy:sso', 'acme-role:other', 'keys-in-config:keys', 'bare:other', 'ci:keys'],
+    );
+    assert.equal(profiles.find((p) => p.name === 'default')?.region, 'us-west-2', 'region stays from config');
+    assert.equal(profiles.find((p) => p.name === 'ci')?.region, undefined, 'credentials values are never read');
 
     process.env.AWS_CONFIG_FILE = join(dir, 'missing-config');
     process.env.AWS_SHARED_CREDENTIALS_FILE = join(dir, 'missing-credentials');
