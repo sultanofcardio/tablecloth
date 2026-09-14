@@ -40,6 +40,14 @@ export function normalizeTimeZone(raw: unknown, opts?: { lenient?: boolean }): s
   throw new Error(`Unknown time zone "${text}". Use Local, Server, or a zone name such as Europe/London.`);
 }
 
+/**
+ * Whether the session zone is the implicit Local default rather than a stored
+ * choice: a server that lacks it must still connect, where a chosen zone fails.
+ */
+export function isImplicitTimeZone(config: Pick<DataSourceConfig, 'timeZone'>): boolean {
+  return config.timeZone === undefined;
+}
+
 /** The zone a session is set to at connect, or undefined to leave the server's setting. */
 export function sessionTimeZone(config: Pick<DataSourceConfig, 'driver' | 'timeZone'>): string | undefined {
   if (config.driver === 'sqlite') return undefined;

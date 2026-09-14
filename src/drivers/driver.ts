@@ -29,7 +29,7 @@ export interface DbSession {
    * when MySQL had no zone tables. Absent when the server's own setting applies.
    */
   readonly timeZone?: string;
-  /** Worth telling the user once: how the time zone had to be applied (the MySQL offset fallback). */
+  /** Worth telling the user once: how the time zone had to be applied (the MySQL offset fallback, or a Local zone the server lacks). */
   readonly timeZoneNote?: string;
   /** Run a statement, returning display-normalized rows. */
   query(sql: string, params?: unknown[]): Promise<QueryResult>;

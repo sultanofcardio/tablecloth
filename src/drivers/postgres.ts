@@ -18,7 +18,7 @@ import type { ConnectContext, DbSession, Driver } from './driver';
 import { errorMessage, quoteLiteral } from '../core/util';
 import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { pgCatalogSupport } from './pgVersion';
-import { sessionTimeZone } from './timeZone';
+import { isImplicitTimeZone, sessionTimeZone } from './timeZone';
 import { openSshTunnel, type SshTunnel } from './ssh';
 
 /** OIDs whose default pg parsers mangle display (dates/times shift time zones); keep the wire text. */
@@ -76,6 +76,7 @@ class PostgresSession implements DbSession {
     readonly backendId: number | undefined,
     private readonly tunnel?: SshTunnel,
     readonly timeZone?: string,
+    readonly timeZoneNote?: string,
   ) {}
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
@@ -162,12 +163,27 @@ async function resolvePassword(ctx: ConnectContext): Promise<string | undefined>
 /**
  * The session zone, set right after the handshake like read-only: from here on
  * the server renders timestamptz text in it and reads zone-less literals in it,
- * so grids, consoles, exports and typed edits all agree.
+ * so grids, consoles, exports and typed edits all agree. A zone the server does
+ * not know fails the connect when the user chose it; the implicit Local default
+ * (its tzdata may predate this machine's zone name) leaves the server's setting
+ * in place and says so once instead.
  */
-export async function applyTimeZone(client: Pick<pg.Client, 'query'>, zone: string): Promise<void> {
+export async function applyTimeZone(
+  client: Pick<pg.Client, 'query'>,
+  zone: string,
+  implicit = false,
+): Promise<{ timeZone?: string; note?: string }> {
   try {
     await client.query(`SET TIME ZONE ${quoteLiteral('postgres', zone)}`);
+    return { timeZone: zone };
   } catch (err) {
+    if (implicit) {
+      return {
+        note:
+          `The server does not know this machine's time zone "${zone}" (${errorMessage(err)}), ` +
+          "so times are shown in the server's zone. Pick a zone, or Server, on the data source's Options tab.",
+      };
+    }
     throw new Error(
       `The server does not know the time zone "${zone}" (${errorMessage(err)}). ` +
         "Pick another zone, or Server, on the data source's Options tab.",
@@ -215,10 +231,17 @@ export const postgresDriver: Driver = {
         await client.query('SET default_transaction_read_only = on');
       }
       const zone = sessionTimeZone(config);
-      if (zone) await applyTimeZone(client, zone);
+      const applied = zone ? await applyTimeZone(client, zone, isImplicitTimeZone(config)) : undefined;
       const pidRes = await client.query('SELECT pg_backend_pid() AS pid');
       const pid = Number(pidRes.rows[0]?.pid);
-      return new PostgresSession(client, `PostgreSQL ${version}`, Number.isFinite(pid) ? pid : undefined, tunnel, zone);
+      return new PostgresSession(
+        client,
+        `PostgreSQL ${version}`,
+        Number.isFinite(pid) ? pid : undefined,
+        tunnel,
+        applied?.timeZone,
+        applied?.note,
+      );
     } catch (err) {
       tunnel?.dispose();
       void client.end().catch(() => undefined);

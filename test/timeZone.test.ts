@@ -5,6 +5,7 @@ import {
   canonicalTimeZone,
   localTimeZone,
   normalizeTimeZone,
+  isImplicitTimeZone,
   sessionTimeZone,
   timeZoneNames,
   utcOffsetOf,
@@ -35,6 +36,9 @@ test('the session zone follows the data source, SQLite has none', () => {
   assert.equal(sessionTimeZone({ driver: 'mysql', timeZone: SERVER_TIME_ZONE }), undefined);
   assert.equal(sessionTimeZone({ driver: 'postgres' }), localTimeZone());
   assert.equal(sessionTimeZone({ driver: 'sqlite', timeZone: 'Asia/Tokyo' }), undefined);
+  assert.equal(isImplicitTimeZone({}), true);
+  assert.equal(isImplicitTimeZone({ timeZone: 'Asia/Tokyo' }), false);
+  assert.equal(isImplicitTimeZone({ timeZone: SERVER_TIME_ZONE }), false);
   assert.ok(localTimeZone().length > 0);
 });
 

@@ -161,8 +161,9 @@ function friendlyConnectError(err: unknown, config: DataSourceConfig): unknown {
 /**
  * The session zone, set right after the handshake like read-only. A named zone
  * needs the server's time zone tables (mysql.time_zone_name), which RDS ships
- * and a stock container does not; without them the zone's current UTC offset
- * stands in, exact except for values across a daylight-saving change.
+ * and a stock container does not, and which may predate the name; then the
+ * zone's current UTC offset stands in, exact except for values across a
+ * daylight-saving change.
  */
 export async function applyTimeZone(
   connection: Pick<mysql.Connection, 'query'>,
@@ -185,9 +186,10 @@ export async function applyTimeZone(
     return {
       timeZone: offset,
       note:
-        `${flavor} has no time zone tables, so ${zone} is applied as the fixed offset ${offset}; ` +
+        `${flavor} does not know the time zone ${zone} (no time zone tables, or older ones), ` +
+        `so it is applied as the fixed offset ${offset}; ` +
         'values on the other side of a daylight-saving change show an hour off. ' +
-        'Load the tables (mysql_tzinfo_to_sql) to use the zone itself.',
+        'Load or update the tables (mysql_tzinfo_to_sql) to use the zone itself.',
     };
   }
 }

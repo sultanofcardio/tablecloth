@@ -21,8 +21,21 @@ function stub(refuse?: { pattern: RegExp; code?: string; message: string }) {
 
 test('PostgreSQL sets the session zone with one quoted SET', async () => {
   const client = stub();
-  await applyPostgresTimeZone(client, "Amer'ica/Jamaica");
+  const applied = await applyPostgresTimeZone(client, "Amer'ica/Jamaica");
+  assert.deepEqual(applied, { timeZone: "Amer'ica/Jamaica" });
   assert.deepEqual(client.sent, ["SET TIME ZONE 'Amer''ica/Jamaica'"]);
+});
+
+test('PostgreSQL keeps the server zone and says so when it lacks the implicit Local zone', async () => {
+  const client = stub({ pattern: /SET TIME ZONE/, message: 'invalid value for parameter "TimeZone": "Europe/Kyiv"' });
+  const applied = await applyPostgresTimeZone(client, 'Europe/Kyiv', true);
+  assert.equal(applied.timeZone, undefined);
+  assert.equal(
+    applied.note,
+    'The server does not know this machine\'s time zone "Europe/Kyiv" (invalid value for parameter "TimeZone": "Europe/Kyiv"), ' +
+      "so times are shown in the server's zone. Pick a zone, or Server, on the data source's Options tab.",
+  );
+  assert.equal(client.sent.length, 1);
 });
 
 test('PostgreSQL names the zone and the Options tab when the server refuses it', async () => {
@@ -44,8 +57,11 @@ test('MySQL without time zone tables falls back to the offset and says so once',
   const connection = stub({ pattern: /'Asia\/Kolkata'/, code: 'ER_UNKNOWN_TIME_ZONE', message: "Unknown or incorrect time zone: 'Asia/Kolkata'" });
   const applied = await applyMySqlTimeZone(connection, 'Asia/Kolkata', 'MariaDB');
   assert.equal(applied.timeZone, '+05:30');
-  assert.match(applied.note ?? '', /^MariaDB has no time zone tables, so Asia\/Kolkata is applied as the fixed offset \+05:30;/);
-  assert.match(applied.note ?? '', /mysql_tzinfo_to_sql/);
+  assert.match(
+    applied.note ?? '',
+    /^MariaDB does not know the time zone Asia\/Kolkata \(no time zone tables, or older ones\), so it is applied as the fixed offset \+05:30;/,
+  );
+  assert.match(applied.note ?? '', /Load or update the tables \(mysql_tzinfo_to_sql\)/);
   assert.deepEqual(connection.sent, ["SET time_zone = 'Asia/Kolkata'", "SET time_zone = '+05:30'"]);
 });
 
