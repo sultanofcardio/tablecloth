@@ -176,19 +176,20 @@ export async function applyTimeZone(
     return { timeZone: zone };
   } catch (err) {
     if (!isUnknownTimeZone(err)) throw err;
-    if (!canonicalTimeZone(zone)) throw unknownTimeZoneError(zone, err);
+    if (!canonicalTimeZone(zone)) {
+      return keepServerZone(implicit, zone, err, `${flavor} does not know the time zone ${zone}`);
+    }
     const offset = utcOffsetOf(zone);
     try {
       await connection.query('SET time_zone = ?', [offset]);
     } catch (offsetErr) {
       if (!isUnknownTimeZone(offsetErr)) throw offsetErr;
-      if (!implicit) throw unknownTimeZoneError(zone, offsetErr);
-      return {
-        note:
-          `${flavor} does not know the time zone ${zone} and rejects the offset ${offset} ` +
-          `(${(offsetErr as Error).message}), so times are shown in the server's zone. ` +
-          "Pick a zone, or Server, on the data source's Options tab.",
-      };
+      return keepServerZone(
+        implicit,
+        zone,
+        offsetErr,
+        `${flavor} does not know the time zone ${zone} and rejects the offset ${offset}`,
+      );
     }
     return {
       timeZone: offset,
@@ -205,9 +206,18 @@ function isUnknownTimeZone(err: unknown): boolean {
   return (err as { code?: unknown } | undefined)?.code === 'ER_UNKNOWN_TIME_ZONE';
 }
 
-function unknownTimeZoneError(zone: string, err: unknown): Error {
-  return new Error(
-    `The server does not know the time zone "${zone}" (${(err as Error).message}). ` +
+/** The implicit Local default leaves the server's zone with a note; a chosen zone fails the connect. */
+function keepServerZone(implicit: boolean, zone: string, err: unknown, cause: string): { note: string } {
+  const message = (err as Error).message;
+  if (implicit) {
+    return {
+      note:
+        `${cause} (${message}), so times are shown in the server's zone. ` +
+        "Pick a zone, or Server, on the data source's Options tab.",
+    };
+  }
+  throw new Error(
+    `The server does not know the time zone "${zone}" (${message}). ` +
       "Pick another zone, or Server, on the data source's Options tab.",
   );
 }

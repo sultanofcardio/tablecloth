@@ -74,6 +74,18 @@ test('MySQL names the zone and the Options tab when neither the server nor the r
   assert.equal(connection.sent.length, 1);
 });
 
+test('MySQL keeps the server zone and says so when neither it nor the runtime knows the implicit Local zone', async () => {
+  const connection = stub({ pattern: /SET time_zone/, code: 'ER_UNKNOWN_TIME_ZONE', message: "Unknown or incorrect time zone: 'Etc/Unknown'" });
+  const applied = await applyMySqlTimeZone(connection, 'Etc/Unknown', 'MariaDB', true);
+  assert.equal(applied.timeZone, undefined);
+  assert.equal(
+    applied.note,
+    "MariaDB does not know the time zone Etc/Unknown (Unknown or incorrect time zone: 'Etc/Unknown'), " +
+      "so times are shown in the server's zone. Pick a zone, or Server, on the data source's Options tab.",
+  );
+  assert.deepEqual(connection.sent, ["SET time_zone = 'Etc/Unknown'"]);
+});
+
 test('MySQL keeps the server zone and says so when it also rejects the implicit Local offset', async () => {
   const connection = stub({ pattern: /SET time_zone/, code: 'ER_UNKNOWN_TIME_ZONE', message: 'Unknown or incorrect time zone' });
   const applied = await applyMySqlTimeZone(connection, 'Asia/Kolkata', 'MySQL', true);
