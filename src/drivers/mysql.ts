@@ -163,7 +163,9 @@ function friendlyConnectError(err: unknown, config: DataSourceConfig): unknown {
  * needs the server's time zone tables (mysql.time_zone_name), which RDS ships
  * and a stock container does not, and which may predate the name; then the
  * zone's current UTC offset stands in, exact except for values across a
- * daylight-saving change.
+ * daylight-saving change. When even that fails, the implicit Local default
+ * leaves the server's setting in place and says so once; a chosen zone fails
+ * the connect.
  */
 export async function applyTimeZone(
   connection: Pick<mysql.Connection, 'query'>,

@@ -5,7 +5,7 @@ import { cancelStatementSql, type DbSession } from './driver';
 export interface SessionDeps {
   getSecrets(dataSourceId: string): Promise<DataSourceSecrets>;
   showSystemSchemas(): boolean;
-  /** Something the user should hear about a fresh session (the MySQL time zone fallback). */
+  /** Something the user should hear about a fresh session (see DbSession.timeZoneNote). */
   notice?(config: DataSourceConfig, message: string): void;
 }
 
