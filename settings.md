@@ -11,6 +11,7 @@ title: Settings & shortcuts
 | --- | --- | --- |
 | `tablecloth.dataSources` | `[]` | Data source definitions, managed through the dialog. Workspace settings hold Project sources, user settings hold Global ones. Never holds a password. |
 | `tablecloth.dialogs.openIn` | `floatingWindow` | Open the Data Sources and Import Data dialogs in a separate compact window or as an editor tab. The older `tablecloth.dataSourceDialog.openIn` is still honoured. |
+| `tablecloth.aws.cliPath` | `""` | Path to the AWS CLI that mints the connect token for AWS IAM (RDS/Aurora) sources. Empty tries the usual install locations, then `PATH`. User settings only; a workspace can't set it. |
 | `tablecloth.grid.pageSize` | `500` | Rows per data grid page. **Set as Default** in the pager menu writes it. |
 | `tablecloth.inspections.enabled` | `true` | Flag unresolved tables and columns, and `DELETE` or `UPDATE` without `WHERE`, in consoles and attached SQL files. |
 | `tablecloth.execution.warnWithoutWhere` | `true` | Ask before running a `DELETE` or `UPDATE` that has no `WHERE` clause, naming the table and its row count. Changing it resets every console's "Don't ask again" choice. |

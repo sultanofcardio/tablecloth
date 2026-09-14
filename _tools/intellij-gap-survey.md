@@ -13,8 +13,8 @@ Source: survey of 83 JetBrains help pages, 2026-09-04. Rows marked `*` were re-c
 | Status | Count |
 |---|---|
 | SHIPPED | 75 |
-| PLANNED | 34 |
-| MISSING | 143 |
+| PLANNED | 35 |
+| MISSING | 142 |
 | **Total features inventoried** | **252** |
 
 Notes on method:
@@ -33,7 +33,7 @@ Notes on method:
 | ~36 fully supported DBMS + ~19 basic-support (Oracle, SQL Server, MongoDB, Snowflake, Redis, ClickHouse, BigQuery, DuckDB, ...) | Vendor-specific drivers and dialects beyond the three | I/managing-data-sources.html | PLANNED (Later: additional drivers) |
 | "URL only" connection type / direct JDBC URL editing | Connect by pasting a connection URL instead of host/port fields | I/data-sources-and-drivers-dialog.html | MISSING |
 | Auth: User & Password, pgpass, No auth | Credential modes | I/data-sources-and-drivers-dialog.html | SHIPPED |
-| Cloud IAM/OAuth authentication (AWS, Azure, GCP) | Cloud-provider auth flows for managed DBs | I/managing-data-sources.html | MISSING |
+| Cloud IAM/OAuth authentication (AWS, Azure, GCP) | Cloud-provider auth flows for managed DBs | I/managing-data-sources.html | PLANNED (AWS IAM for RDS/Aurora in 1.0; Azure and GCP later) |
 | Test Connection | Verify connectivity before saving | I/quick-start-with-database-functionality.html | SHIPPED |
 | JDBC driver management (auto-download, version picker, custom driver jars/class/properties) | Choose and configure the driver per data source | I/jdbc-drivers.html | MISSING (architecture differs; low value) |
 | SSH tunnel: password / key pair (OpenSSH, PuTTY) / OpenSSH config & agent | Tunnel the DB connection through a jump host | I/configuring-ssh-and-ssl.html | SHIPPED |
