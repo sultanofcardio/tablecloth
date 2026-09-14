@@ -61,14 +61,14 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
     if (tab.closable) {
       // closing the active tab switches away from it, so pending edits get
       // the same discard prompt a tab switch does
-      const close = (type: string) => {
-        const go = () => handlers.post({ type, id: tab.id });
-        if (!tab.active || handlers.beforeSwitch(go)) go();
+      const close = (message: unknown, closesActive: boolean) => {
+        const go = () => handlers.post(message);
+        if (!closesActive || handlers.beforeSwitch(go)) go();
       };
       const x = h('span', { class: 'x', title: 'Close', role: 'button', html: ICONS.close });
       x.addEventListener('click', (e) => {
         e.stopPropagation();
-        close('closeTab');
+        close({ type: 'closeTab', id: tab.id }, tab.active);
       });
       btn.appendChild(x);
       btn.addEventListener('contextmenu', (e) => {
@@ -84,12 +84,9 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
             items,
             minWidth: 180,
             onPick: (id) => {
-              if (id === 'close') close('closeTab');
-              else if (id === 'closeOthers') handlers.post({ type: 'closeOtherTabs', id: tab.id });
-              else if (id === 'closeAll') {
-                const go = () => handlers.post({ type: 'closeAllTabs' });
-                if (!closable.some((t) => t.active) || handlers.beforeSwitch(go)) go();
-              }
+              if (id === 'close') close({ type: 'closeTab', id: tab.id }, tab.active);
+              else if (id === 'closeOthers') close({ type: 'closeOtherTabs', id: tab.id }, closable.some((t) => t.active && t.id !== tab.id));
+              else if (id === 'closeAll') close({ type: 'closeAllTabs' }, closable.some((t) => t.active));
             },
           },
         );
