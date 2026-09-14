@@ -146,6 +146,9 @@ body.vscode-light .srow.con.sel { color: var(--ij-fg); }
   flex: none;
 }
 .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
   color: var(--ij-fg-dim);
   border: 1px solid transparent;
@@ -155,13 +158,27 @@ body.vscode-light .srow.con.sel { color: var(--ij-fg); }
   cursor: pointer;
   font-family: inherit;
   max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tab:hover { color: var(--ij-fg); }
 .tab.on { color: var(--ij-fg); border-color: var(--ij-blue); background: var(--ij-blue-soft); }
-.tab .x { margin-left: 7px; color: var(--ij-fg-faint); }
-.tab .x:hover { color: var(--ij-fg); }
+/* the label ellipsizes so a long table name never pushes the close icon out of view */
+.tab .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tab .x {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: -6px;
+  border-radius: 4px;
+  color: var(--ij-fg-faint);
+  opacity: 0;
+}
+.tab .x svg { width: 12px; height: 12px; }
+.tab:hover .x, .tab.on .x, .tab:focus-visible .x { opacity: 1; }
+.tab .x:hover { color: var(--ij-fg); background: var(--ij-btn-hover); }
 .tab-action {
   background: transparent;
   border: none;

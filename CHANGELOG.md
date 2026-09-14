@@ -12,6 +12,11 @@ All notable changes to Tablecloth are recorded here. The format follows [Keep a 
 ### Changed
 
 - Saving a data source in a mode other than User & Password (pgpass, AWS IAM, no auth) now deletes a password left in the keychain by an earlier mode.
+- Result tabs in the Tablecloth panel have a right-click menu: **Close**, **Close Other Tabs** and **Close All Tabs**.
+
+### Fixed
+
+- A result tab named after a long table (`main.operator_directory.operator_role_grant`) hid its close icon: the name ran to the tab's edge and pushed the × out of view. The name now truncates first, and the × shows on hover and on the active tab.
 
 ## [0.2.0] - 2026-09-06
 

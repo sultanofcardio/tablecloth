@@ -50,21 +50,50 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
   const tabsEl = el('tabs');
   tabsEl.textContent = '';
   tabsEl.hidden = msg.tabs.length === 0;
+  const closable = msg.tabs.filter((t) => t.closable);
   for (const tab of msg.tabs) {
-    const btn = h('button', { class: 'tab' + (tab.active ? ' on' : ''), title: tab.title }, tab.title);
+    const btn = h('button', { class: 'tab' + (tab.active ? ' on' : ''), title: tab.title }, h('span', { class: 'label' }, tab.title));
     btn.addEventListener('click', () => {
       if (tab.active) return;
       const go = () => handlers.post({ type: 'selectTab', id: tab.id });
       if (handlers.beforeSwitch(go)) go();
     });
     if (tab.closable) {
-      const x = h('span', { class: 'x' }, '×');
+      // closing the active tab switches away from it, so pending edits get
+      // the same discard prompt a tab switch does
+      const close = (type: string) => {
+        const go = () => handlers.post({ type, id: tab.id });
+        if (!tab.active || handlers.beforeSwitch(go)) go();
+      };
+      const x = h('span', { class: 'x', title: 'Close', role: 'button', html: ICONS.close });
       x.addEventListener('click', (e) => {
         e.stopPropagation();
-        const go = () => handlers.post({ type: 'closeTab', id: tab.id });
-        if (!tab.active || handlers.beforeSwitch(go)) go();
+        close('closeTab');
       });
       btn.appendChild(x);
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const items: MenuItem[] = [
+          { id: 'close', label: 'Close' },
+          { id: 'closeOthers', label: 'Close Other Tabs' },
+          { id: 'closeAll', label: 'Close All Tabs' },
+        ];
+        showMenu(
+          { x: e.clientX, y: e.clientY },
+          {
+            items,
+            minWidth: 180,
+            onPick: (id) => {
+              if (id === 'close') close('closeTab');
+              else if (id === 'closeOthers') handlers.post({ type: 'closeOtherTabs', id: tab.id });
+              else if (id === 'closeAll') {
+                const go = () => handlers.post({ type: 'closeAllTabs' });
+                if (!closable.some((t) => t.active) || handlers.beforeSwitch(go)) go();
+              }
+            },
+          },
+        );
+      });
     }
     tabsEl.appendChild(btn);
   }
