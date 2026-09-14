@@ -17,6 +17,7 @@ All notable changes to Tablecloth are recorded here. The format follows [Keep a 
 
 ### Fixed
 
+- Tooltips in the grids, the explorer, consoles, the import dialog and the data source dialog are drawn by Tablecloth itself, in the IntelliJ style, so they show in floating windows as well; the browser's own title tooltips never appeared there, which hid the column header details, the "Select all" and filter hints, long cell values and the toolbar labels.
 - A PostgreSQL server on md5 or password authentication now gets the same readable "no password is saved for this data source" message as a SCRAM server when the data source has no password; before, it showed the server's "empty password returned by client".
 - A result tab named after a long table (`main.operator_directory.operator_role_grant`) hid its close icon: the name ran to the tab's edge and pushed the × out of view. The name now truncates first, and the × shows on hover and on the active tab.
 

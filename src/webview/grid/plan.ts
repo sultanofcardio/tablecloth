@@ -94,7 +94,7 @@ function draw(): void {
     if (plan.planningMs !== undefined) parts.push(`planning ${fmtMs(plan.planningMs)}`);
     right.textContent = parts.join(' · ');
   } else if (msg.canAnalyse) {
-    const btn = h('button', { class: 'ebtn', html: ICONS.play, title: 'Run the statement and add actual rows and time per node' });
+    const btn = h('button', { class: 'ebtn', html: ICONS.play, 'data-tip': 'Run the statement and add actual rows and time per node' });
     btn.appendChild(document.createTextNode('Explain Analyse'));
     btn.addEventListener('click', () => poster?.({ type: 'explainAnalyse' }));
     right.appendChild(btn);
@@ -141,7 +141,7 @@ function treeRows(container: HTMLElement, node: PlanNode, depth: number, total: 
     op.appendChild(h('span', { class: 'plchev none' }));
   }
   op.appendChild(document.createTextNode(node.op));
-  if (node.detail) op.appendChild(h('em', { title: node.detail }, node.detail));
+  if (node.detail) op.appendChild(h('em', { 'data-tip': node.detail }, node.detail));
   const isAnalysed = current?.plan.analysed ?? false;
   row.append(
     op,
@@ -151,7 +151,7 @@ function treeRows(container: HTMLElement, node: PlanNode, depth: number, total: 
   if (isAnalysed) {
     const time = h('span', { class: 'pltime' });
     if (node.timeMs !== undefined) {
-      const heat = h('span', { class: 'heat', title: fmtMs(node.timeMs) });
+      const heat = h('span', { class: 'heat', 'data-tip': fmtMs(node.timeMs) });
       const share = total > 0 ? Math.max(0.02, Math.min(1, node.timeMs / total)) : 0;
       heat.style.setProperty('--w', `${Math.round(share * 100)}%`);
       time.append(heat, h('span', { class: 'plms' }, fmtMs(node.timeMs)));
@@ -160,7 +160,7 @@ function treeRows(container: HTMLElement, node: PlanNode, depth: number, total: 
   } else {
     row.appendChild(h('span', {}));
   }
-  row.title = node.props.map(([k, v]) => `${k}: ${v}`).join('\n');
+  row.dataset.tip = node.props.map(([k, v]) => `${k}: ${v}`).join('\n');
   container.appendChild(row);
   if (!collapsed.has(node)) for (const child of node.children) treeRows(container, child, depth + 1, total);
 }
@@ -191,7 +191,7 @@ function tableView(plan: PanelPlan): HTMLElement {
   const tbody = h('tbody', {});
   for (const { node, depth } of walk(plan.roots)) {
     const tr = h('tr', {});
-    tr.title = node.props.map(([k, v]) => `${k}: ${v}`).join('\n');
+    tr.dataset.tip = node.props.map(([k, v]) => `${k}: ${v}`).join('\n');
     for (const c of shown) tr.appendChild(h('td', { class: c.numeric ? 'num' : '' }, c.cell(node, depth)));
     tbody.appendChild(tr);
   }

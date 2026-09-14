@@ -308,6 +308,7 @@ export class ImportDialog {
   private html(webview: vscode.Webview): string {
     const nonce = randomBytes(16).toString('base64');
     const css = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'import.css'));
+    const menuCss = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'menu.css'));
     const js = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'import.js'));
     return `<!DOCTYPE html>
 <html lang="en">
@@ -315,6 +316,7 @@ export class ImportDialog {
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+<link rel="stylesheet" href="${menuCss}">
 <link rel="stylesheet" href="${css}">
 </head>
 <body>

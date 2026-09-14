@@ -52,7 +52,7 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
   tabsEl.hidden = msg.tabs.length === 0;
   const closable = msg.tabs.filter((t) => t.closable);
   for (const tab of msg.tabs) {
-    const btn = h('button', { class: 'tab' + (tab.active ? ' on' : ''), title: tab.title }, h('span', { class: 'label' }, tab.title));
+    const btn = h('button', { class: 'tab' + (tab.active ? ' on' : ''), 'data-tip': tab.title }, h('span', { class: 'label' }, tab.title));
     btn.addEventListener('click', () => {
       if (tab.active) return;
       const go = () => handlers.post({ type: 'selectTab', id: tab.id });
@@ -65,7 +65,7 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
         const go = () => handlers.post(message);
         if (!closesActive || handlers.beforeSwitch(go)) go();
       };
-      const x = h('span', { class: 'x', title: 'Close', role: 'button', html: ICONS.close });
+      const x = h('span', { class: 'x', 'data-tip': 'Close', role: 'button', html: ICONS.close });
       x.addEventListener('click', (e) => {
         e.stopPropagation();
         close({ type: 'closeTab', id: tab.id }, tab.active);
@@ -101,7 +101,7 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
       { action: 'disconnect', icon: ICONS.power, title: 'Deactivate (disconnect)', cls: 'danger' },
     ];
     for (const a of actions) {
-      const btn = h('button', { class: 'tab-action' + (a.cls ? ' ' + a.cls : ''), title: a.title, html: a.icon });
+      const btn = h('button', { class: 'tab-action' + (a.cls ? ' ' + a.cls : ''), 'data-tip': a.title, html: a.icon });
       btn.addEventListener('click', () => {
         if (a.action === 'console') {
           menuAnchor = btn;
@@ -139,13 +139,13 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
     });
     streeEl.appendChild(dsRow);
     for (const con of group.consoles) {
-      const row = h('div', { class: 'srow con' + (con.active ? ' sel' : ''), title: 'Double-click to open the console' });
+      const row = h('div', { class: 'srow con' + (con.active ? ' sel' : ''), 'data-tip': 'Double-click to open the console' });
       row.innerHTML = ICONS.console;
       row.appendChild(h('span', { class: 'clabel' }, con.label));
       const meta = h('span', { class: 'smeta' }, con.status);
       row.appendChild(meta);
       if (con.running) {
-        const stop = h('button', { class: 'sstop', title: 'Cancel running statement', html: ICONS.stop });
+        const stop = h('button', { class: 'sstop', 'data-tip': 'Cancel running statement', html: ICONS.stop });
         stop.addEventListener('click', (e) => {
           e.stopPropagation();
           handlers.post({ type: 'cancelConsole', key: con.key });

@@ -2,6 +2,7 @@
 // editing with a local change set, WHERE/ORDER BY fields, funnels, FK
 // navigation, transposed/tree/text views, submit preview) and, in the
 // Tablecloth panel, the Services chrome around it.
+import { installTooltips } from '../tooltip';
 import type { CellValue, DriverId } from '../../core/types';
 import type { CellEdit } from '../../edit/changeSet';
 import type { CompletionEntry, FilterField } from '../../complete/core';
@@ -1556,6 +1557,7 @@ function runDemo(script: unknown[]): void {
 
 // ------------------------------------------------------------ boot
 initIcons();
+installTooltips();
 wireToolbar();
 wireGrid();
 wireKeyboard();

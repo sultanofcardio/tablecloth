@@ -1,11 +1,13 @@
 // The Import Data dialog webview: format settings, the column mapping table,
 // a preview of the first rows, and progress while the host runs the inserts.
 import { duplicateTarget } from '../import/infer';
+import { installTooltips } from './tooltip';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
 const vscode = acquireVsCodeApi();
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+installTooltips();
 
 interface ColumnInfo {
   header: string;
@@ -137,7 +139,7 @@ function renderMapping(a: Analysis): void {
     const sample = document.createElement('td');
     sample.className = 'dim sample';
     sample.textContent = column.sample;
-    sample.title = column.sample;
+    sample.dataset.tip = column.sample;
     tr.appendChild(sample);
     body.appendChild(tr);
   });

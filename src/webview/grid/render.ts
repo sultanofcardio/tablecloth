@@ -91,7 +91,7 @@ function renderHeader(): void {
   const data = S.data!;
   const headRow = el('head-row');
   headRow.textContent = '';
-  const gut = h('th', { class: 'gut', title: 'Select all (click again to clear)' });
+  const gut = h('th', { class: 'gut', 'data-tip': 'Select all (click again to clear)' });
   gut.style.width = '42px';
   headRow.appendChild(gut);
   for (const c of visibleColumns()) {
@@ -104,7 +104,7 @@ function renderHeader(): void {
     if (data.meta.canFilter) {
       const funnel = h('span', {
         class: 'funnel' + (S.funnelClauses.has(column.name) ? ' on' : ''),
-        title: 'Filter by values',
+        'data-tip': 'Filter by values',
         html: ICONS.funnel,
       });
       funnel.dataset.funnel = String(c);
@@ -126,7 +126,7 @@ function renderHeader(): void {
     }
     const zone = S.data?.page.timeZone;
     const shownIn = zone && isZonedType(S.data?.meta.dialect, column.dataType) ? ` · shown in ${zone}` : '';
-    th.title = column.sortable
+    th.dataset.tip = column.sortable
       ? `${column.name}${column.dataType ? ' · ' + column.dataType : ''}${shownIn}\nClick to sort, Alt-click to add a sort column`
       : `${column.name}${shownIn}`;
     headRow.appendChild(th);
@@ -156,7 +156,7 @@ function fillCell(td: HTMLTableCellElement, r: number, c: number): void {
   const display = cellDisplay(r, c);
   td.dataset.r = String(r);
   td.dataset.c = String(c);
-  td.removeAttribute('title');
+  td.removeAttribute('data-tip');
   const classes: string[] = [];
   if (display.placeholder) classes.push('ph');
   if (display.isNull) classes.push('null');
@@ -168,14 +168,14 @@ function fillCell(td: HTMLTableCellElement, r: number, c: number): void {
   if (S.find && display.text.toLowerCase().includes(S.find.toLowerCase())) classes.push('match');
   td.className = classes.join(' ');
   td.textContent = display.text;
-  if (display.text.length > 20) td.title = display.text;
+  if (display.text.length > 20) td.dataset.tip = display.text;
   if (isCellEdited(r, c)) {
     const original = originalValue(r, c);
-    td.title = `Was: ${original === null ? '<null>' : String(original)}`;
+    td.dataset.tip = `Was: ${original === null ? '<null>' : String(original)}`;
   }
   if (column.fk && !display.isNull && !isInserted(r) && originalValue(r, c) !== null) {
     td.classList.add('fk');
-    const go = h('span', { class: 'fkgo', title: `Go to ${column.fk.table}`, html: ICONS.arrowUpRight });
+    const go = h('span', { class: 'fkgo', 'data-tip': `Go to ${column.fk.table}`, html: ICONS.arrowUpRight });
     go.dataset.fk = String(c);
     td.appendChild(go);
   }
@@ -413,7 +413,8 @@ export function updatePager(): void {
   totalBtn.textContent = totalText;
   totalBtn.dataset.countable = countable ? '1' : '0';
   totalBtn.classList.toggle('countable', countable);
-  totalBtn.title = countable ? 'Click to update (runs SELECT COUNT(*) FROM …)' : '';
+  if (countable) totalBtn.dataset.tip = 'Click to update (runs SELECT COUNT(*) FROM …)';
+  else totalBtn.removeAttribute('data-tip');
   (el('pg-first') as HTMLButtonElement).disabled = page.offset === 0;
   (el('pg-prev') as HTMLButtonElement).disabled = page.offset === 0;
   (el('pg-next') as HTMLButtonElement).disabled = !page.hasMore;

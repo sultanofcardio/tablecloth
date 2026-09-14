@@ -72,7 +72,10 @@ export class DataSourceDialog {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')],
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+          vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+        ],
       },
     );
     this.panels.set(panelKey, panel);
@@ -266,6 +269,7 @@ export class DataSourceDialog {
     const css = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'dialog.css'));
     const menuCss = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'menu.css'));
     const js = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'dialog.js'));
+    const tooltipJs = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'tooltip.js'));
     const validationJs = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'validation.js'),
     );
@@ -283,7 +287,7 @@ export class DataSourceDialog {
   <div class="row head">
     <label>Name:</label>
     <input id="f-name" type="text" spellcheck="false">
-    <select id="f-color" title="Environment color">
+    <select id="f-color" data-tip="Environment color">
       <option value="none">No color</option>
       <option value="green">Green (dev)</option>
       <option value="amber">Amber (staging)</option>
@@ -291,7 +295,7 @@ export class DataSourceDialog {
       <option value="blue">Blue</option>
       <option value="purple">Purple</option>
     </select>
-    <select id="f-scope" title="Where this data source definition is stored">
+    <select id="f-scope" data-tip="Where this data source definition is stored">
       <option value="project">Project</option>
       <option value="global">Global</option>
     </select>
@@ -418,6 +422,7 @@ export class DataSourceDialog {
     <button id="b-save" class="btn primary">OK</button>
   </div>
 </div>
+<script nonce="${nonce}" src="${tooltipJs}"></script>
 <script nonce="${nonce}" src="${validationJs}"></script>
 <script nonce="${nonce}" src="${js}"></script>
 </body>
