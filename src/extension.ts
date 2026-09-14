@@ -57,10 +57,18 @@ export function activate(context: vscode.ExtensionContext): {
   const store = new DataSourceStore(context);
   // the drivers stay free of the vscode import; the AWS CLI location is the one setting they need
   setAwsCliPathSource(() => vscode.workspace.getConfiguration('tablecloth.aws').get<string>('cliPath'));
+  const noticed = new Set<string>();
   sessions = new SessionManager({
     getSecrets: (id) => store.getSecrets(id),
     showSystemSchemas: () =>
       vscode.workspace.getConfiguration('tablecloth.explorer').get<boolean>('showSystemSchemas', false),
+    // every reconnect would repeat it; once per data source and message is enough
+    notice: (config, message) => {
+      const key = `${config.id}\n${message}`;
+      if (noticed.has(key)) return;
+      noticed.add(key);
+      void vscode.window.showWarningMessage(`Tablecloth: ${config.name}: ${message}`);
+    },
   });
   setGridMemento(context.globalState);
   const consoles = new ConsoleManager(context, store, sessions);

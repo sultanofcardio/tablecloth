@@ -15,6 +15,7 @@ import type { ConnectContext, DbSession, Driver } from './driver';
 import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { isMariaDb } from './info';
 import { openSshTunnel, type SshTunnel } from './ssh';
+import { canonicalTimeZone, isImplicitTimeZone, sessionTimeZone, utcOffsetOf } from './timeZone';
 
 /** mysql2 column type codes that should right-align as numbers. */
 const NUMERIC_TYPE_CODES = new Set([0, 1, 2, 3, 4, 5, 8, 9, 13, 246]);
@@ -58,6 +59,8 @@ class MySqlSession implements DbSession {
     readonly serverVersion: string,
     readonly backendId: number | undefined,
     private readonly tunnel?: SshTunnel,
+    readonly timeZone?: string,
+    readonly timeZoneNote?: string,
   ) {}
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
@@ -92,7 +95,7 @@ class MySqlSession implements DbSession {
           numeric: NUMERIC_TYPE_CODES.has(code),
         };
       });
-      return makeResult(cols, normalizeRows(rows as unknown[][]), null);
+      return makeResult(cols, normalizeRows(rows as unknown[][]), null, this.timeZone);
     }
     const header = rows as mysql.ResultSetHeader;
     return makeResult([], [], header.affectedRows ?? null);
@@ -155,6 +158,72 @@ function friendlyConnectError(err: unknown, config: DataSourceConfig): unknown {
   return err;
 }
 
+/**
+ * The session zone, set right after the handshake like read-only. A named zone
+ * needs the server's time zone tables (mysql.time_zone_name), which RDS ships
+ * and a stock container does not, and which may predate the name; then the
+ * zone's current UTC offset stands in, exact except for values across a
+ * daylight-saving change. When even that fails, the implicit Local default
+ * leaves the server's setting in place and says so once; a chosen zone fails
+ * the connect.
+ */
+export async function applyTimeZone(
+  connection: Pick<mysql.Connection, 'query'>,
+  zone: string,
+  flavor: string,
+  implicit = false,
+): Promise<{ timeZone?: string; note?: string }> {
+  try {
+    await connection.query('SET time_zone = ?', [zone]);
+    return { timeZone: zone };
+  } catch (err) {
+    if (!isUnknownTimeZone(err)) throw err;
+    if (!canonicalTimeZone(zone)) {
+      return keepServerZone(implicit, zone, err, `${flavor} does not know the time zone ${zone}`);
+    }
+    const offset = utcOffsetOf(zone);
+    try {
+      await connection.query('SET time_zone = ?', [offset]);
+    } catch (offsetErr) {
+      if (!isUnknownTimeZone(offsetErr)) throw offsetErr;
+      return keepServerZone(
+        implicit,
+        zone,
+        offsetErr,
+        `${flavor} does not know the time zone ${zone} and rejects the offset ${offset}`,
+      );
+    }
+    return {
+      timeZone: offset,
+      note:
+        `${flavor} does not know the time zone ${zone} (no time zone tables, or older ones), ` +
+        `so it is applied as the fixed offset ${offset}; ` +
+        'values on the other side of a daylight-saving change show an hour off. ' +
+        'Load or update the tables (mysql_tzinfo_to_sql) to use the zone itself.',
+    };
+  }
+}
+
+function isUnknownTimeZone(err: unknown): boolean {
+  return (err as { code?: unknown } | undefined)?.code === 'ER_UNKNOWN_TIME_ZONE';
+}
+
+/** The implicit Local default leaves the server's zone with a note; a chosen zone fails the connect. */
+function keepServerZone(implicit: boolean, zone: string, err: unknown, cause: string): { note: string } {
+  const message = (err as Error).message;
+  if (implicit) {
+    return {
+      note:
+        `${cause} (${message}), so times are shown in the server's zone. ` +
+        "Pick a zone, or Server, on the data source's Options tab.",
+    };
+  }
+  throw new Error(
+    `The server does not know the time zone "${zone}" (${message}). ` +
+      "Pick another zone, or Server, on the data source's Options tab.",
+  );
+}
+
 export const mysqlDriver: Driver = {
   id: 'mysql',
   label: 'MySQL / MariaDB',
@@ -194,8 +263,10 @@ export const mysqlDriver: Driver = {
         await connection.query('SET SESSION TRANSACTION READ ONLY');
       }
       const flavor = isMariaDb(version) ? 'MariaDB' : 'MySQL';
+      const zone = sessionTimeZone(config);
+      const applied = zone ? await applyTimeZone(connection, zone, flavor, isImplicitTimeZone(config)) : undefined;
       const threadId = typeof connection.threadId === 'number' ? connection.threadId : undefined;
-      return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel);
+      return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel, applied?.timeZone, applied?.note);
     } catch (err) {
       tunnel?.dispose();
       throw friendlyConnectError(err, config);

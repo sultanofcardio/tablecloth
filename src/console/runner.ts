@@ -529,7 +529,7 @@ export class QueryRunner {
         },
         suffix,
       );
-      return { columns: result.columns, rows: result.rows, durationMs: Date.now() - started };
+      return { columns: result.columns, rows: result.rows, durationMs: Date.now() - started, timeZone: result.timeZone };
     };
   }
 
@@ -930,7 +930,7 @@ export class QueryRunner {
         this.syncTxKeyword(config.id, consoleUri, cls.keyword);
         let note: string;
         if (result.columns.length > 0) {
-          const provider = new StaticGridProvider(config.driver, result.columns, result.rows);
+          const provider = new StaticGridProvider(config.driver, result.columns, result.rows, undefined, result.timeZone);
           const page = await provider.fetchPage({ offset: 0, limit: defaultPageSize() });
           await this.services.showResultTab(key, sql, tabTitle, provider, meta, page);
           note = `${result.rows.length} rows retrieved in ${duration}`;

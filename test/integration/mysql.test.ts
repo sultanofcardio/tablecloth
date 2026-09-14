@@ -103,6 +103,28 @@ test('mysql end to end', { skip: !PORT }, async (t) => {
     assert.ok([...planNodes(analysed.roots)].some((n) => n.actualRows !== undefined), 'actual rows are present');
   });
 
+  await t.test('the session time zone follows the data source', async () => {
+    const tokyo = await mysqlDriver.connect({ config: { ...config(), timeZone: 'Asia/Tokyo' }, secrets });
+    try {
+      // a named zone needs the server's time zone tables; without them the offset stands in
+      assert.ok(tokyo.timeZone === 'Asia/Tokyo' || tokyo.timeZone === '+09:00', String(tokyo.timeZone));
+      assert.equal(!!tokyo.timeZoneNote, tokyo.timeZone === '+09:00');
+      const res = await tokyo.query("SELECT CONVERT_TZ('2026-01-01 00:00:00', '+00:00', @@session.time_zone) AS ts");
+      assert.equal(res.rows[0]![0], '2026-01-01 09:00:00');
+      assert.equal(res.timeZone, tokyo.timeZone);
+    } finally {
+      await tokyo.close();
+    }
+
+    const server = await mysqlDriver.connect({ config: { ...config(), timeZone: 'server' }, secrets });
+    try {
+      assert.equal(server.timeZone, undefined);
+      assert.equal((await server.query('SELECT 1')).timeZone, undefined);
+    } finally {
+      await server.close();
+    }
+  });
+
   await session.close();
 
   await t.test('read-only session blocks writes but allows reads', async () => {

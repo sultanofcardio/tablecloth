@@ -2,6 +2,7 @@
 // under the view header, custom context menus, and lazy introspection.
 import type { ExplorerNode, ExplorerRef } from '../ui/explorerModel';
 import { closeMenus, showMenu, type MenuItem } from './menu';
+import { installTooltips } from './tooltip';
 import { vendorIconSvg } from './vendorIcons';
 
 declare function acquireVsCodeApi(): {
@@ -11,6 +12,7 @@ declare function acquireVsCodeApi(): {
 };
 
 const vscode = acquireVsCodeApi();
+installTooltips();
 const el = (id: string) => document.getElementById(id)!;
 
 interface PersistedState {
@@ -145,7 +147,7 @@ function render(): void {
       const meta = document.createElement('span');
       meta.className = 'nmeta';
       meta.textContent = node.meta;
-      meta.title = node.meta;
+      meta.dataset.tip = node.meta;
       row.appendChild(meta);
     }
     frag.appendChild(row);

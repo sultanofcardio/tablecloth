@@ -6,6 +6,7 @@ import { listAwsProfiles } from '../data/awsProfiles';
 import type { DataSourceStore } from '../data/store';
 import { getDriver } from '../drivers/index';
 import type { SessionManager } from '../drivers/sessions';
+import { localTimeZone, normalizeTimeZone, timeZoneNames } from '../drivers/timeZone';
 import { detachActiveEditor, getSurfacePresentation, openEmptyFloatingWindow } from './floatingWindow';
 
 /** Map key for the one new-source dialog; edit dialogs key on their source id. */
@@ -71,7 +72,10 @@ export class DataSourceDialog {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')],
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+          vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+        ],
       },
     );
     this.panels.set(panelKey, panel);
@@ -96,6 +100,8 @@ export class DataSourceDialog {
               sshPassphrase: !!secrets.sshPassphrase,
             },
             awsProfiles,
+            timeZones: timeZoneNames(),
+            localTimeZone: localTimeZone(),
           });
           break;
         }
@@ -150,10 +156,12 @@ export class DataSourceDialog {
       raw?.auth === 'pgpass' || raw?.auth === 'awsIam' || raw?.auth === 'none' ? raw.auth : 'userPassword';
     const ssl =
       raw?.ssl?.mode && raw.ssl.mode !== 'disable' ? { mode: raw.ssl.mode, caFile: trimmedString(raw.ssl.caFile) } : undefined;
+    const driver: DataSourceConfig['driver'] =
+      raw?.driver === 'mysql' || raw?.driver === 'sqlite' ? raw.driver : 'postgres';
     return {
       id,
       name: String(raw?.name ?? '').trim() || 'unnamed',
-      driver: raw?.driver === 'mysql' || raw?.driver === 'sqlite' ? raw.driver : 'postgres',
+      driver,
       color: ['green', 'amber', 'red', 'blue', 'purple'].includes(raw?.color) ? raw.color : 'none',
       readOnly: !!raw?.readOnly,
       autoSync: raw?.autoSync !== false,
@@ -177,6 +185,9 @@ export class DataSourceDialog {
           }
         : undefined,
       schemas: Array.isArray(raw?.schemas) && raw.schemas.length > 0 ? raw.schemas.map(String) : undefined,
+      // an unknown name throws here, and Test Connection or Save shows the message;
+      // sqlite hides the field, so a stale value from another driver must not block Save
+      timeZone: driver === 'sqlite' ? undefined : normalizeTimeZone(raw?.timeZone),
     };
   }
 
@@ -200,8 +211,9 @@ export class DataSourceDialog {
       const driver = getDriver(config.driver);
       const session = await driver.connect({ config, secrets });
       const version = session.serverVersion;
+      const note = session.timeZoneNote;
       await session.close();
-      return { ok: true, message: version };
+      return { ok: true, message: note ? `${version} ${note}` : version };
     } catch (err) {
       return { ok: false, message: errorMessage(err) };
     }
@@ -255,7 +267,9 @@ export class DataSourceDialog {
   private html(webview: vscode.Webview): string {
     const nonce = randomBytes(16).toString('base64');
     const css = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'dialog.css'));
+    const menuCss = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'menu.css'));
     const js = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'dialog.js'));
+    const tooltipJs = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'tooltip.js'));
     const validationJs = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'validation.js'),
     );
@@ -265,6 +279,7 @@ export class DataSourceDialog {
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+<link rel="stylesheet" href="${menuCss}">
 <link rel="stylesheet" href="${css}">
 </head>
 <body>
@@ -272,7 +287,7 @@ export class DataSourceDialog {
   <div class="row head">
     <label>Name:</label>
     <input id="f-name" type="text" spellcheck="false">
-    <select id="f-color" title="Environment color">
+    <select id="f-color" data-tip="Environment color">
       <option value="none">No color</option>
       <option value="green">Green (dev)</option>
       <option value="amber">Amber (staging)</option>
@@ -280,7 +295,7 @@ export class DataSourceDialog {
       <option value="blue">Blue</option>
       <option value="purple">Purple</option>
     </select>
-    <select id="f-scope" title="Where this data source definition is stored">
+    <select id="f-scope" data-tip="Where this data source definition is stored">
       <option value="project">Project</option>
       <option value="global">Global</option>
     </select>
@@ -345,6 +360,15 @@ export class DataSourceDialog {
       <span><input id="f-readonly" type="checkbox"> <span class="hint">Sets the session read-only server-side; the data editor refuses edits as well.</span></span>
       <label>Introspection:</label>
       <span><input id="f-autosync" type="checkbox" checked> <span class="hint">Auto-sync: re-introspect on connect. Off = only on manual refresh.</span></span>
+      <label class="net">Time zone:</label>
+      <span class="net tzrow">
+        <span class="combo" id="tz-combo">
+          <input id="f-timezone" type="text" placeholder="Local" spellcheck="false" autocomplete="off"
+                 role="combobox" aria-expanded="false" aria-controls="tz-list" aria-autocomplete="list">
+          <button id="tz-arrow" type="button" class="combo-arrow" tabindex="-1" aria-label="Show time zones"></button>
+          <div id="tz-menu" class="tc-menu tz-menu" hidden><div id="tz-list" class="tc-menu-list" role="listbox"></div></div>
+        </span>
+        <span class="hint" id="tz-hint">Session time zone for values that carry one.</span></span>
     </div>
   </div>
 
@@ -398,6 +422,7 @@ export class DataSourceDialog {
     <button id="b-save" class="btn primary">OK</button>
   </div>
 </div>
+<script nonce="${nonce}" src="${tooltipJs}"></script>
 <script nonce="${nonce}" src="${validationJs}"></script>
 <script nonce="${nonce}" src="${js}"></script>
 </body>

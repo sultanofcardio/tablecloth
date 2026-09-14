@@ -3,6 +3,7 @@
   'use strict';
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
+  window.tableclothTooltip.installTooltips();
 
   const DEFAULT_PORTS = { postgres: 5432, mysql: 3306 };
   let secretsPresent = { password: false, sshPassword: false, sshPassphrase: false };
@@ -23,6 +24,7 @@
     sshKeyFile: 'f-ssh-key',
     awsProfile: 'f-aws-profile',
     awsRegion: 'f-aws-region',
+    timeZone: 'f-timezone',
   };
 
   function clearInvalidMarks() {
@@ -185,6 +187,7 @@
         keyFile: $('f-ssh-key').value,
       },
       schemas: selectedSchemas,
+      timeZone: $('f-timezone').value,
     };
   }
 
@@ -226,6 +229,127 @@
       list.appendChild(option);
     }
   }
+
+  // ------------------------------------------------------------ time zone combobox
+  // Local and Server first, then every zone the extension host knows, in an
+  // anchored popup (menu.css) that filters as the user types. Its height is
+  // capped to the room below the field, so a long list scrolls instead of
+  // running past the bottom of the window.
+  let zoneEntries = [];
+  let zoneRows = [];
+  let zoneFocus = -1;
+
+  function renderTimeZones(names, local) {
+    zoneEntries = [
+      { value: 'Local', desc: 'this machine: ' + local },
+      { value: 'Server', desc: 'as the server is set' },
+    ].concat((names || []).map((name) => ({ value: name, desc: '' })));
+    $('tz-hint').textContent =
+      'Session time zone for values that carry one. Local is ' + local + " on this machine; Server keeps the server's setting.";
+  }
+
+  function zoneMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return zoneEntries;
+    return zoneEntries.filter((e) => e.value.toLowerCase().includes(q) || e.desc.toLowerCase().includes(q));
+  }
+
+  function setZoneFocus(index, center) {
+    zoneFocus = index;
+    zoneRows.forEach((row, i) => row.classList.toggle('focused', i === index));
+    if (index >= 0 && zoneRows[index]) zoneRows[index].scrollIntoView({ block: center ? 'center' : 'nearest' });
+  }
+
+  /** Show the zones matching `query` (empty = all), focused on the field's current value when it is listed. */
+  function openZoneList(query) {
+    const input = $('f-timezone');
+    const list = $('tz-list');
+    const entries = zoneMatches(query);
+    list.textContent = '';
+    zoneRows = [];
+    if (entries.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'tc-empty';
+      empty.textContent = 'No zone matches';
+      list.appendChild(empty);
+    }
+    for (const entry of entries) {
+      const row = document.createElement('div');
+      row.className = 'tc-mi';
+      row.setAttribute('role', 'option');
+      const label = document.createElement('span');
+      label.className = 'tc-label';
+      label.textContent = entry.value;
+      row.appendChild(label);
+      if (entry.desc) {
+        const desc = document.createElement('span');
+        desc.className = 'tc-desc';
+        desc.textContent = entry.desc;
+        row.appendChild(desc);
+      }
+      // keep the input focused through the click, so blur does not close the list first
+      row.addEventListener('mousedown', (e) => e.preventDefault());
+      row.addEventListener('click', () => pickZone(entry.value));
+      list.appendChild(row);
+      zoneRows.push(row);
+    }
+    const room = window.innerHeight - $('tz-combo').getBoundingClientRect().bottom - 16;
+    list.style.maxHeight = Math.max(120, Math.min(320, room)) + 'px';
+    $('tz-menu').hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    const current = input.value.trim().toLowerCase();
+    const at = entries.findIndex((e) => e.value.toLowerCase() === current);
+    setZoneFocus(at >= 0 ? at : entries.length > 0 ? 0 : -1, at >= 0);
+  }
+
+  function closeZoneList() {
+    $('tz-menu').hidden = true;
+    $('f-timezone').setAttribute('aria-expanded', 'false');
+    zoneRows = [];
+    zoneFocus = -1;
+  }
+
+  function pickZone(value) {
+    const input = $('f-timezone');
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    closeZoneList();
+    input.focus();
+  }
+
+  $('f-timezone').addEventListener('input', () => openZoneList($('f-timezone').value));
+  $('f-timezone').addEventListener('blur', closeZoneList);
+  $('f-timezone').addEventListener('keydown', (e) => {
+    const open = !$('tz-menu').hidden;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) {
+        openZoneList('');
+        return;
+      }
+      const count = zoneRows.length;
+      if (count > 0) setZoneFocus((zoneFocus + (e.key === 'ArrowDown' ? 1 : -1) + count) % count, false);
+    } else if (e.key === 'Enter' && open && zoneFocus >= 0) {
+      e.preventDefault();
+      pickZone(zoneRows[zoneFocus].firstChild.textContent);
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeZoneList();
+    } else if (e.key === 'Tab') {
+      closeZoneList();
+    }
+  });
+  // the arrow must not steal focus from the input, or blur would close what click is about to open
+  $('tz-arrow').addEventListener('mousedown', (e) => e.preventDefault());
+  $('tz-arrow').addEventListener('click', () => {
+    if ($('tz-menu').hidden) {
+      $('f-timezone').focus();
+      openZoneList('');
+    } else {
+      closeZoneList();
+    }
+  });
 
   function renderSchemaList(names) {
     const list = $('schema-list');
@@ -270,6 +394,8 @@
         $('f-file').value = c.file || '';
         $('f-readonly').checked = !!c.readOnly;
         $('f-autosync').checked = c.autoSync !== false;
+        renderTimeZones(msg.timeZones, msg.localTimeZone);
+        $('f-timezone').value = c.timeZone === 'server' ? 'Server' : c.timeZone || 'Local';
         $('f-ssl-mode').value = (c.ssl && c.ssl.mode) || 'disable';
         $('f-ssl-ca').value = (c.ssl && c.ssl.caFile) || '';
         if (c.ssh) {

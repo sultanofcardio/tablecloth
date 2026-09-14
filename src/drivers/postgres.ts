@@ -15,8 +15,10 @@ import type {
   SequenceModel,
 } from '../core/types';
 import type { ConnectContext, DbSession, Driver } from './driver';
+import { errorMessage, quoteLiteral } from '../core/util';
 import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { pgCatalogSupport } from './pgVersion';
+import { isImplicitTimeZone, sessionTimeZone } from './timeZone';
 import { openSshTunnel, type SshTunnel } from './ssh';
 
 /** OIDs whose default pg parsers mangle display (dates/times shift time zones); keep the wire text. */
@@ -73,6 +75,8 @@ class PostgresSession implements DbSession {
     readonly serverVersion: string,
     readonly backendId: number | undefined,
     private readonly tunnel?: SshTunnel,
+    readonly timeZone?: string,
+    readonly timeZoneNote?: string,
   ) {}
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
@@ -85,7 +89,7 @@ class PostgresSession implements DbSession {
     }));
     const rows = normalizeRows((result.rows ?? []) as unknown[][]);
     const affected = columns.length > 0 ? null : (result.rowCount ?? null);
-    return makeResult(columns, rows, affected);
+    return makeResult(columns, rows, affected, this.timeZone);
   }
 
   async queryRaw(sql: string, params?: unknown[]): Promise<{ columns: string[]; rows: unknown[][] }> {
@@ -111,7 +115,9 @@ class PostgresSession implements DbSession {
  */
 function friendlyConnectError(err: unknown, config: DataSourceConfig): unknown {
   const message = err instanceof Error ? err.message : '';
-  if (/client password must be a string/i.test(message)) {
+  // SCRAM servers fail on the client before anything is sent; md5 and password
+  // auth send an empty password and the server is the one that refuses it
+  if (/client password must be a string|empty password returned by client/i.test(message)) {
     return new Error(
       'The server asked for a password, but none is saved for this data source. ' +
         'Set a password, or pick a different authentication mode if the server does not need one.',
@@ -154,6 +160,37 @@ async function resolvePassword(ctx: ConnectContext): Promise<string | undefined>
   return secrets.password;
 }
 
+/**
+ * The session zone, set right after the handshake like read-only: from here on
+ * the server renders timestamptz text in it and reads zone-less literals in it,
+ * so grids, consoles, exports and typed edits all agree. A zone the server does
+ * not know fails the connect when the user chose it; the implicit Local default
+ * (its tzdata may predate this machine's zone name) leaves the server's setting
+ * in place and says so once instead.
+ */
+export async function applyTimeZone(
+  client: Pick<pg.Client, 'query'>,
+  zone: string,
+  implicit = false,
+): Promise<{ timeZone?: string; note?: string }> {
+  try {
+    await client.query(`SET TIME ZONE ${quoteLiteral('postgres', zone)}`);
+    return { timeZone: zone };
+  } catch (err) {
+    if (implicit) {
+      return {
+        note:
+          `The server does not know this machine's time zone "${zone}" (${errorMessage(err)}), ` +
+          "so times are shown in the server's zone. Pick a zone, or Server, on the data source's Options tab.",
+      };
+    }
+    throw new Error(
+      `The server does not know the time zone "${zone}" (${errorMessage(err)}). ` +
+        "Pick another zone, or Server, on the data source's Options tab.",
+    );
+  }
+}
+
 export const postgresDriver: Driver = {
   id: 'postgres',
   label: 'PostgreSQL',
@@ -193,9 +230,18 @@ export const postgresDriver: Driver = {
       if (config.readOnly) {
         await client.query('SET default_transaction_read_only = on');
       }
+      const zone = sessionTimeZone(config);
+      const applied = zone ? await applyTimeZone(client, zone, isImplicitTimeZone(config)) : undefined;
       const pidRes = await client.query('SELECT pg_backend_pid() AS pid');
       const pid = Number(pidRes.rows[0]?.pid);
-      return new PostgresSession(client, `PostgreSQL ${version}`, Number.isFinite(pid) ? pid : undefined, tunnel);
+      return new PostgresSession(
+        client,
+        `PostgreSQL ${version}`,
+        Number.isFinite(pid) ? pid : undefined,
+        tunnel,
+        applied?.timeZone,
+        applied?.note,
+      );
     } catch (err) {
       tunnel?.dispose();
       void client.end().catch(() => undefined);

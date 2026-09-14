@@ -97,3 +97,16 @@ test('derived names follow database@host and the sqlite file name', () => {
   assert.equal(deriveDataSourceName({ driver: 'sqlite', file: '/Users/x/data/app.db' }), 'app.db');
   assert.equal(deriveDataSourceName({ driver: 'sqlite', file: '' }), '');
 });
+
+test('time zone accepts Local, Server and known zone names only', () => {
+  assert.deepEqual(fields({ ...validPg, timeZone: '' }), []);
+  assert.deepEqual(fields({ ...validPg, timeZone: 'Local' }), []);
+  assert.deepEqual(fields({ ...validPg, timeZone: 'server' }), []);
+  assert.deepEqual(fields({ ...validPg, timeZone: 'Europe/London' }), []);
+  assert.deepEqual(fields({ ...validPg, timeZone: 'europe/london' }), []);
+  assert.deepEqual(fields({ ...validPg, timeZone: 'Mars/Olympus_Mons' }), ['timeZone']);
+  assert.match(
+    validateDataSourceForm({ ...validPg, timeZone: 'nowhere' })[0]!.message,
+    /Local, Server, or a zone name/,
+  );
+});

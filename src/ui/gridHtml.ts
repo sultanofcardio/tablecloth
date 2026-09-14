@@ -24,29 +24,29 @@ export function gridHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode
   <div class="content">
   <div id="tabs" class="tabs" hidden></div>
   <div id="toolbar" class="toolbar" hidden>
-    <button id="tb-refresh" class="ibtn" title="Reload Page (⌘R)"></button>
-    <button id="tb-stop" class="ibtn stop" title="Cancel Running Statement" disabled></button>
+    <button id="tb-refresh" class="ibtn" data-tip="Reload Page (⌘R)" aria-label="Reload Page (⌘R)"></button>
+    <button id="tb-stop" class="ibtn stop" data-tip="Cancel Running Statement" aria-label="Cancel Running Statement" disabled></button>
     <span class="sep"></span>
-    <button id="tb-add" class="ibtn" title="Add Row (⌥⌘Insert)"></button>
-    <button id="tb-del" class="ibtn" title="Delete Rows (⌘⌫)"></button>
-    <button id="tb-revert" class="ibtn" title="Revert Selected (⌥⌘Z)"></button>
-    <button id="tb-submit" class="ibtn submit" title="Submit (⌘⏎)"><span id="submit-icon" class="ic"></span><span id="submit-count" class="badge" hidden></span></button>
-    <button id="tb-commit" class="ibtn" title="Commit" hidden></button>
-    <button id="tb-rollback" class="ibtn" title="Roll Back" hidden></button>
+    <button id="tb-add" class="ibtn" data-tip="Add Row (⌥⌘Insert)" aria-label="Add Row (⌥⌘Insert)"></button>
+    <button id="tb-del" class="ibtn" data-tip="Delete Rows (⌘⌫)" aria-label="Delete Rows (⌘⌫)"></button>
+    <button id="tb-revert" class="ibtn" data-tip="Revert Selected (⌥⌘Z)" aria-label="Revert Selected (⌥⌘Z)"></button>
+    <button id="tb-submit" class="ibtn submit" data-tip="Submit (⌘⏎)" aria-label="Submit (⌘⏎)"><span id="submit-icon" class="ic"></span><span id="submit-count" class="badge" hidden></span></button>
+    <button id="tb-commit" class="ibtn" data-tip="Commit" aria-label="Commit" hidden></button>
+    <button id="tb-rollback" class="ibtn" data-tip="Roll Back" aria-label="Roll Back" hidden></button>
     <span class="sep tx-only"></span>
-    <button id="tb-tx" class="tbtn tx-only" title="Transaction mode and isolation"><span id="tx-label">Tx: Auto</span><span class="chev"></span></button>
+    <button id="tb-tx" class="tbtn tx-only" data-tip="Transaction mode and isolation"><span id="tx-label">Tx: Auto</span><span class="chev"></span></button>
     <span class="sep tx-only"></span>
-    <button id="tb-ddl" class="ddl" title="Open the table DDL">DDL</button>
-    <button id="tb-find" class="ibtn" title="Find in page (⌘F)"></button>
-    <button id="tb-filter" class="ibtn toggle" title="Show Filter (WHERE and ORDER BY fields)"></button>
+    <button id="tb-ddl" class="ddl" data-tip="Open the table DDL">DDL</button>
+    <button id="tb-find" class="ibtn" data-tip="Find in page (⌘F)" aria-label="Find in page (⌘F)"></button>
+    <button id="tb-filter" class="ibtn toggle" data-tip="Show Filter (WHERE and ORDER BY fields)" aria-label="Show Filter (WHERE and ORDER BY fields)"></button>
     <span class="spacer"></span>
-    <button id="tb-extractor" class="tbtn" title="Data extractor used by Copy"><span id="extractor-label">JSON</span><span class="chev"></span></button>
+    <button id="tb-extractor" class="tbtn" data-tip="Data extractor used by Copy"><span id="extractor-label">JSON</span><span class="chev"></span></button>
     <span class="sep"></span>
-    <button id="tb-export" class="ibtn" title="Export Data…"></button>
-    <button id="tb-import" class="ibtn" title="Import Data from File…"></button>
+    <button id="tb-export" class="ibtn" data-tip="Export Data…" aria-label="Export Data…"></button>
+    <button id="tb-import" class="ibtn" data-tip="Import Data from File…" aria-label="Import Data from File…"></button>
     <span class="sep"></span>
-    <button id="tb-view" class="ibtn toggle" title="View: Transpose, Table, Tree, Text"></button>
-    <button id="tb-settings" class="ibtn" title="Settings"></button>
+    <button id="tb-view" class="ibtn toggle" data-tip="View: Transpose, Table, Tree, Text" aria-label="View: Transpose, Table, Tree, Text"></button>
+    <button id="tb-settings" class="ibtn" data-tip="Settings" aria-label="Settings"></button>
   </div>
   <div id="filterrow" class="filterrow" hidden>
     <label class="ffield"><span id="where-icon" class="ficon"></span><span class="wm">WHERE</span><input id="f-where" spellcheck="false" autocomplete="off"></label>
@@ -56,7 +56,7 @@ export function gridHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode
     <span id="find-icon" class="ficon"></span>
     <input id="f-find" placeholder="Find in page…" spellcheck="false" autocomplete="off">
     <span id="find-count" class="dim"></span>
-    <button id="find-close" class="ibtn" title="Close (Esc)"></button>
+    <button id="find-close" class="ibtn" data-tip="Close (Esc)" aria-label="Close (Esc)"></button>
   </div>
   <div id="statement" class="statement" hidden></div>
   <div id="gridarea" class="gridarea">
@@ -70,15 +70,15 @@ export function gridHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode
       <pre id="textview" class="textview" hidden></pre>
     </div>
     <div id="pager" class="pager-pill" hidden>
-      <button id="pg-first" class="icon-btn" title="First page"></button>
-      <button id="pg-prev" class="icon-btn" title="Previous page"></button>
-      <button id="pg-range" class="range-btn" title="Change page size"></button>
+      <button id="pg-first" class="icon-btn" data-tip="First page" aria-label="First page"></button>
+      <button id="pg-prev" class="icon-btn" data-tip="Previous page" aria-label="Previous page"></button>
+      <button id="pg-range" class="range-btn" data-tip="Change page size"></button>
       <span id="pg-of" class="of">of</span>
       <button id="pg-total" class="link"></button>
-      <button id="pg-next" class="icon-btn" title="Next page"></button>
-      <button id="pg-last" class="icon-btn" title="Last page (needs count)"></button>
+      <button id="pg-next" class="icon-btn" data-tip="Next page" aria-label="Next page"></button>
+      <button id="pg-last" class="icon-btn" data-tip="Last page (needs count)" aria-label="Last page (needs count)"></button>
       <span id="pg-sep" class="pg-sep"></span>
-      <button id="pg-more" class="icon-btn" title="More"></button>
+      <button id="pg-more" class="icon-btn" data-tip="More" aria-label="More"></button>
     </div>
   </div>
   <div id="valueeditor" class="valueeditor" hidden>
@@ -87,7 +87,7 @@ export function gridHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode
       <span class="spacer"></span>
       <button id="ve-null" class="tool-btn">Set NULL</button>
       <button id="ve-apply" class="tool-btn primary">Apply</button>
-      <button id="ve-close" class="ibtn" title="Close"></button>
+      <button id="ve-close" class="ibtn" data-tip="Close" aria-label="Close"></button>
     </div>
     <textarea id="ve-text" spellcheck="false"></textarea>
   </div>

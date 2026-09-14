@@ -2,6 +2,7 @@
 // Shares the statement splitter, formatter, and inspections with the extension
 // host, so the green frame, ⌘⏎ resolution, completion, squiggles, and
 // formatting all agree with the host.
+import { installTooltips } from './tooltip';
 import * as monaco from 'monaco-editor/editor/editor.main.js';
 import type { CompletionEntry, CompletionKind } from '../complete/core';
 import { completionReplacement } from '../complete/match';
@@ -31,6 +32,7 @@ interface ConsoleState {
 
 const vscode = acquireVsCodeApi();
 const el = (id: string) => document.getElementById(id)!;
+installTooltips();
 
 let state: ConsoleState = {
   dialect: 'postgres',
@@ -480,7 +482,9 @@ function renderToolbar(): void {
   const stop = el('tb-stop') as HTMLButtonElement;
   stop.disabled = !(state.running && state.canCancel);
   stop.classList.toggle('live', state.running && state.canCancel);
-  stop.title = state.canCancel ? 'Cancel running statement (⌘F2)' : 'This database cannot cancel a running statement';
+  const stopTip = state.canCancel ? 'Cancel running statement (⌘F2)' : 'This database cannot cancel a running statement';
+  stop.dataset.tip = stopTip;
+  stop.setAttribute('aria-label', stopTip);
   (el('tb-run') as HTMLButtonElement).classList.toggle('busy', state.running);
 }
 

@@ -1,7 +1,7 @@
 // Rendering for the grid webview: header, virtualized body, transposed
 // layout, Tree and Text views, the floating pager, status line, and toolbar
 // state. Event handling lives in main.ts and works through data attributes.
-import type { CellValue } from '../../core/types';
+import type { CellValue, DriverId } from '../../core/types';
 import type { GridColumnDto } from '../../ui/gridProtocol';
 import { sortMark } from './filters';
 import { ICONS } from './icons';
@@ -20,9 +20,23 @@ import {
   visibleColumns,
 } from './store';
 import { el, h } from './widgets';
+import { labelledTip } from '../tooltip';
 
 export const ROW_H = 23; // 22px row + 1px border
 const BUFFER = 20;
+
+/**
+ * Types whose text the server renders in the session zone; the header tooltip
+ * names it. Only timestamptz and MySQL TIMESTAMP qualify: timetz carries its
+ * own offset and zone-less types are left alone.
+ */
+function isZonedType(dialect: DriverId | undefined, dataType: string | null): boolean {
+  if (!dataType) return false;
+  const type = dataType.toLowerCase();
+  if (dialect === 'mysql') return type === 'timestamp';
+  if (dialect === 'postgres') return type === 'timestamptz';
+  return false;
+}
 
 export function computeWidths(columns: GridColumnDto[], rows: CellValue[][]): number[] {
   const sample = rows.slice(0, 200);
@@ -78,7 +92,7 @@ function renderHeader(): void {
   const data = S.data!;
   const headRow = el('head-row');
   headRow.textContent = '';
-  const gut = h('th', { class: 'gut', title: 'Select all (click again to clear)' });
+  const gut = h('th', { class: 'gut', ...labelledTip('Select all (click again to clear)') });
   gut.style.width = '42px';
   headRow.appendChild(gut);
   for (const c of visibleColumns()) {
@@ -91,7 +105,7 @@ function renderHeader(): void {
     if (data.meta.canFilter) {
       const funnel = h('span', {
         class: 'funnel' + (S.funnelClauses.has(column.name) ? ' on' : ''),
-        title: 'Filter by values',
+        ...labelledTip('Filter by values'),
         html: ICONS.funnel,
       });
       funnel.dataset.funnel = String(c);
@@ -111,9 +125,11 @@ function renderHeader(): void {
     } else if (column.sortable) {
       th.appendChild(h('span', { class: 'sort-hint', html: ICONS.sortBoth }));
     }
-    th.title = column.sortable
-      ? `${column.name}${column.dataType ? ' · ' + column.dataType : ''}\nClick to sort, Alt-click to add a sort column`
-      : column.name;
+    const zone = S.data?.page.timeZone;
+    const shownIn = zone && isZonedType(S.data?.meta.dialect, column.dataType) ? ` · shown in ${zone}` : '';
+    th.dataset.tip = column.sortable
+      ? `${column.name}${column.dataType ? ' · ' + column.dataType : ''}${shownIn}\nClick to sort, Alt-click to add a sort column`
+      : `${column.name}${shownIn}`;
     headRow.appendChild(th);
   }
   fitHeaders();
@@ -141,7 +157,7 @@ function fillCell(td: HTMLTableCellElement, r: number, c: number): void {
   const display = cellDisplay(r, c);
   td.dataset.r = String(r);
   td.dataset.c = String(c);
-  td.removeAttribute('title');
+  td.removeAttribute('data-tip');
   const classes: string[] = [];
   if (display.placeholder) classes.push('ph');
   if (display.isNull) classes.push('null');
@@ -153,14 +169,14 @@ function fillCell(td: HTMLTableCellElement, r: number, c: number): void {
   if (S.find && display.text.toLowerCase().includes(S.find.toLowerCase())) classes.push('match');
   td.className = classes.join(' ');
   td.textContent = display.text;
-  if (display.text.length > 20) td.title = display.text;
+  if (display.text.length > 20) td.dataset.tip = display.text;
   if (isCellEdited(r, c)) {
     const original = originalValue(r, c);
-    td.title = `Was: ${original === null ? '<null>' : String(original)}`;
+    td.dataset.tip = `Was: ${original === null ? '<null>' : String(original)}`;
   }
   if (column.fk && !display.isNull && !isInserted(r) && originalValue(r, c) !== null) {
     td.classList.add('fk');
-    const go = h('span', { class: 'fkgo', title: `Go to ${column.fk.table}`, html: ICONS.arrowUpRight });
+    const go = h('span', { class: 'fkgo', ...labelledTip(`Go to ${column.fk.table}`), html: ICONS.arrowUpRight });
     go.dataset.fk = String(c);
     td.appendChild(go);
   }
@@ -398,7 +414,8 @@ export function updatePager(): void {
   totalBtn.textContent = totalText;
   totalBtn.dataset.countable = countable ? '1' : '0';
   totalBtn.classList.toggle('countable', countable);
-  totalBtn.title = countable ? 'Click to update (runs SELECT COUNT(*) FROM …)' : '';
+  if (countable) totalBtn.dataset.tip = 'Click to update (runs SELECT COUNT(*) FROM …)';
+  else totalBtn.removeAttribute('data-tip');
   (el('pg-first') as HTMLButtonElement).disabled = page.offset === 0;
   (el('pg-prev') as HTMLButtonElement).disabled = page.offset === 0;
   (el('pg-next') as HTMLButtonElement).disabled = !page.hasMore;

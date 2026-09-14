@@ -91,6 +91,25 @@ body.vscode-light .tab.on { color: var(--ij-fg); }
 .frm label.inline { text-align: left; margin-left: 4px; }
 .hostrow, .filerow { display: flex; align-items: center; gap: 8px; }
 .hostrow input:first-child, .filerow input { flex: 1; }
+.tzrow { display: flex; align-items: center; gap: 10px; }
+.tzrow .hint { flex: 1; }
+/* Time zone combobox: the input, an arrow, and the shared popup anchored under it.
+ * The popup is height-capped by dialog.js so it scrolls instead of running past the window. */
+.combo { position: relative; display: inline-flex; width: 220px; flex: none; }
+.combo input { width: 100%; padding-right: 26px; }
+.combo-arrow {
+  position: absolute; top: 1px; right: 1px; bottom: 1px; width: 24px;
+  background: transparent; border: 0; border-radius: 0 6px 6px 0; padding: 0;
+  color: var(--ij-fg-dim); cursor: pointer;
+}
+.combo-arrow::before {
+  content: ""; position: absolute; left: 8px; top: 7px; width: 6px; height: 6px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
+}
+.combo-arrow:hover { color: var(--ij-fg); }
+.tz-menu { position: absolute; left: 0; top: calc(100% + 3px); width: max-content; min-width: 100%; max-width: 420px; }
+.tz-menu .tc-mi { padding: 3px 10px; }
+.tz-menu .tc-empty { padding: 6px 10px; color: var(--ij-hint); font-size: 11.5px; }
 .url {
   font-family: var(--ij-mono);
   font-size: 11.5px;
@@ -126,6 +145,8 @@ body.vscode-light .tab.on { color: var(--ij-fg); }
   color: var(--ij-link);
   padding-left: 0;
 }
+/* a long Test Connection message wraps; the buttons around it never do */
+.foot .btn { flex: none; white-space: nowrap; }
 .btn.link-like:hover { background: transparent; text-decoration: underline; }
 
 .schema-list { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; color: var(--ij-fg-dim); }
@@ -140,7 +161,7 @@ body.vscode-light .tab.on { color: var(--ij-fg); }
   margin-top: 8px;
 }
 .foot .spacer { flex: 1; }
-#test-result { font-size: 12px; color: var(--ij-fg-dim); }
+#test-result { font-size: 12px; color: var(--ij-fg-dim); min-width: 0; }
 #test-result.ok { color: var(--ij-green); }
 #test-result.fail { color: var(--ij-error); }
 

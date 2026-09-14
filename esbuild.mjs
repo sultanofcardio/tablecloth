@@ -122,8 +122,23 @@ function copyWasm() {
   copyFileSync(wasmSrc, 'dist/node-sqlite3-wasm.wasm');
 }
 
+/** The tooltip module on its own, for the plain-script data source dialog (window.tableclothTooltip). */
+/** @type {import('esbuild').BuildOptions} */
+const tooltipOptions = {
+  entryPoints: ['src/webview/tooltip.ts'],
+  bundle: true,
+  outfile: 'dist/webview/tooltip.js',
+  platform: 'browser',
+  format: 'iife',
+  globalName: 'tableclothTooltip',
+  target: 'es2022',
+  minify: !watch,
+  logLevel: 'info',
+};
+
 const allOptions = [
   extensionOptions,
+  tooltipOptions,
   consoleWebviewOptions,
   explorerWebviewOptions,
   gridWebviewOptions,

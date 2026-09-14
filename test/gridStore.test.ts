@@ -55,7 +55,7 @@ function load(): void {
       column('note'),
     ],
     rows: [[1, 'pending', 'first']],
-    page: { offset: 0, pageSize: 500, shown: 1, hasMore: false, total: 1, generation: 1 },
+    page: { offset: 0, pageSize: 500, shown: 1, hasMore: false, total: 1, generation: 1, timeZone: null },
     where: '',
     orderBy: '',
     duration: '1 ms',

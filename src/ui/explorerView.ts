@@ -278,16 +278,16 @@ export class ExplorerViewProvider implements vscode.WebviewViewProvider {
 <body>
 <div id="app">
   <div id="toolbar">
-    <button id="tb-add" class="tbtn" title="New Data Source…">${icon('<path d="M12 5l0 14"/><path d="M5 12l14 0"/>')}</button>
-    <button id="tb-props" class="tbtn" title="Data Source Properties…">${icon('<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>')}</button>
+    <button id="tb-add" class="tbtn" data-tip="New Data Source…" aria-label="New Data Source…">${icon('<path d="M12 5l0 14"/><path d="M5 12l14 0"/>')}</button>
+    <button id="tb-props" class="tbtn" data-tip="Data Source Properties…" aria-label="Data Source Properties…">${icon('<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>')}</button>
     <span class="tbsep"></span>
-    <button id="tb-refresh" class="tbtn" title="Refresh">${icon('<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>')}</button>
+    <button id="tb-refresh" class="tbtn" data-tip="Refresh" aria-label="Refresh">${icon('<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>')}</button>
     <span class="tbsep"></span>
-    <button id="tb-console" class="tbtn" title="Query Console…">${icon('<path d="M8 9l3 3l-3 3"/><path d="M13 15l3 0"/><path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/>')}</button>
-    <button id="tb-table" class="tbtn" title="Open Table Data">${icon('<path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z"/><path d="M3 10h18"/><path d="M10 3v18"/>')}</button>
-    <button id="tb-ddl" class="tbtn ddl" title="Go to DDL">DDL</button>
+    <button id="tb-console" class="tbtn" data-tip="Query Console…" aria-label="Query Console…">${icon('<path d="M8 9l3 3l-3 3"/><path d="M13 15l3 0"/><path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/>')}</button>
+    <button id="tb-table" class="tbtn" data-tip="Open Table Data" aria-label="Open Table Data">${icon('<path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z"/><path d="M3 10h18"/><path d="M10 3v18"/>')}</button>
+    <button id="tb-ddl" class="tbtn ddl" data-tip="Go to DDL">DDL</button>
     <span class="tbsep"></span>
-    <button id="tb-eye" class="tbtn" title="Show/Hide System Schemas">${icon('<path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/>')}</button>
+    <button id="tb-eye" class="tbtn" data-tip="Show/Hide System Schemas" aria-label="Show/Hide System Schemas">${icon('<path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/>')}</button>
   </div>
   <div id="tree" tabindex="0"></div>
 </div>

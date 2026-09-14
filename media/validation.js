@@ -11,6 +11,16 @@
     return typeof value === 'string' && value.trim().length > 0;
   }
 
+  /** Whether the browser (or node) knows this IANA zone name; Local and Server are handled by the caller. */
+  function knownTimeZone(name) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: name });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /**
    * "us-east-1" from acme.c1x9z2m.us-east-1.rds.amazonaws.com (instance, cluster,
    * reader and proxy endpoints, plus .com.cn). Undefined for a CNAME or an IP.
@@ -49,6 +59,10 @@
     }
     if (form.auth === 'awsIam' && !filled(form.aws && form.aws.region) && !inferRdsRegion(form.host)) {
       add('awsRegion', 'AWS region could not be inferred from this host. Set AWS region.');
+    }
+    const timeZone = (form.timeZone || '').trim();
+    if (timeZone && !/^(local|server)$/i.test(timeZone) && !knownTimeZone(timeZone)) {
+      add('timeZone', 'Time zone must be Local, Server, or a zone name such as Europe/London.');
     }
 
     const ssh = form.ssh;

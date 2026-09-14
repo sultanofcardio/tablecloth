@@ -363,40 +363,40 @@ export class ConsoleEditorProvider implements vscode.CustomTextEditorProvider {
 <body data-worker="${dist('editor.worker.js')}">
 <div id="app">
   <div id="toolbar">
-    <button id="tb-run" class="tbtn" title="Run statement at the caret (⌘⏎)">
+    <button id="tb-run" class="tbtn" data-tip="Run statement at the caret (⌘⏎)" aria-label="Run statement at the caret (⌘⏎)">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a.8.8 0 0 0 1.2.7l12.2-7.5a.8.8 0 0 0 0-1.4L8.2 3.8A.8.8 0 0 0 7 4.5z"/></svg>
     </button>
-    <button id="tb-runscript" class="tbtn" title="Run the whole console">
+    <button id="tb-runscript" class="tbtn" data-tip="Run the whole console" aria-label="Run the whole console">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5v13l9-6.5z" fill="currentColor" stroke="none"/><path d="M15 5.5v13l6-6.5z" fill="currentColor" stroke="none"/></svg>
     </button>
-    <button id="tb-explain" class="tbtn" title="Explain Plan / Explain Analyse for the statement at the caret">
+    <button id="tb-explain" class="tbtn" data-tip="Explain Plan / Explain Analyse for the statement at the caret" aria-label="Explain Plan / Explain Analyse for the statement at the caret">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11"/><path d="M12 12h8"/><path d="M15 18h5"/><path d="M5 6v.01"/><path d="M8 12v.01"/><path d="M11 18v.01"/></svg>
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6"/></svg>
     </button>
-    <button id="tb-stop" class="tbtn stop" title="Cancel running statement (⌘F2)" disabled>
+    <button id="tb-stop" class="tbtn stop" data-tip="Cancel running statement (⌘F2)" aria-label="Cancel running statement (⌘F2)" disabled>
       <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
     </button>
     <span class="sep"></span>
-    <button id="tb-history" class="tbtn" title="Query history">
+    <button id="tb-history" class="tbtn" data-tip="Query history" aria-label="Query history">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 7v5l3 3"/></svg>
     </button>
-    <button id="tb-settings" class="tbtn" title="Data source properties">
+    <button id="tb-settings" class="tbtn" data-tip="Data source properties" aria-label="Data source properties">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg>
     </button>
     <span class="sep"></span>
-    <button id="tb-tx" class="tbtn" title="Transaction mode and isolation">
+    <button id="tb-tx" class="tbtn" data-tip="Transaction mode and isolation">
       <span id="tx-label">Tx: Auto</span>
       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6"/></svg>
     </button>
-    <button id="tb-commit" class="tbtn" title="Commit transaction" hidden>
+    <button id="tb-commit" class="tbtn" data-tip="Commit transaction" aria-label="Commit transaction" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5l10 -10"/></svg>
     </button>
-    <button id="tb-rollback" class="tbtn" title="Roll back transaction" hidden>
+    <button id="tb-rollback" class="tbtn" data-tip="Roll back transaction" aria-label="Roll back transaction" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14l-4 -4l4 -4"/><path d="M5 10h11a4 4 0 1 1 0 8h-1"/></svg>
     </button>
     <span class="spacer"></span>
     <span id="tb-readonly" hidden>read-only 🔒</span>
-    <button id="tb-schema" class="tbtn" title="Switch schema">
+    <button id="tb-schema" class="tbtn" data-tip="Switch schema">
       <span id="schema-env" class="envdot" hidden></span>
       <svg class="site" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M15 15m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M6 15v-1a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v1"/><path d="M12 9l0 3"/></svg>
       <span id="schema-label">…</span>

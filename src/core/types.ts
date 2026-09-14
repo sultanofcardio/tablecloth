@@ -54,6 +54,12 @@ export interface DataSourceConfig {
   ssh?: SshConfig;
   /** Schemas (Postgres) or databases (MySQL) selected for introspection. Empty = driver default. */
   schemas?: string[];
+  /**
+   * Session time zone for values that carry one (timestamptz, MySQL TIMESTAMP).
+   * Absent: this machine's zone (Local). `server`: leave the server's own
+   * setting. Otherwise an IANA zone name.
+   */
+  timeZone?: string;
 }
 
 export interface StoredDataSource {
@@ -92,6 +98,8 @@ export interface QueryResult {
   affectedRows: number | null;
   /** True when the statement produced a row set (even an empty one). */
   hasRows: boolean;
+  /** The session zone zoned temporal values were rendered in, when one was set. */
+  timeZone?: string;
 }
 
 // ---------------------------------------------------------------------------
