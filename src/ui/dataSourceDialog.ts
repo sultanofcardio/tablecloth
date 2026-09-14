@@ -6,6 +6,7 @@ import { listAwsProfiles } from '../data/awsProfiles';
 import type { DataSourceStore } from '../data/store';
 import { getDriver } from '../drivers/index';
 import type { SessionManager } from '../drivers/sessions';
+import { SERVER_TIME_ZONE, localTimeZone, normalizeTimeZone, timeZoneNames } from '../drivers/timeZone';
 import { detachActiveEditor, getSurfacePresentation, openEmptyFloatingWindow } from './floatingWindow';
 
 /** Map key for the one new-source dialog; edit dialogs key on their source id. */
@@ -96,6 +97,9 @@ export class DataSourceDialog {
               sshPassphrase: !!secrets.sshPassphrase,
             },
             awsProfiles,
+            timeZones: timeZoneNames(),
+            localTimeZone: localTimeZone(),
+            serverTimeZone: SERVER_TIME_ZONE,
           });
           break;
         }
@@ -177,6 +181,8 @@ export class DataSourceDialog {
           }
         : undefined,
       schemas: Array.isArray(raw?.schemas) && raw.schemas.length > 0 ? raw.schemas.map(String) : undefined,
+      // an unknown name throws here, and Test Connection or Save shows the message
+      timeZone: normalizeTimeZone(raw?.timeZone),
     };
   }
 
@@ -345,6 +351,10 @@ export class DataSourceDialog {
       <span><input id="f-readonly" type="checkbox"> <span class="hint">Sets the session read-only server-side; the data editor refuses edits as well.</span></span>
       <label>Introspection:</label>
       <span><input id="f-autosync" type="checkbox" checked> <span class="hint">Auto-sync: re-introspect on connect. Off = only on manual refresh.</span></span>
+      <label class="net">Time zone:</label>
+      <span class="net tzrow"><input id="f-timezone" type="text" list="time-zones" placeholder="Local" spellcheck="false" autocomplete="off">
+        <span class="hint" id="tz-hint">Session time zone for values that carry one.</span></span>
+      <datalist id="time-zones"></datalist>
     </div>
   </div>
 

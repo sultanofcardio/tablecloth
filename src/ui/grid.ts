@@ -31,6 +31,8 @@ export interface GridPage {
   offset: number;
   hasMore: boolean;
   durationMs: number;
+  /** The session zone zoned temporal values are rendered in, when one was set. */
+  timeZone?: string;
 }
 
 export interface FetchOptions {
@@ -399,6 +401,7 @@ export class GridController {
         hasMore: page.hasMore,
         total: this.state.total ?? null,
         generation: this.generation,
+        timeZone: page.timeZone ?? null,
       },
       where: this.state.where,
       orderBy: this.state.orderBy,
@@ -785,7 +788,7 @@ export class GridController {
 export type RunQuery = (
   sql: string,
   params?: unknown[],
-) => Promise<{ columns: ColumnInfo[]; rows: CellValue[][]; durationMs: number }>;
+) => Promise<{ columns: ColumnInfo[]; rows: CellValue[][]; durationMs: number; timeZone?: string }>;
 
 /** Serves an already-fetched result set with client-side paging. */
 export class StaticGridProvider implements GridProvider {
@@ -796,13 +799,21 @@ export class StaticGridProvider implements GridProvider {
     private readonly columns: ColumnInfo[],
     private readonly rows: CellValue[][],
     readonly tableName?: string,
+    private readonly timeZone?: string,
   ) {}
 
   async fetchPage(opts: FetchOptions): Promise<GridPage> {
     const rows = this.rows;
     const slice = opts.limit === null ? rows.slice(opts.offset) : rows.slice(opts.offset, opts.offset + opts.limit);
     const end = opts.limit === null ? rows.length : opts.offset + opts.limit;
-    return { columns: this.columns, rows: slice, offset: opts.offset, hasMore: end < rows.length, durationMs: 0 };
+    return {
+      columns: this.columns,
+      rows: slice,
+      offset: opts.offset,
+      hasMore: end < rows.length,
+      durationMs: 0,
+      timeZone: this.timeZone,
+    };
   }
 
   async fetchCount(): Promise<number> {

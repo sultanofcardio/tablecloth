@@ -21,7 +21,7 @@ export function makeRunQuery(sessions: SessionManager, config: DataSourceConfig,
   return async (sql: string, params?: unknown[]) => {
     const started = Date.now();
     const result = await sessions.run(config, (session) => session.query(sql, params), suffix);
-    return { columns: result.columns, rows: result.rows, durationMs: Date.now() - started };
+    return { columns: result.columns, rows: result.rows, durationMs: Date.now() - started, timeZone: result.timeZone };
   };
 }
 
@@ -33,7 +33,7 @@ async function fetchPageWith(
 ): Promise<GridPage> {
   // Fetch one extra row to learn whether more pages exist without COUNT(*).
   const limit = opts.limit === null ? null : opts.limit + 1;
-  const { columns, rows, durationMs } = await run(buildSql(limit, opts.offset), params);
+  const { columns, rows, durationMs, timeZone } = await run(buildSql(limit, opts.offset), params);
   const hasMore = opts.limit !== null && rows.length > opts.limit;
   return {
     columns,
@@ -41,6 +41,7 @@ async function fetchPageWith(
     offset: opts.offset,
     hasMore,
     durationMs,
+    timeZone,
   };
 }
 

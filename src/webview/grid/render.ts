@@ -1,7 +1,7 @@
 // Rendering for the grid webview: header, virtualized body, transposed
 // layout, Tree and Text views, the floating pager, status line, and toolbar
 // state. Event handling lives in main.ts and works through data attributes.
-import type { CellValue } from '../../core/types';
+import type { CellValue, DriverId } from '../../core/types';
 import type { GridColumnDto } from '../../ui/gridProtocol';
 import { sortMark } from './filters';
 import { ICONS } from './icons';
@@ -23,6 +23,15 @@ import { el, h } from './widgets';
 
 export const ROW_H = 23; // 22px row + 1px border
 const BUFFER = 20;
+
+/** Types whose text the server renders in the session zone; the header tooltip names it. */
+function isZonedType(dialect: DriverId | undefined, dataType: string | null): boolean {
+  if (!dataType) return false;
+  const type = dataType.toLowerCase();
+  if (dialect === 'mysql') return type === 'timestamp';
+  if (dialect === 'postgres') return /^(timestamptz|timetz|timestamp with time zone|time with time zone)$/.test(type);
+  return false;
+}
 
 export function computeWidths(columns: GridColumnDto[], rows: CellValue[][]): number[] {
   const sample = rows.slice(0, 200);
@@ -111,9 +120,11 @@ function renderHeader(): void {
     } else if (column.sortable) {
       th.appendChild(h('span', { class: 'sort-hint', html: ICONS.sortBoth }));
     }
+    const zone = S.data?.page.timeZone;
+    const shownIn = zone && isZonedType(S.data?.meta.dialect, column.dataType) ? ` · shown in ${zone}` : '';
     th.title = column.sortable
-      ? `${column.name}${column.dataType ? ' · ' + column.dataType : ''}\nClick to sort, Alt-click to add a sort column`
-      : column.name;
+      ? `${column.name}${column.dataType ? ' · ' + column.dataType : ''}${shownIn}\nClick to sort, Alt-click to add a sort column`
+      : `${column.name}${shownIn}`;
     headRow.appendChild(th);
   }
   fitHeaders();

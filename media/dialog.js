@@ -23,6 +23,7 @@
     sshKeyFile: 'f-ssh-key',
     awsProfile: 'f-aws-profile',
     awsRegion: 'f-aws-region',
+    timeZone: 'f-timezone',
   };
 
   function clearInvalidMarks() {
@@ -185,6 +186,7 @@
         keyFile: $('f-ssh-key').value,
       },
       schemas: selectedSchemas,
+      timeZone: $('f-timezone').value,
     };
   }
 
@@ -225,6 +227,27 @@
       option.label = [profile.kind === 'other' ? '' : profile.kind, profile.region || ''].filter(Boolean).join(' · ');
       list.appendChild(option);
     }
+  }
+
+  /** Local and Server first, then every zone the extension host knows; the browser filters as the user types. */
+  function renderTimeZones(names, local, server) {
+    const list = $('time-zones');
+    list.textContent = '';
+    const add = (value, label) => {
+      const option = document.createElement('option');
+      option.value = value;
+      if (label) option.label = label;
+      list.appendChild(option);
+    };
+    add('Local', 'this machine: ' + local);
+    add('Server', 'as the server is set');
+    for (const name of names || []) add(name, '');
+    $('tz-hint').textContent =
+      'Session time zone for values that carry one. Local is ' + local + ' on this machine; ' + capitalize(server) + " keeps the server's setting.";
+  }
+
+  function capitalize(text) {
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
   }
 
   function renderSchemaList(names) {
@@ -270,6 +293,8 @@
         $('f-file').value = c.file || '';
         $('f-readonly').checked = !!c.readOnly;
         $('f-autosync').checked = c.autoSync !== false;
+        renderTimeZones(msg.timeZones, msg.localTimeZone, msg.serverTimeZone);
+        $('f-timezone').value = c.timeZone === msg.serverTimeZone ? 'Server' : c.timeZone || 'Local';
         $('f-ssl-mode').value = (c.ssl && c.ssl.mode) || 'disable';
         $('f-ssl-ca').value = (c.ssl && c.ssl.caFile) || '';
         if (c.ssh) {

@@ -24,6 +24,13 @@ export interface DbSession {
    * engine cannot cancel (SQLite runs in-process).
    */
   readonly backendId?: number;
+  /**
+   * The zone zoned temporal values are rendered in: a name, or a fixed offset
+   * when MySQL had no zone tables. Absent when the server's own setting applies.
+   */
+  readonly timeZone?: string;
+  /** Worth telling the user once: how the time zone had to be applied (the MySQL offset fallback). */
+  readonly timeZoneNote?: string;
   /** Run a statement, returning display-normalized rows. */
   query(sql: string, params?: unknown[]): Promise<QueryResult>;
   /** Run a statement, returning raw driver values (driver-internal introspection use). */
@@ -121,6 +128,11 @@ export function normalizeRows(rows: unknown[][]): CellValue[][] {
   return rows.map((row) => row.map(normalizeValue));
 }
 
-export function makeResult(columns: ColumnInfo[], rows: CellValue[][], affectedRows: number | null): QueryResult {
-  return { columns, rows, affectedRows, hasRows: columns.length > 0 };
+export function makeResult(
+  columns: ColumnInfo[],
+  rows: CellValue[][],
+  affectedRows: number | null,
+  timeZone?: string,
+): QueryResult {
+  return { columns, rows, affectedRows, hasRows: columns.length > 0, timeZone };
 }

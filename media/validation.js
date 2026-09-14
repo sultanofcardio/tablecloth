@@ -16,6 +16,16 @@
    * reader and proxy endpoints, plus .com.cn). Undefined for a CNAME or an IP.
    * Kept in step with inferRdsRegion in src/data/awsIam.ts; a test asserts they agree.
    */
+  /** Whether the browser (or node) knows this IANA zone name; Local and Server are handled by the caller. */
+  function knownTimeZone(name) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: name });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function inferRdsRegion(host) {
     const m = /\.([a-z]{2}(?:-gov)?-[a-z]+-\d+)\.rds\.amazonaws\.com(?:\.cn)?$/i.exec((host || '').trim());
     return m ? m[1].toLowerCase() : undefined;
@@ -49,6 +59,10 @@
     }
     if (form.auth === 'awsIam' && !filled(form.aws && form.aws.region) && !inferRdsRegion(form.host)) {
       add('awsRegion', 'AWS region could not be inferred from this host. Set AWS region.');
+    }
+    const timeZone = (form.timeZone || '').trim();
+    if (timeZone && !/^(local|server)$/i.test(timeZone) && !knownTimeZone(timeZone)) {
+      add('timeZone', 'Time zone must be Local, Server, or a zone name such as Europe/London.');
     }
 
     const ssh = form.ssh;
@@ -84,5 +98,5 @@
     return database || host;
   }
 
-  return { validateDataSourceForm, deriveDataSourceName, inferRdsRegion };
+  return { validateDataSourceForm, deriveDataSourceName, inferRdsRegion, knownTimeZone };
 });

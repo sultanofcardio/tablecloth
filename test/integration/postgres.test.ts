@@ -7,6 +7,7 @@ import { explainRequest } from '../../src/plan/explain';
 import { planNodes } from '../../src/plan/model';
 import { parsePlan } from '../../src/plan/parse';
 import type { DataSourceConfig } from '../../src/core/types';
+import { localTimeZone } from '../../src/drivers/timeZone';
 
 // Gated: set TABLECLOTH_PG_PORT (and optionally _HOST/_USER/_PASSWORD/_DB) to run,
 // e.g. against: docker run -e POSTGRES_PASSWORD=secret -p 15432:5432 postgres:16
@@ -111,6 +112,43 @@ test('postgres end to end', { skip: !PORT }, async (t) => {
     const res = await session.query("SELECT now()::timestamptz AS ts, current_date AS d");
     assert.equal(typeof res.rows[0]![0], 'string');
     assert.equal(typeof res.rows[0]![1], 'string');
+  });
+
+  await t.test('the session time zone follows the data source', async () => {
+    // no zone on the data source: this machine's zone, like IntelliJ
+    assert.equal(session.timeZone, localTimeZone());
+    const shown = await session.queryRaw('SHOW TimeZone');
+    assert.equal(String(shown.rows[0]![0]), localTimeZone());
+
+    const tokyo = await postgresDriver.connect({ config: { ...config(), timeZone: 'Asia/Tokyo' }, secrets });
+    try {
+      assert.equal(tokyo.timeZone, 'Asia/Tokyo');
+      const res = await tokyo.query(
+        "SELECT '2026-01-01 00:00:00+00'::timestamptz AS ts, ('2026-01-01 00:00:00+00'::timestamptz)::date AS day",
+      );
+      assert.equal(res.rows[0]![0], '2026-01-01 09:00:00+09');
+      assert.equal(res.rows[0]![1], '2026-01-01');
+      assert.equal(res.timeZone, 'Asia/Tokyo');
+      // a literal without an offset is read in the same zone, so a typed value round-trips
+      const back = await tokyo.query("SELECT '2026-01-01 09:00:00'::timestamptz AT TIME ZONE 'UTC'");
+      assert.equal(back.rows[0]![0], '2026-01-01 00:00:00');
+    } finally {
+      await tokyo.close();
+    }
+
+    const server = await postgresDriver.connect({ config: { ...config(), timeZone: 'server' }, secrets });
+    try {
+      assert.equal(server.timeZone, undefined);
+      const res = await server.query('SELECT now()');
+      assert.equal(res.timeZone, undefined);
+    } finally {
+      await server.close();
+    }
+
+    await assert.rejects(
+      postgresDriver.connect({ config: { ...config(), timeZone: 'Mars/Olympus_Mons' }, secrets }),
+      /does not know the time zone "Mars\/Olympus_Mons"/,
+    );
   });
 
   await t.test('affected rows reported for DML', async () => {

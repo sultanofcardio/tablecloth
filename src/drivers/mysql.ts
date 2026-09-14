@@ -15,6 +15,7 @@ import type { ConnectContext, DbSession, Driver } from './driver';
 import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { isMariaDb } from './info';
 import { openSshTunnel, type SshTunnel } from './ssh';
+import { sessionTimeZone, utcOffsetOf } from './timeZone';
 
 /** mysql2 column type codes that should right-align as numbers. */
 const NUMERIC_TYPE_CODES = new Set([0, 1, 2, 3, 4, 5, 8, 9, 13, 246]);
@@ -58,6 +59,8 @@ class MySqlSession implements DbSession {
     readonly serverVersion: string,
     readonly backendId: number | undefined,
     private readonly tunnel?: SshTunnel,
+    readonly timeZone?: string,
+    readonly timeZoneNote?: string,
   ) {}
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
@@ -92,7 +95,7 @@ class MySqlSession implements DbSession {
           numeric: NUMERIC_TYPE_CODES.has(code),
         };
       });
-      return makeResult(cols, normalizeRows(rows as unknown[][]), null);
+      return makeResult(cols, normalizeRows(rows as unknown[][]), null, this.timeZone);
     }
     const header = rows as mysql.ResultSetHeader;
     return makeResult([], [], header.affectedRows ?? null);
@@ -155,6 +158,34 @@ function friendlyConnectError(err: unknown, config: DataSourceConfig): unknown {
   return err;
 }
 
+/**
+ * The session zone, set right after the handshake like read-only. A named zone
+ * needs the server's time zone tables (mysql.time_zone_name), which RDS ships
+ * and a stock container does not; without them the zone's current UTC offset
+ * stands in, exact except for values across a daylight-saving change.
+ */
+export async function applyTimeZone(
+  connection: Pick<mysql.Connection, 'query'>,
+  zone: string,
+  flavor: string,
+): Promise<{ timeZone: string; note?: string }> {
+  try {
+    await connection.query('SET time_zone = ?', [zone]);
+    return { timeZone: zone };
+  } catch (err) {
+    if ((err as { code?: unknown } | undefined)?.code !== 'ER_UNKNOWN_TIME_ZONE') throw err;
+    const offset = utcOffsetOf(zone);
+    await connection.query('SET time_zone = ?', [offset]);
+    return {
+      timeZone: offset,
+      note:
+        `${flavor} has no time zone tables, so ${zone} is applied as the fixed offset ${offset}; ` +
+        'values on the other side of a daylight-saving change show an hour off. ' +
+        'Load the tables (mysql_tzinfo_to_sql) to use the zone itself.',
+    };
+  }
+}
+
 export const mysqlDriver: Driver = {
   id: 'mysql',
   label: 'MySQL / MariaDB',
@@ -194,8 +225,10 @@ export const mysqlDriver: Driver = {
         await connection.query('SET SESSION TRANSACTION READ ONLY');
       }
       const flavor = isMariaDb(version) ? 'MariaDB' : 'MySQL';
+      const zone = sessionTimeZone(config);
+      const applied = zone ? await applyTimeZone(connection, zone, flavor) : undefined;
       const threadId = typeof connection.threadId === 'number' ? connection.threadId : undefined;
-      return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel);
+      return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel, applied?.timeZone, applied?.note);
     } catch (err) {
       tunnel?.dispose();
       throw friendlyConnectError(err, config);

@@ -91,6 +91,9 @@ body.vscode-light .tab.on { color: var(--ij-fg); }
 .frm label.inline { text-align: left; margin-left: 4px; }
 .hostrow, .filerow { display: flex; align-items: center; gap: 8px; }
 .hostrow input:first-child, .filerow input { flex: 1; }
+.tzrow { display: flex; align-items: center; gap: 10px; }
+.tzrow input { width: 220px; }
+.tzrow .hint { flex: 1; }
 .url {
   font-family: var(--ij-mono);
   font-size: 11.5px;

@@ -5,6 +5,8 @@ import { cancelStatementSql, type DbSession } from './driver';
 export interface SessionDeps {
   getSecrets(dataSourceId: string): Promise<DataSourceSecrets>;
   showSystemSchemas(): boolean;
+  /** Something the user should hear about a fresh session (the MySQL time zone fallback). */
+  notice?(config: DataSourceConfig, message: string): void;
 }
 
 type Listener = (dataSourceId: string) => void;
@@ -103,6 +105,7 @@ export class SessionManager {
       const driver = getDriver(config.driver);
       const secrets = await this.deps.getSecrets(config.id);
       const session = await driver.connect({ config, secrets });
+      if (session.timeZoneNote) this.deps.notice?.(config, session.timeZoneNote);
       return { session, config, queue: Promise.resolve() };
     })();
 

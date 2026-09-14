@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
 import { trimmedString } from '../core/util';
+import { normalizeTimeZone } from '../drivers/timeZone';
 
 const SETTING = 'tablecloth.dataSources';
 
@@ -44,6 +45,8 @@ function normalize(raw: any): DataSourceConfig | undefined {
           }
         : undefined,
     schemas: Array.isArray(raw.schemas) ? raw.schemas.map(String) : undefined,
+    // hand-edited settings keep an unknown name so the connect error can name it
+    timeZone: normalizeTimeZone(raw.timeZone, { lenient: true }),
   };
 }
 

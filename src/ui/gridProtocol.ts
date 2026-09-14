@@ -30,6 +30,8 @@ export interface GridPageDto {
   total: number | null;
   /** Identifies the host's render of this page; a submit echoes it so a reloaded grid cannot be edited against stale rows. */
   generation: number;
+  /** The session zone zoned temporal values are shown in (a name, or an offset), null when the server's own setting applies. */
+  timeZone: string | null;
 }
 
 export interface ReferencingDto {
