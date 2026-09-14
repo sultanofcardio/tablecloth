@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
+import { trimmedString } from '../core/util';
 
 const SETTING = 'tablecloth.dataSources';
 
@@ -24,7 +25,11 @@ function normalize(raw: any): DataSourceConfig | undefined {
     port: typeof raw.port === 'number' ? raw.port : undefined,
     database: raw.database,
     user: raw.user,
-    auth: raw.auth === 'pgpass' || raw.auth === 'none' ? raw.auth : 'userPassword',
+    auth: raw.auth === 'pgpass' || raw.auth === 'awsIam' || raw.auth === 'none' ? raw.auth : 'userPassword',
+    aws:
+      raw.aws && typeof raw.aws === 'object'
+        ? { profile: trimmedString(raw.aws.profile), region: trimmedString(raw.aws.region) }
+        : undefined,
     file: raw.file,
     ssl: raw.ssl && typeof raw.ssl === 'object' ? { mode: raw.ssl.mode ?? 'disable', caFile: raw.ssl.caFile } : undefined,
     ssh:

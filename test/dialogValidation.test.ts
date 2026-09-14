@@ -49,6 +49,17 @@ test('user is not required for no-auth', () => {
   assert.deepEqual(fields({ ...validPg, user: '', auth: 'pgpass' }), ['user']);
 });
 
+test('AWS IAM needs a user, and a region only when the host does not carry one', () => {
+  const iam = { ...validPg, auth: 'awsIam', host: 'acme.c1x9z2m.us-east-1.rds.amazonaws.com', aws: { profile: '', region: '' } };
+  assert.deepEqual(fields(iam), []);
+  assert.deepEqual(fields({ ...iam, user: '' }), ['user']);
+  assert.deepEqual(fields({ ...iam, host: 'db.internal.example.com' }), ['awsRegion']);
+  assert.deepEqual(fields({ ...iam, host: 'db.internal.example.com', aws: { region: 'us-east-1' } }), []);
+  assert.deepEqual(fields({ ...iam, host: 'db.internal.example.com', aws: undefined }), ['awsRegion']);
+  // the rule belongs to the IAM mode alone
+  assert.deepEqual(fields({ ...validPg, host: 'db.internal.example.com' }), []);
+});
+
 test('port bounds and non-numeric ports', () => {
   assert.deepEqual(fields({ ...validPg, port: 0 }), ['port']);
   assert.deepEqual(fields({ ...validPg, port: 65536 }), ['port']);

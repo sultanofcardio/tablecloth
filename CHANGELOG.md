@@ -2,6 +2,17 @@
 
 All notable changes to Tablecloth are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may change the settings format.
 
+## [Unreleased]
+
+### Added
+
+- **AWS IAM (RDS/Aurora)** authentication for PostgreSQL and MySQL/MariaDB data sources. Tablecloth mints the 15-minute RDS token itself through the AWS CLI on every connect (the explorer, a console, Test Connection), so an IAM-protected database behaves like any other source: nothing to paste, nothing stored, and a dropped session reconnects with a fresh token. Choosing the mode swaps the Password row for an **AWS profile** list read from `~/.aws/config` and `~/.aws/credentials` (names, regions and whether each signs in through SSO or holds keys; any other name can be typed, and blank means the default credential chain) and an **AWS region** read off RDS host names, which only has to be typed behind a CNAME. RDS takes the token over TLS alone, so the mode moves an SSL mode of disable to require. An expired SSO session, an unknown profile, a missing CLI or a role without `rds_iam` each come back from Test Connection as a message naming the next step.
+- Setting `tablecloth.aws.cliPath` points Tablecloth at the AWS CLI when it is not in the usual install locations or on `PATH`.
+
+### Changed
+
+- Saving a data source in a mode other than User & Password (pgpass, AWS IAM, no auth) now deletes a password left in the keychain by an earlier mode.
+
 ## [0.2.0] - 2026-09-06
 
 ### Added

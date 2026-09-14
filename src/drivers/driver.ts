@@ -6,6 +6,7 @@ import type {
   DataSourceSecrets,
   DriverId,
   QueryResult,
+  SslMode,
 } from '../core/types';
 
 export interface ConnectContext {
@@ -38,6 +39,16 @@ export interface Driver {
   /** All schema-level names available for selection in the data source dialog. */
   listSchemas(session: DbSession): Promise<string[]>;
   introspect(session: DbSession, config: DataSourceConfig, showSystem: boolean): Promise<CatalogModel>;
+}
+
+/**
+ * The SSL mode a connection actually uses. RDS refuses an IAM token over
+ * plaintext, and mysql2 only sends mysql_clear_password inside TLS, so IAM
+ * auth lifts an absent or disabled mode to require; every other mode stands.
+ */
+export function effectiveSslMode(config: Pick<DataSourceConfig, 'auth' | 'ssl'>): SslMode {
+  const mode = config.ssl?.mode ?? 'disable';
+  return config.auth === 'awsIam' && mode === 'disable' ? 'require' : mode;
 }
 
 /** Statement that cancels whatever `backendId` is running, issued from another connection. */

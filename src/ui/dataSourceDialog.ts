@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
-import { defaultStorageScope, errorMessage } from '../core/util';
+import type { AuthMode, DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
+import { defaultStorageScope, errorMessage, trimmedString } from '../core/util';
+import { listAwsProfiles } from '../data/awsProfiles';
 import type { DataSourceStore } from '../data/store';
 import { getDriver } from '../drivers/index';
 import type { SessionManager } from '../drivers/sessions';
@@ -82,7 +83,7 @@ export class DataSourceDialog {
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message?.type) {
         case 'ready': {
-          const secrets = await this.store.getSecrets(config.id);
+          const [secrets, awsProfiles] = await Promise.all([this.store.getSecrets(config.id), listAwsProfiles()]);
           void panel.webview.postMessage({
             type: 'init',
             config,
@@ -94,6 +95,7 @@ export class DataSourceDialog {
               sshPassword: !!secrets.sshPassword,
               sshPassphrase: !!secrets.sshPassphrase,
             },
+            awsProfiles,
           });
           break;
         }
@@ -144,6 +146,10 @@ export class DataSourceDialog {
   }
 
   private normalizeIncoming(id: string, raw: any): DataSourceConfig {
+    const auth: AuthMode =
+      raw?.auth === 'pgpass' || raw?.auth === 'awsIam' || raw?.auth === 'none' ? raw.auth : 'userPassword';
+    const ssl =
+      raw?.ssl?.mode && raw.ssl.mode !== 'disable' ? { mode: raw.ssl.mode, caFile: trimmedString(raw.ssl.caFile) } : undefined;
     return {
       id,
       name: String(raw?.name ?? '').trim() || 'unnamed',
@@ -151,16 +157,15 @@ export class DataSourceDialog {
       color: ['green', 'amber', 'red', 'blue', 'purple'].includes(raw?.color) ? raw.color : 'none',
       readOnly: !!raw?.readOnly,
       autoSync: raw?.autoSync !== false,
-      host: str(raw?.host),
+      host: trimmedString(raw?.host),
       port: num(raw?.port),
-      database: str(raw?.database),
-      user: str(raw?.user),
-      auth: raw?.auth === 'pgpass' || raw?.auth === 'none' ? raw.auth : 'userPassword',
-      file: str(raw?.file),
-      ssl:
-        raw?.ssl?.mode && raw.ssl.mode !== 'disable'
-          ? { mode: raw.ssl.mode, caFile: str(raw.ssl.caFile) }
-          : undefined,
+      database: trimmedString(raw?.database),
+      user: trimmedString(raw?.user),
+      auth,
+      aws: auth === 'awsIam' ? { profile: trimmedString(raw?.aws?.profile), region: trimmedString(raw?.aws?.region) } : undefined,
+      file: trimmedString(raw?.file),
+      // RDS accepts an IAM token only over TLS, so disable can never be what that mode means
+      ssl: ssl ?? (auth === 'awsIam' ? { mode: 'require' } : undefined),
       ssh: raw?.ssh?.enabled
         ? {
             enabled: true,
@@ -168,7 +173,7 @@ export class DataSourceDialog {
             port: num(raw.ssh.port) ?? 22,
             user: String(raw.ssh.user ?? ''),
             auth: raw.ssh.auth === 'keyFile' || raw.ssh.auth === 'agent' ? raw.ssh.auth : 'password',
-            keyFile: str(raw.ssh.keyFile),
+            keyFile: trimmedString(raw.ssh.keyFile),
           }
         : undefined,
       schemas: Array.isArray(raw?.schemas) && raw.schemas.length > 0 ? raw.schemas.map(String) : undefined,
@@ -232,7 +237,13 @@ export class DataSourceDialog {
     if (scope === 'project' && (vscode.workspace.workspaceFolders?.length ?? 0) === 0) {
       throw new Error('Project scope needs an open workspace folder.');
     }
-    for (const field of ['password', 'sshPassword', 'sshPassphrase'] as const) {
+    if (config.auth === 'userPassword') {
+      if (typeof typedSecrets.password === 'string') await this.store.setSecret(id, 'password', typedSecrets.password);
+    } else {
+      // pgpass, AWS IAM and no-auth resolve their own password; a leftover one would only sit in the keychain
+      await this.store.setSecret(id, 'password', undefined);
+    }
+    for (const field of ['sshPassword', 'sshPassphrase'] as const) {
       if (typeof typedSecrets[field] === 'string') {
         await this.store.setSecret(id, field, typedSecrets[field] as string);
       }
@@ -299,6 +310,7 @@ export class DataSourceDialog {
       <select id="f-auth" class="net">
         <option value="userPassword">User &amp; Password</option>
         <option value="pgpass" data-pg-only="1">pgpass</option>
+        <option value="awsIam">AWS IAM (RDS/Aurora)</option>
         <option value="none">No auth</option>
       </select>
 
@@ -307,6 +319,13 @@ export class DataSourceDialog {
 
       <label class="net pass">Password:</label>
       <input id="f-password" type="password" class="net pass">
+
+      <label class="net aws">AWS profile:</label>
+      <input id="f-aws-profile" type="text" class="net aws" list="aws-profiles" placeholder="default credential chain" spellcheck="false" autocomplete="off">
+      <datalist id="aws-profiles"></datalist>
+
+      <label class="net aws">AWS region:</label>
+      <input id="f-aws-region" type="text" class="net aws" spellcheck="false" autocomplete="off">
 
       <label class="net">Database:</label>
       <input id="f-database" type="text" class="net" spellcheck="false">
@@ -384,11 +403,6 @@ export class DataSourceDialog {
 </body>
 </html>`;
   }
-}
-
-function str(v: unknown): string | undefined {
-  const s = typeof v === 'string' ? v.trim() : '';
-  return s.length > 0 ? s : undefined;
 }
 
 function num(v: unknown): number | undefined {

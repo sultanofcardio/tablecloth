@@ -12,6 +12,16 @@
   }
 
   /**
+   * "us-east-1" from acme.c1x9z2m.us-east-1.rds.amazonaws.com (instance, cluster,
+   * reader and proxy endpoints, plus .com.cn). Undefined for a CNAME or an IP.
+   * Kept in step with inferRdsRegion in src/data/awsIam.ts; a test asserts they agree.
+   */
+  function inferRdsRegion(host) {
+    const m = /\.([a-z]{2}(?:-gov)?-[a-z]+-\d+)\.rds\.amazonaws\.com(?:\.cn)?$/i.exec((host || '').trim());
+    return m ? m[1].toLowerCase() : undefined;
+  }
+
+  /**
    * Validate the collected dialog form.
    * `forSave` adds the checks only saving needs (name); Test Connection and
    * Load Schemas validate just the connection fields.
@@ -36,6 +46,9 @@
     }
     if (form.auth !== 'none' && !filled(form.user)) {
       add('user', 'User is required for this authentication mode.');
+    }
+    if (form.auth === 'awsIam' && !filled(form.aws && form.aws.region) && !inferRdsRegion(form.host)) {
+      add('awsRegion', 'AWS region could not be inferred from this host. Set AWS region.');
     }
 
     const ssh = form.ssh;
@@ -71,5 +84,5 @@
     return database || host;
   }
 
-  return { validateDataSourceForm, deriveDataSourceName };
+  return { validateDataSourceForm, deriveDataSourceName, inferRdsRegion };
 });

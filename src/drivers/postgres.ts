@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
+import { mintRdsAuthToken, rdsTokenRequest } from '../data/awsIam';
 import { lookupPgPass } from '../data/pgpass';
 import type {
   CatalogModel,
@@ -14,7 +15,7 @@ import type {
   SequenceModel,
 } from '../core/types';
 import type { ConnectContext, DbSession, Driver } from './driver';
-import { makeResult, normalizeRows } from './driver';
+import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { pgCatalogSupport } from './pgVersion';
 import { openSshTunnel, type SshTunnel } from './ssh';
 
@@ -104,9 +105,11 @@ class PostgresSession implements DbSession {
 /**
  * pg surfaces "SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a
  * string" when the server demands a password and none is configured; say what
- * that actually means. Everything else passes through untouched.
+ * that actually means. An IAM refusal names the two grants that are usually
+ * missing, with the server's own text kept first so it stays searchable.
+ * Everything else passes through untouched.
  */
-function friendlyConnectError(err: unknown): unknown {
+function friendlyConnectError(err: unknown, config: DataSourceConfig): unknown {
   const message = err instanceof Error ? err.message : '';
   if (/client password must be a string/i.test(message)) {
     return new Error(
@@ -114,11 +117,18 @@ function friendlyConnectError(err: unknown): unknown {
         'Set a password, or pick a different authentication mode if the server does not need one.',
     );
   }
+  // RDS instances answer "PAM authentication failed", RDS Proxy "IAM authentication failed"
+  if (config.auth === 'awsIam' && /IAM authentication failed|PAM authentication failed/i.test(message)) {
+    return new Error(
+      `${message}. The AWS principal needs rds-db:connect on this instance or proxy, ` +
+        'and the database role needs rds_iam.',
+    );
+  }
   return err;
 }
 
 function buildSsl(config: DataSourceConfig): pg.ClientConfig['ssl'] {
-  const mode = config.ssl?.mode ?? 'disable';
+  const mode = effectiveSslMode(config);
   if (mode === 'disable') return undefined;
   const ca = config.ssl?.caFile ? readFileSync(config.ssl.caFile).toString() : undefined;
   if (mode === 'require') return { rejectUnauthorized: false };
@@ -137,6 +147,10 @@ async function resolvePassword(ctx: ConnectContext): Promise<string | undefined>
       user: config.user ?? '',
     });
   }
+  if (config.auth === 'awsIam') {
+    // signed for the RDS endpoint in config.host, even when the socket goes through an SSH tunnel
+    return mintRdsAuthToken(rdsTokenRequest(config, 5432));
+  }
   return secrets.password;
 }
 
@@ -149,6 +163,8 @@ export const postgresDriver: Driver = {
     const { config } = ctx;
     const host = config.host ?? 'localhost';
     const port = config.port ?? 5432;
+    // before the tunnel: a mode that cannot produce a password fails without opening one
+    const password = await resolvePassword(ctx);
 
     let tunnel: SshTunnel | undefined;
     if (config.ssh?.enabled) {
@@ -160,7 +176,7 @@ export const postgresDriver: Driver = {
       port,
       database: config.database,
       user: config.user,
-      password: await resolvePassword(ctx),
+      password,
       ssl: buildSsl(config),
       connectionTimeoutMillis: 15_000,
       stream: tunnel ? () => tunnel!.stream as any : undefined,
@@ -183,7 +199,7 @@ export const postgresDriver: Driver = {
     } catch (err) {
       tunnel?.dispose();
       void client.end().catch(() => undefined);
-      throw friendlyConnectError(err);
+      throw friendlyConnectError(err, config);
     }
   },
 
