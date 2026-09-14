@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import * as mysql from 'mysql2/promise';
+import { mintRdsAuthToken, rdsTokenRequest } from '../data/awsIam';
 import type {
   CatalogModel,
   ColumnModel,
@@ -129,6 +130,31 @@ function buildSsl(config: DataSourceConfig): mysql.ConnectionOptions['ssl'] {
   return { ca, rejectUnauthorized: true };
 }
 
+/** Mirrors resolvePassword in postgres.ts; pgpass is PostgreSQL-only, so one branch fewer. */
+async function resolvePassword(ctx: ConnectContext): Promise<string | undefined> {
+  const { config, secrets } = ctx;
+  if (config.auth === 'none') return undefined;
+  // The server switches the handshake to mysql_clear_password for an IAM user and the
+  // token rides inside TLS; mysql2 ships that plugin, and RDS refuses the token without TLS.
+  if (config.auth === 'awsIam') return mintRdsAuthToken(rdsTokenRequest(config, 3306));
+  return secrets.password;
+}
+
+/**
+ * An IAM refusal is "Access denied" like any wrong password; name the two
+ * things that are usually missing, with the server's own text kept first.
+ */
+function friendlyConnectError(err: unknown, config: DataSourceConfig): unknown {
+  const code = (err as { code?: unknown } | undefined)?.code;
+  if (config.auth === 'awsIam' && err instanceof Error && code === 'ER_ACCESS_DENIED_ERROR') {
+    return new Error(
+      `${err.message}. The AWS principal needs rds-db:connect on this instance or proxy, ` +
+        'and the database user must be created with AWSAuthenticationPlugin.',
+    );
+  }
+  return err;
+}
+
 export const mysqlDriver: Driver = {
   id: 'mysql',
   label: 'MySQL / MariaDB',
@@ -138,6 +164,8 @@ export const mysqlDriver: Driver = {
     const { config, secrets } = ctx;
     const host = config.host ?? 'localhost';
     const port = config.port ?? 3306;
+    // before the tunnel: a mode that cannot produce a password fails without opening one
+    const password = await resolvePassword(ctx);
 
     let tunnel: SshTunnel | undefined;
     if (config.ssh?.enabled) {
@@ -150,7 +178,7 @@ export const mysqlDriver: Driver = {
         port,
         database: config.database || undefined,
         user: config.user,
-        password: config.auth === 'none' ? undefined : secrets.password,
+        password,
         ssl: buildSsl(config),
         connectTimeout: 15_000,
         dateStrings: true,
@@ -170,7 +198,7 @@ export const mysqlDriver: Driver = {
       return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel);
     } catch (err) {
       tunnel?.dispose();
-      throw err;
+      throw friendlyConnectError(err, config);
     }
   },
 

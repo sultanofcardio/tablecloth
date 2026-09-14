@@ -10,6 +10,11 @@ function secretKey(id: string, field: SecretField): string {
   return `tablecloth/${id}/${field}`;
 }
 
+function trimmed(v: unknown): string | undefined {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return s.length > 0 ? s : undefined;
+}
+
 function normalize(raw: any): DataSourceConfig | undefined {
   if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || typeof raw.name !== 'string') return undefined;
   if (raw.driver !== 'postgres' && raw.driver !== 'mysql' && raw.driver !== 'sqlite') return undefined;
@@ -24,7 +29,11 @@ function normalize(raw: any): DataSourceConfig | undefined {
     port: typeof raw.port === 'number' ? raw.port : undefined,
     database: raw.database,
     user: raw.user,
-    auth: raw.auth === 'pgpass' || raw.auth === 'none' ? raw.auth : 'userPassword',
+    auth: raw.auth === 'pgpass' || raw.auth === 'awsIam' || raw.auth === 'none' ? raw.auth : 'userPassword',
+    aws:
+      raw.aws && typeof raw.aws === 'object'
+        ? { profile: trimmed(raw.aws.profile), region: trimmed(raw.aws.region) }
+        : undefined,
     file: raw.file,
     ssl: raw.ssl && typeof raw.ssl === 'object' ? { mode: raw.ssl.mode ?? 'disable', caFile: raw.ssl.caFile } : undefined,
     ssh:

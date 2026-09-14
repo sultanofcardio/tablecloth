@@ -21,6 +21,8 @@
     sshUser: 'f-ssh-user',
     sshPort: 'f-ssh-port',
     sshKeyFile: 'f-ssh-key',
+    awsProfile: 'f-aws-profile',
+    awsRegion: 'f-aws-region',
   };
 
   function clearInvalidMarks() {
@@ -87,6 +89,7 @@
     const creds = auth === 'userPassword';
     document.querySelectorAll('.cred').forEach((el) => (el.hidden = isLite || auth === 'none'));
     document.querySelectorAll('.pass').forEach((el) => (el.hidden = isLite || !creds));
+    document.querySelectorAll('.aws').forEach((el) => (el.hidden = isLite || auth !== 'awsIam'));
 
     const sshOn = $('f-ssh-on').checked;
     document.querySelectorAll('.ssh').forEach((el) => (el.hidden = !sshOn || isLite));
@@ -116,10 +119,24 @@
     $('f-url').textContent = url;
   }
 
+  // The region the token is signed for, read off an RDS host name as it is typed;
+  // the field itself stays empty unless the host is a CNAME and the user has to say.
+  function updateRegionHint() {
+    const region = window.tableclothValidation.inferRdsRegion($('f-host').value);
+    $('f-aws-region').placeholder = region ? region + ' (from host)' : 'e.g. us-east-1';
+  }
+
+  // registered before applyVisibility so the SSL rows reflect the nudge
+  $('f-auth').addEventListener('change', () => {
+    // RDS takes an IAM token only over TLS; leaving disable in place would fail the
+    // first connect on a rule the user never saw
+    if ($('f-auth').value === 'awsIam' && $('f-ssl-mode').value === 'disable') $('f-ssl-mode').value = 'require';
+  });
   ['f-driver', 'f-auth', 'f-ssh-on', 'f-ssh-auth', 'f-ssl-mode'].forEach((id) =>
     $(id).addEventListener('change', applyVisibility),
   );
   ['f-host', 'f-port', 'f-database', 'f-file'].forEach((id) => $(id).addEventListener('input', updateUrl));
+  $('f-host').addEventListener('input', updateRegionHint);
   $('f-driver').addEventListener('change', () => {
     const port = DEFAULT_PORTS[$('f-driver').value];
     if (port && !$('f-port').dataset.touched) $('f-port').value = String(port);
@@ -156,6 +173,7 @@
       database: $('f-database').value,
       user: $('f-user').value,
       auth: driver === 'sqlite' ? 'none' : $('f-auth').value,
+      aws: { profile: $('f-aws-profile').value, region: $('f-aws-region').value },
       file: $('f-file').value,
       ssl: { mode: $('f-ssl-mode').value, caFile: $('f-ssl-ca').value },
       ssh: {
@@ -197,6 +215,18 @@
     vscode.postMessage({ type: 'loadSchemas', config: collectConfig(), secrets: collectSecrets() });
   });
 
+  /** The profile names behind the AWS profile field, each with how it signs in and its region. */
+  function renderAwsProfiles(profiles) {
+    const list = $('aws-profiles');
+    list.textContent = '';
+    for (const profile of profiles || []) {
+      const option = document.createElement('option');
+      option.value = profile.name;
+      option.label = [profile.kind === 'other' ? '' : profile.kind, profile.region || ''].filter(Boolean).join(' · ');
+      list.appendChild(option);
+    }
+  }
+
   function renderSchemaList(names) {
     const list = $('schema-list');
     list.textContent = '';
@@ -233,6 +263,9 @@
         if (c.port) $('f-port').dataset.touched = '1';
         $('f-auth').value = c.auth || 'userPassword';
         $('f-user').value = c.user || '';
+        $('f-aws-profile').value = (c.aws && c.aws.profile) || '';
+        $('f-aws-region').value = (c.aws && c.aws.region) || '';
+        renderAwsProfiles(msg.awsProfiles);
         $('f-database').value = c.database || '';
         $('f-file').value = c.file || '';
         $('f-readonly').checked = !!c.readOnly;
@@ -256,6 +289,7 @@
         // existing sources keep their name; new ones follow database@host
         nameTouched = !msg.isNew || !!(c.name && c.name.trim());
         applyVisibility();
+        updateRegionHint();
         maybeDeriveName();
         if (msg.isNew) $('f-host').focus();
         break;

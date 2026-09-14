@@ -2,7 +2,7 @@ export type DriverId = 'postgres' | 'mysql' | 'sqlite';
 
 export type EnvColor = 'none' | 'green' | 'amber' | 'red' | 'blue' | 'purple';
 
-export type AuthMode = 'userPassword' | 'pgpass' | 'none';
+export type AuthMode = 'userPassword' | 'pgpass' | 'awsIam' | 'none';
 
 export type SslMode = 'disable' | 'require' | 'verify-ca' | 'verify-full';
 
@@ -25,6 +25,14 @@ export interface SslConfig {
   caFile?: string;
 }
 
+/** AWS IAM (RDS/Aurora): where the connect token is signed from. Neither field is a secret. */
+export interface AwsConfig {
+  /** A profile from ~/.aws/config or ~/.aws/credentials; absent means the default credential chain. */
+  profile?: string;
+  /** Absent means inferred from the host name (*.<region>.rds.amazonaws.com). */
+  region?: string;
+}
+
 export interface DataSourceConfig {
   id: string;
   name: string;
@@ -38,6 +46,8 @@ export interface DataSourceConfig {
   database?: string;
   user?: string;
   auth: AuthMode;
+  /** Present when auth is 'awsIam'. */
+  aws?: AwsConfig;
   /** SQLite database file path. */
   file?: string;
   ssl?: SslConfig;

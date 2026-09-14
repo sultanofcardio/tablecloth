@@ -59,6 +59,9 @@ exports.run = async function run() {
     assert.ok(commands.includes(id), `command registered: ${id}`);
   }
 
+  // 2b. the machine-scoped AWS CLI setting is contributed (the IAM auth mode reads it)
+  assert.ok(vscode.workspace.getConfiguration('tablecloth.aws').has('cliPath'), 'tablecloth.aws.cliPath is contributed');
+
   // 3. define a SQLite data source through settings (the store's source of truth)
   // — a per-run id keeps console files and state from earlier runs out of the
   // way, since the test host's user-data directory persists across runs

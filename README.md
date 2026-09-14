@@ -36,7 +36,7 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 ## Getting started
 
 1. Open the **Database** view in the activity bar and choose **New Data Source…**.
-2. Pick a driver, fill in the connection, and use **Test Connection**. Passwords go to the OS keychain, never to settings.
+2. Pick a driver, fill in the connection, and use **Test Connection**. Passwords go to the OS keychain, never to settings. An RDS or Aurora database with IAM authentication needs no password at all: choose **AWS IAM (RDS/Aurora)**, pick the AWS profile, and Tablecloth mints the token on every connect.
 3. Expand the source in the explorer to browse schemas, tables, keys, indexes, views, sequences, routines, and enum types.
 4. Open a **Query Console…** on the source and run the statement at the caret with <kbd>⌘⏎</kbd> / <kbd>Ctrl+Enter</kbd>. Results land in the **Tablecloth** panel, one tab per statement. Statements with `:name` parameters ask for values first.
 5. Double-click a table to open its data. Type into cells, add or delete rows, then **Submit** (<kbd>⌘⏎</kbd>) to review the exact DML before it runs. Use the WHERE and ORDER BY fields, the header funnels, and the ↗ on foreign-key cells to move around.
@@ -86,7 +86,7 @@ Drivers ship inside the extension as pure JS/WASM; nothing to compile, nothing t
 
 | Area | Shipped |
 | --- | --- |
-| Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, no-auth · read-only sources (enforced server-side) · env color labels · Project (workspace, the default) and Global (user) scopes · passwords only in the OS keychain |
+| Connections | PostgreSQL, MySQL/MariaDB, SQLite · SSH tunnels · SSL modes · user/password, pgpass, AWS IAM (RDS/Aurora), no-auth · read-only sources (enforced server-side) · env color labels · Project (workspace, the default) and Global (user) scopes · passwords only in the OS keychain |
 | Explorer | Tree in the IntelliJ design language: vendor marks, introspection badges, schemas, tables with PK/FK keys, indexes, views, sequences, routines, enum types · toolbar row · context menus · schema selection and system-schema toggle · auto-sync per source |
 | Consoles | Monaco-based editor under an IntelliJ toolbar · run statement with the statement frame · run script · cancel a running statement (⌘F2) · schema switcher that really switches (`search_path`/`USE`) · transaction mode (Auto/Manual) with isolation levels, commit/roll back · per-console sessions · query history · `:name` parameters with a values dialog · consoles persist, rename, and reopen |
 | SQL intelligence | Object completion with dialect-correct quoting · keywords and functions · FK-based JOIN clauses and ON conditions · live templates (`sel`, `selw`, `ins`, `upd`, `del`, `tab`, …) · inspections for unresolved tables and columns with Change-to quick fixes · DELETE/UPDATE without WHERE flagged in the editor and confirmed before it runs, with the row count · Format SQL (⌘⌥L or Format Document) · Go to Database Object (⌘⇧O) · Go to DDL |
@@ -113,6 +113,7 @@ Found something else? [Open an issue](https://github.com/sultanofcardio/tableclo
 | --- | --- | --- |
 | `tablecloth.dataSources` | `[]` | Data source definitions, managed through the dialog. Workspace settings hold Project sources (the default when a trusted folder is open); user settings hold Global sources. Passwords are never stored here. |
 | `tablecloth.dialogs.openIn` | `floatingWindow` | Open the Data Sources and Import Data dialogs in a separate compact window or as an editor tab. (`tablecloth.dataSourceDialog.openIn` from Phase 1 is still honored.) |
+| `tablecloth.aws.cliPath` | `""` | Path to the AWS CLI that mints the connect token for AWS IAM (RDS/Aurora) data sources. Empty tries the usual install locations, then `PATH`. User settings only. |
 | `tablecloth.grid.pageSize` | `500` | Rows per data grid page; "Set as Default" in the pager menu writes it. |
 | `tablecloth.inspections.enabled` | `true` | Flag unresolved tables and columns, and DELETE/UPDATE without WHERE, in consoles and attached SQL files. |
 | `tablecloth.execution.warnWithoutWhere` | `true` | Ask before running a DELETE or UPDATE that has no WHERE clause, naming the table and its row count. Changing it resets every console's "Don't ask again" choice. |

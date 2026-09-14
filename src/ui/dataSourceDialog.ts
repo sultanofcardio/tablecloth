@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
+import type { AuthMode, DataSourceConfig, DataSourceSecrets, StorageScope, StoredDataSource } from '../core/types';
 import { defaultStorageScope, errorMessage } from '../core/util';
+import { listAwsProfiles } from '../data/awsProfiles';
 import type { DataSourceStore } from '../data/store';
 import { getDriver } from '../drivers/index';
 import type { SessionManager } from '../drivers/sessions';
@@ -82,7 +83,7 @@ export class DataSourceDialog {
     panel.webview.onDidReceiveMessage(async (message) => {
       switch (message?.type) {
         case 'ready': {
-          const secrets = await this.store.getSecrets(config.id);
+          const [secrets, awsProfiles] = await Promise.all([this.store.getSecrets(config.id), listAwsProfiles()]);
           void panel.webview.postMessage({
             type: 'init',
             config,
@@ -94,6 +95,7 @@ export class DataSourceDialog {
               sshPassword: !!secrets.sshPassword,
               sshPassphrase: !!secrets.sshPassphrase,
             },
+            awsProfiles,
           });
           break;
         }
@@ -144,6 +146,10 @@ export class DataSourceDialog {
   }
 
   private normalizeIncoming(id: string, raw: any): DataSourceConfig {
+    const auth: AuthMode =
+      raw?.auth === 'pgpass' || raw?.auth === 'awsIam' || raw?.auth === 'none' ? raw.auth : 'userPassword';
+    const ssl =
+      raw?.ssl?.mode && raw.ssl.mode !== 'disable' ? { mode: raw.ssl.mode, caFile: str(raw.ssl.caFile) } : undefined;
     return {
       id,
       name: String(raw?.name ?? '').trim() || 'unnamed',
@@ -155,12 +161,11 @@ export class DataSourceDialog {
       port: num(raw?.port),
       database: str(raw?.database),
       user: str(raw?.user),
-      auth: raw?.auth === 'pgpass' || raw?.auth === 'none' ? raw.auth : 'userPassword',
+      auth,
+      aws: auth === 'awsIam' ? { profile: str(raw?.aws?.profile), region: str(raw?.aws?.region) } : undefined,
       file: str(raw?.file),
-      ssl:
-        raw?.ssl?.mode && raw.ssl.mode !== 'disable'
-          ? { mode: raw.ssl.mode, caFile: str(raw.ssl.caFile) }
-          : undefined,
+      // RDS accepts an IAM token only over TLS, so disable can never be what that mode means
+      ssl: ssl ?? (auth === 'awsIam' ? { mode: 'require' } : undefined),
       ssh: raw?.ssh?.enabled
         ? {
             enabled: true,
@@ -232,7 +237,13 @@ export class DataSourceDialog {
     if (scope === 'project' && (vscode.workspace.workspaceFolders?.length ?? 0) === 0) {
       throw new Error('Project scope needs an open workspace folder.');
     }
-    for (const field of ['password', 'sshPassword', 'sshPassphrase'] as const) {
+    if (config.auth === 'userPassword') {
+      if (typeof typedSecrets.password === 'string') await this.store.setSecret(id, 'password', typedSecrets.password);
+    } else {
+      // pgpass, AWS IAM and no-auth resolve their own password; a leftover one would only sit in the keychain
+      await this.store.setSecret(id, 'password', undefined);
+    }
+    for (const field of ['sshPassword', 'sshPassphrase'] as const) {
       if (typeof typedSecrets[field] === 'string') {
         await this.store.setSecret(id, field, typedSecrets[field] as string);
       }
@@ -299,6 +310,7 @@ export class DataSourceDialog {
       <select id="f-auth" class="net">
         <option value="userPassword">User &amp; Password</option>
         <option value="pgpass" data-pg-only="1">pgpass</option>
+        <option value="awsIam">AWS IAM (RDS/Aurora)</option>
         <option value="none">No auth</option>
       </select>
 
@@ -307,6 +319,13 @@ export class DataSourceDialog {
 
       <label class="net pass">Password:</label>
       <input id="f-password" type="password" class="net pass">
+
+      <label class="net aws">AWS profile:</label>
+      <input id="f-aws-profile" type="text" class="net aws" list="aws-profiles" placeholder="default credential chain" spellcheck="false" autocomplete="off">
+      <datalist id="aws-profiles"></datalist>
+
+      <label class="net aws">AWS region:</label>
+      <input id="f-aws-region" type="text" class="net aws" spellcheck="false" autocomplete="off">
 
       <label class="net">Database:</label>
       <input id="f-database" type="text" class="net" spellcheck="false">

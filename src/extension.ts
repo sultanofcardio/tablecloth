@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ENV_COLOR_DOT, type CellValue, type StoredDataSource } from './core/types';
 import { errorMessage } from './core/util';
+import { setAwsCliPathSource } from './data/awsIam';
 import { DataSourceStore } from './data/store';
 import { SessionManager } from './drivers/sessions';
 import { ConsoleManager } from './console/consoles';
@@ -54,6 +55,8 @@ export function activate(context: vscode.ExtensionContext): {
   };
 } {
   const store = new DataSourceStore(context);
+  // the drivers stay free of the vscode import; the AWS CLI location is the one setting they need
+  setAwsCliPathSource(() => vscode.workspace.getConfiguration('tablecloth.aws').get<string>('cliPath'));
   sessions = new SessionManager({
     getSecrets: (id) => store.getSecrets(id),
     showSystemSchemas: () =>

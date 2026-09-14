@@ -354,6 +354,12 @@
           "default": "floatingWindow",
           "markdownDeprecationMessage": "Replaced by `#tablecloth.dialogs.openIn#`, which covers every Tablecloth dialog. Still honored when the new setting is unset."
         },
+        "tablecloth.aws.cliPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Path to the AWS CLI that mints the connect token for data sources in **AWS IAM (RDS/Aurora)** mode. Empty: the usual install locations, then `PATH`."
+        },
         "tablecloth.inspections.enabled": {
           "type": "boolean",
           "default": true,
