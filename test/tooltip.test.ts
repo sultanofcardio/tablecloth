@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { placeTip } from '../src/webview/tooltip';
+import { labelledTip, placeTip } from '../src/webview/tooltip';
 
 const viewport = { width: 800, height: 600 };
 
@@ -28,4 +28,8 @@ test('a tooltip taller than the space above stays inside the top margin', () => 
 test('a tooltip wider than the viewport keeps the left margin', () => {
   const at = placeTip({ x: 10, y: 10 }, { width: 900, height: 40 }, viewport);
   assert.equal(at.left, 8);
+});
+
+test('an icon-only control gets its tooltip text as its accessible name too', () => {
+  assert.deepEqual(labelledTip('Close'), { 'data-tip': 'Close', 'aria-label': 'Close' });
 });

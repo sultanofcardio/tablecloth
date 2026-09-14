@@ -149,6 +149,7 @@ export function showMenu(anchor: HTMLElement | { x: number; y: number }, options
         const btn = document.createElement('span');
         btn.className = 'tc-btn';
         btn.dataset.tip = button.tooltip;
+        btn.setAttribute('aria-label', button.tooltip);
         btn.innerHTML = MENU_ICONS[button.icon] ?? '';
         btn.addEventListener('click', (e) => {
           e.stopPropagation();

@@ -5,6 +5,7 @@ import { showMenu, type MenuItem } from '../menu';
 import { vendorIconSvg } from '../vendorIcons';
 import { ICONS } from './icons';
 import { el, h } from './widgets';
+import { labelledTip } from '../tooltip';
 
 export interface ServicesMessage {
   type: 'services';
@@ -65,7 +66,7 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
         const go = () => handlers.post(message);
         if (!closesActive || handlers.beforeSwitch(go)) go();
       };
-      const x = h('span', { class: 'x', 'data-tip': 'Close', role: 'button', html: ICONS.close });
+      const x = h('span', { class: 'x', ...labelledTip('Close'), role: 'button', html: ICONS.close });
       x.addEventListener('click', (e) => {
         e.stopPropagation();
         close({ type: 'closeTab', id: tab.id }, tab.active);
@@ -101,7 +102,7 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
       { action: 'disconnect', icon: ICONS.power, title: 'Deactivate (disconnect)', cls: 'danger' },
     ];
     for (const a of actions) {
-      const btn = h('button', { class: 'tab-action' + (a.cls ? ' ' + a.cls : ''), 'data-tip': a.title, html: a.icon });
+      const btn = h('button', { class: 'tab-action' + (a.cls ? ' ' + a.cls : ''), ...labelledTip(a.title), html: a.icon });
       btn.addEventListener('click', () => {
         if (a.action === 'console') {
           menuAnchor = btn;
@@ -145,7 +146,7 @@ export function renderChrome(msg: ServicesMessage, handlers: ChromeHandlers): vo
       const meta = h('span', { class: 'smeta' }, con.status);
       row.appendChild(meta);
       if (con.running) {
-        const stop = h('button', { class: 'sstop', 'data-tip': 'Cancel running statement', html: ICONS.stop });
+        const stop = h('button', { class: 'sstop', ...labelledTip('Cancel running statement'), html: ICONS.stop });
         stop.addEventListener('click', (e) => {
           e.stopPropagation();
           handlers.post({ type: 'cancelConsole', key: con.key });

@@ -33,6 +33,11 @@ export function placeTip(pointer: Point, size: Size, viewport: Size): { left: nu
   return { left, top };
 }
 
+/** Attributes for an icon-only control: the tooltip text doubles as its accessible name. */
+export function labelledTip(text: string): { 'data-tip': string; 'aria-label': string } {
+  return { 'data-tip': text, 'aria-label': text };
+}
+
 /** The nearest element carrying a non-empty `data-tip`, starting at `from`. */
 export function tooltipTarget(from: EventTarget | null): HTMLElement | undefined {
   if (!(from instanceof Element)) return undefined;

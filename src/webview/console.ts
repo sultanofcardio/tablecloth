@@ -482,7 +482,9 @@ function renderToolbar(): void {
   const stop = el('tb-stop') as HTMLButtonElement;
   stop.disabled = !(state.running && state.canCancel);
   stop.classList.toggle('live', state.running && state.canCancel);
-  stop.dataset.tip = state.canCancel ? 'Cancel running statement (⌘F2)' : 'This database cannot cancel a running statement';
+  const stopTip = state.canCancel ? 'Cancel running statement (⌘F2)' : 'This database cannot cancel a running statement';
+  stop.dataset.tip = stopTip;
+  stop.setAttribute('aria-label', stopTip);
   (el('tb-run') as HTMLButtonElement).classList.toggle('busy', state.running);
 }
 

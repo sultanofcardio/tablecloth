@@ -20,6 +20,7 @@ import {
   visibleColumns,
 } from './store';
 import { el, h } from './widgets';
+import { labelledTip } from '../tooltip';
 
 export const ROW_H = 23; // 22px row + 1px border
 const BUFFER = 20;
@@ -91,7 +92,7 @@ function renderHeader(): void {
   const data = S.data!;
   const headRow = el('head-row');
   headRow.textContent = '';
-  const gut = h('th', { class: 'gut', 'data-tip': 'Select all (click again to clear)' });
+  const gut = h('th', { class: 'gut', ...labelledTip('Select all (click again to clear)') });
   gut.style.width = '42px';
   headRow.appendChild(gut);
   for (const c of visibleColumns()) {
@@ -104,7 +105,7 @@ function renderHeader(): void {
     if (data.meta.canFilter) {
       const funnel = h('span', {
         class: 'funnel' + (S.funnelClauses.has(column.name) ? ' on' : ''),
-        'data-tip': 'Filter by values',
+        ...labelledTip('Filter by values'),
         html: ICONS.funnel,
       });
       funnel.dataset.funnel = String(c);
@@ -175,7 +176,7 @@ function fillCell(td: HTMLTableCellElement, r: number, c: number): void {
   }
   if (column.fk && !display.isNull && !isInserted(r) && originalValue(r, c) !== null) {
     td.classList.add('fk');
-    const go = h('span', { class: 'fkgo', 'data-tip': `Go to ${column.fk.table}`, html: ICONS.arrowUpRight });
+    const go = h('span', { class: 'fkgo', ...labelledTip(`Go to ${column.fk.table}`), html: ICONS.arrowUpRight });
     go.dataset.fk = String(c);
     td.appendChild(go);
   }

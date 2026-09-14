@@ -4,6 +4,7 @@
 import type { PanelPlan, PlanNode } from '../../plan/model';
 import { ICONS } from './icons';
 import { el, h } from './widgets';
+import { labelledTip } from '../tooltip';
 
 export interface PlanMessage {
   type: 'plan';
@@ -94,7 +95,7 @@ function draw(): void {
     if (plan.planningMs !== undefined) parts.push(`planning ${fmtMs(plan.planningMs)}`);
     right.textContent = parts.join(' · ');
   } else if (msg.canAnalyse) {
-    const btn = h('button', { class: 'ebtn', html: ICONS.play, 'data-tip': 'Run the statement and add actual rows and time per node' });
+    const btn = h('button', { class: 'ebtn', html: ICONS.play, ...labelledTip('Run the statement and add actual rows and time per node') });
     btn.appendChild(document.createTextNode('Explain Analyse'));
     btn.addEventListener('click', () => poster?.({ type: 'explainAnalyse' }));
     right.appendChild(btn);
@@ -151,7 +152,7 @@ function treeRows(container: HTMLElement, node: PlanNode, depth: number, total: 
   if (isAnalysed) {
     const time = h('span', { class: 'pltime' });
     if (node.timeMs !== undefined) {
-      const heat = h('span', { class: 'heat', 'data-tip': fmtMs(node.timeMs) });
+      const heat = h('span', { class: 'heat', ...labelledTip(fmtMs(node.timeMs)) });
       const share = total > 0 ? Math.max(0.02, Math.min(1, node.timeMs / total)) : 0;
       heat.style.setProperty('--w', `${Math.round(share * 100)}%`);
       time.append(heat, h('span', { class: 'plms' }, fmtMs(node.timeMs)));

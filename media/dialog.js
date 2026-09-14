@@ -3,7 +3,7 @@
   'use strict';
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
-  if (window.tableclothTooltip) window.tableclothTooltip.installTooltips();
+  window.tableclothTooltip.installTooltips();
 
   const DEFAULT_PORTS = { postgres: 5432, mysql: 3306 };
   let secretsPresent = { password: false, sshPassword: false, sshPassphrase: false };
