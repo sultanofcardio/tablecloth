@@ -113,7 +113,7 @@ test('CLI failures become the next action', () => {
     'The AWS SSO session for profile acme-staging has expired. Run: aws sso login --profile acme-staging',
   );
   assert.equal(
-    errorFor({ stderr: 'Error loading SSO Token: Token for beast-sso does not exist' }),
+    errorFor({ stderr: 'Error loading SSO Token: Token for acme-sso does not exist' }),
     'No AWS SSO session for profile acme-staging. Run: aws sso login --profile acme-staging',
   );
   assert.equal(
