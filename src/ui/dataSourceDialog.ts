@@ -153,10 +153,12 @@ export class DataSourceDialog {
       raw?.auth === 'pgpass' || raw?.auth === 'awsIam' || raw?.auth === 'none' ? raw.auth : 'userPassword';
     const ssl =
       raw?.ssl?.mode && raw.ssl.mode !== 'disable' ? { mode: raw.ssl.mode, caFile: trimmedString(raw.ssl.caFile) } : undefined;
+    const driver: DataSourceConfig['driver'] =
+      raw?.driver === 'mysql' || raw?.driver === 'sqlite' ? raw.driver : 'postgres';
     return {
       id,
       name: String(raw?.name ?? '').trim() || 'unnamed',
-      driver: raw?.driver === 'mysql' || raw?.driver === 'sqlite' ? raw.driver : 'postgres',
+      driver,
       color: ['green', 'amber', 'red', 'blue', 'purple'].includes(raw?.color) ? raw.color : 'none',
       readOnly: !!raw?.readOnly,
       autoSync: raw?.autoSync !== false,
@@ -180,8 +182,9 @@ export class DataSourceDialog {
           }
         : undefined,
       schemas: Array.isArray(raw?.schemas) && raw.schemas.length > 0 ? raw.schemas.map(String) : undefined,
-      // an unknown name throws here, and Test Connection or Save shows the message
-      timeZone: normalizeTimeZone(raw?.timeZone),
+      // an unknown name throws here, and Test Connection or Save shows the message;
+      // sqlite hides the field, so a stale value from another driver must not block Save
+      timeZone: driver === 'sqlite' ? undefined : normalizeTimeZone(raw?.timeZone),
     };
   }
 
@@ -205,8 +208,9 @@ export class DataSourceDialog {
       const driver = getDriver(config.driver);
       const session = await driver.connect({ config, secrets });
       const version = session.serverVersion;
+      const note = session.timeZoneNote;
       await session.close();
-      return { ok: true, message: version };
+      return { ok: true, message: note ? `${version} ${note}` : version };
     } catch (err) {
       return { ok: false, message: errorMessage(err) };
     }
