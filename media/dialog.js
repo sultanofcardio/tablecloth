@@ -230,7 +230,7 @@
   }
 
   /** Local and Server first, then every zone the extension host knows; the browser filters as the user types. */
-  function renderTimeZones(names, local, server) {
+  function renderTimeZones(names, local) {
     const list = $('time-zones');
     list.textContent = '';
     const add = (value, label) => {
@@ -243,11 +243,7 @@
     add('Server', 'as the server is set');
     for (const name of names || []) add(name, '');
     $('tz-hint').textContent =
-      'Session time zone for values that carry one. Local is ' + local + ' on this machine; ' + capitalize(server) + " keeps the server's setting.";
-  }
-
-  function capitalize(text) {
-    return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+      'Session time zone for values that carry one. Local is ' + local + " on this machine; Server keeps the server's setting.";
   }
 
   function renderSchemaList(names) {
@@ -293,8 +289,8 @@
         $('f-file').value = c.file || '';
         $('f-readonly').checked = !!c.readOnly;
         $('f-autosync').checked = c.autoSync !== false;
-        renderTimeZones(msg.timeZones, msg.localTimeZone, msg.serverTimeZone);
-        $('f-timezone').value = c.timeZone === msg.serverTimeZone ? 'Server' : c.timeZone || 'Local';
+        renderTimeZones(msg.timeZones, msg.localTimeZone);
+        $('f-timezone').value = c.timeZone === 'server' ? 'Server' : c.timeZone || 'Local';
         $('f-ssl-mode').value = (c.ssl && c.ssl.mode) || 'disable';
         $('f-ssl-ca').value = (c.ssl && c.ssl.caFile) || '';
         if (c.ssh) {

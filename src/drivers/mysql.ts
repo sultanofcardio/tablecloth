@@ -15,7 +15,7 @@ import type { ConnectContext, DbSession, Driver } from './driver';
 import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { isMariaDb } from './info';
 import { openSshTunnel, type SshTunnel } from './ssh';
-import { canonicalTimeZone, sessionTimeZone, utcOffsetOf } from './timeZone';
+import { canonicalTimeZone, isImplicitTimeZone, sessionTimeZone, utcOffsetOf } from './timeZone';
 
 /** mysql2 column type codes that should right-align as numbers. */
 const NUMERIC_TYPE_CODES = new Set([0, 1, 2, 3, 4, 5, 8, 9, 13, 246]);
@@ -169,20 +169,27 @@ export async function applyTimeZone(
   connection: Pick<mysql.Connection, 'query'>,
   zone: string,
   flavor: string,
-): Promise<{ timeZone: string; note?: string }> {
+  implicit = false,
+): Promise<{ timeZone?: string; note?: string }> {
   try {
     await connection.query('SET time_zone = ?', [zone]);
     return { timeZone: zone };
   } catch (err) {
-    if ((err as { code?: unknown } | undefined)?.code !== 'ER_UNKNOWN_TIME_ZONE') throw err;
-    if (!canonicalTimeZone(zone)) {
-      throw new Error(
-        `The server does not know the time zone "${zone}" (${(err as Error).message}). ` +
-          "Pick another zone, or Server, on the data source's Options tab.",
-      );
-    }
+    if (!isUnknownTimeZone(err)) throw err;
+    if (!canonicalTimeZone(zone)) throw unknownTimeZoneError(zone, err);
     const offset = utcOffsetOf(zone);
-    await connection.query('SET time_zone = ?', [offset]);
+    try {
+      await connection.query('SET time_zone = ?', [offset]);
+    } catch (offsetErr) {
+      if (!isUnknownTimeZone(offsetErr)) throw offsetErr;
+      if (!implicit) throw unknownTimeZoneError(zone, offsetErr);
+      return {
+        note:
+          `${flavor} does not know the time zone ${zone} and rejects the offset ${offset} ` +
+          `(${(offsetErr as Error).message}), so times are shown in the server's zone. ` +
+          "Pick a zone, or Server, on the data source's Options tab.",
+      };
+    }
     return {
       timeZone: offset,
       note:
@@ -192,6 +199,17 @@ export async function applyTimeZone(
         'Load or update the tables (mysql_tzinfo_to_sql) to use the zone itself.',
     };
   }
+}
+
+function isUnknownTimeZone(err: unknown): boolean {
+  return (err as { code?: unknown } | undefined)?.code === 'ER_UNKNOWN_TIME_ZONE';
+}
+
+function unknownTimeZoneError(zone: string, err: unknown): Error {
+  return new Error(
+    `The server does not know the time zone "${zone}" (${(err as Error).message}). ` +
+      "Pick another zone, or Server, on the data source's Options tab.",
+  );
 }
 
 export const mysqlDriver: Driver = {
@@ -234,7 +252,7 @@ export const mysqlDriver: Driver = {
       }
       const flavor = isMariaDb(version) ? 'MariaDB' : 'MySQL';
       const zone = sessionTimeZone(config);
-      const applied = zone ? await applyTimeZone(connection, zone, flavor) : undefined;
+      const applied = zone ? await applyTimeZone(connection, zone, flavor, isImplicitTimeZone(config)) : undefined;
       const threadId = typeof connection.threadId === 'number' ? connection.threadId : undefined;
       return new MySqlSession(connection, `${flavor} ${version}`, threadId, tunnel, applied?.timeZone, applied?.note);
     } catch (err) {

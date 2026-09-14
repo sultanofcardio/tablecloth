@@ -98,5 +98,5 @@
     return database || host;
   }
 
-  return { validateDataSourceForm, deriveDataSourceName, inferRdsRegion, knownTimeZone };
+  return { validateDataSourceForm, deriveDataSourceName, inferRdsRegion };
 });

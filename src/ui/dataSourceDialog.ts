@@ -6,7 +6,7 @@ import { listAwsProfiles } from '../data/awsProfiles';
 import type { DataSourceStore } from '../data/store';
 import { getDriver } from '../drivers/index';
 import type { SessionManager } from '../drivers/sessions';
-import { SERVER_TIME_ZONE, localTimeZone, normalizeTimeZone, timeZoneNames } from '../drivers/timeZone';
+import { localTimeZone, normalizeTimeZone, timeZoneNames } from '../drivers/timeZone';
 import { detachActiveEditor, getSurfacePresentation, openEmptyFloatingWindow } from './floatingWindow';
 
 /** Map key for the one new-source dialog; edit dialogs key on their source id. */
@@ -99,7 +99,6 @@ export class DataSourceDialog {
             awsProfiles,
             timeZones: timeZoneNames(),
             localTimeZone: localTimeZone(),
-            serverTimeZone: SERVER_TIME_ZONE,
           });
           break;
         }
