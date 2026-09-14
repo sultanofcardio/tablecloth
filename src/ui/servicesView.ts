@@ -200,6 +200,12 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
         case 'closeTab':
           void this.closeTab(String(message.id));
           return;
+        case 'closeOtherTabs':
+          void this.closeTabs((t) => t.id !== String(message.id));
+          return;
+        case 'closeAllTabs':
+          void this.closeTabs(() => true);
+          return;
         default:
           void this.grid.handleMessage(message);
       }
@@ -518,6 +524,22 @@ export class ServicesViewProvider implements vscode.WebviewViewProvider {
       const next = entry.tabs[index] ?? entry.tabs[index - 1];
       entry.activeTabId = next?.id ?? OUTPUT_TAB;
       if (next) await this.showTab(next);
+    }
+    this.postChrome();
+  }
+
+  /**
+   * Close every result tab of the active console that `matches`. The active
+   * tab survives when it is kept; otherwise the Output tab takes over.
+   */
+  private async closeTabs(matches: (tab: ResultTab) => boolean): Promise<void> {
+    const entry = this.activeConsole();
+    if (!entry) return;
+    const kept = entry.tabs.filter((t) => !matches(t));
+    if (kept.length === entry.tabs.length) return;
+    entry.tabs = kept;
+    if (!kept.some((t) => t.id === entry.activeTabId)) {
+      entry.activeTabId = OUTPUT_TAB;
     }
     this.postChrome();
   }
