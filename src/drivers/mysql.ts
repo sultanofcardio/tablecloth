@@ -15,7 +15,7 @@ import type { ConnectContext, DbSession, Driver } from './driver';
 import { effectiveSslMode, makeResult, normalizeRows } from './driver';
 import { isMariaDb } from './info';
 import { openSshTunnel, type SshTunnel } from './ssh';
-import { sessionTimeZone, utcOffsetOf } from './timeZone';
+import { canonicalTimeZone, sessionTimeZone, utcOffsetOf } from './timeZone';
 
 /** mysql2 column type codes that should right-align as numbers. */
 const NUMERIC_TYPE_CODES = new Set([0, 1, 2, 3, 4, 5, 8, 9, 13, 246]);
@@ -174,6 +174,12 @@ export async function applyTimeZone(
     return { timeZone: zone };
   } catch (err) {
     if ((err as { code?: unknown } | undefined)?.code !== 'ER_UNKNOWN_TIME_ZONE') throw err;
+    if (!canonicalTimeZone(zone)) {
+      throw new Error(
+        `The server does not know the time zone "${zone}" (${(err as Error).message}). ` +
+          "Pick another zone, or Server, on the data source's Options tab.",
+      );
+    }
     const offset = utcOffsetOf(zone);
     await connection.query('SET time_zone = ?', [offset]);
     return {

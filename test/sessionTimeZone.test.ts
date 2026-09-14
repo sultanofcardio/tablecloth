@@ -49,6 +49,15 @@ test('MySQL without time zone tables falls back to the offset and says so once',
   assert.deepEqual(connection.sent, ["SET time_zone = 'Asia/Kolkata'", "SET time_zone = '+05:30'"]);
 });
 
+test('MySQL names the zone and the Options tab when neither the server nor the runtime knows it', async () => {
+  const connection = stub({ pattern: /SET time_zone/, code: 'ER_UNKNOWN_TIME_ZONE', message: "Unknown or incorrect time zone: 'Mars/Olympus_Mons'" });
+  await assert.rejects(
+    applyMySqlTimeZone(connection, 'Mars/Olympus_Mons', 'MySQL'),
+    /^Error: The server does not know the time zone "Mars\/Olympus_Mons" \(Unknown or incorrect time zone: 'Mars\/Olympus_Mons'\)\. Pick another zone, or Server, on the data source's Options tab\.$/,
+  );
+  assert.equal(connection.sent.length, 1);
+});
+
 test('MySQL passes any other failure through untouched', async () => {
   const connection = stub({ pattern: /SET time_zone/, code: 'ER_ACCESS_DENIED_ERROR', message: 'Access denied' });
   await assert.rejects(applyMySqlTimeZone(connection, 'Asia/Tokyo', 'MySQL'), /Access denied/);

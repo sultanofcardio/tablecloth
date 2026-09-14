@@ -24,12 +24,16 @@ import { el, h } from './widgets';
 export const ROW_H = 23; // 22px row + 1px border
 const BUFFER = 20;
 
-/** Types whose text the server renders in the session zone; the header tooltip names it. */
+/**
+ * Types whose text the server renders in the session zone; the header tooltip
+ * names it. Only timestamptz and MySQL TIMESTAMP qualify: timetz carries its
+ * own offset and zone-less types are left alone.
+ */
 function isZonedType(dialect: DriverId | undefined, dataType: string | null): boolean {
   if (!dataType) return false;
   const type = dataType.toLowerCase();
   if (dialect === 'mysql') return type === 'timestamp';
-  if (dialect === 'postgres') return /^(timestamptz|timetz|timestamp with time zone|time with time zone)$/.test(type);
+  if (dialect === 'postgres') return type === 'timestamptz';
   return false;
 }
 

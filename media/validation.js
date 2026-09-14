@@ -11,11 +11,6 @@
     return typeof value === 'string' && value.trim().length > 0;
   }
 
-  /**
-   * "us-east-1" from acme.c1x9z2m.us-east-1.rds.amazonaws.com (instance, cluster,
-   * reader and proxy endpoints, plus .com.cn). Undefined for a CNAME or an IP.
-   * Kept in step with inferRdsRegion in src/data/awsIam.ts; a test asserts they agree.
-   */
   /** Whether the browser (or node) knows this IANA zone name; Local and Server are handled by the caller. */
   function knownTimeZone(name) {
     try {
@@ -26,6 +21,11 @@
     }
   }
 
+  /**
+   * "us-east-1" from acme.c1x9z2m.us-east-1.rds.amazonaws.com (instance, cluster,
+   * reader and proxy endpoints, plus .com.cn). Undefined for a CNAME or an IP.
+   * Kept in step with inferRdsRegion in src/data/awsIam.ts; a test asserts they agree.
+   */
   function inferRdsRegion(host) {
     const m = /\.([a-z]{2}(?:-gov)?-[a-z]+-\d+)\.rds\.amazonaws\.com(?:\.cn)?$/i.exec((host || '').trim());
     return m ? m[1].toLowerCase() : undefined;
