@@ -31,6 +31,7 @@ A data source is a saved connection. **Project** sources are written to the work
 | Authentication | User and password, pgpass (PostgreSQL reads `~/.pgpass`), AWS IAM (RDS/Aurora), or no auth. The IAM mode has [its own section](#aws-iam-rdsaurora) below. |
 | Read-only | Enforced by the server session, so a stray UPDATE fails at the database. |
 | Auto-sync | On: re-introspect on connect. Off: the tree only changes when you press Refresh. |
+| Time zone | The session time zone, set when Tablecloth connects: **Local** (this machine's zone, the default), **Server** (the server's own setting), or any zone from the list. Governs how `timestamptz` (PostgreSQL) and `TIMESTAMP` (MySQL/MariaDB) values render. [Its own section](#time-zone) below. SQLite has no session zone and no field. |
 | SSH/SSL tab | SSH tunnel with password, key file or agent auth. SSL mode disable, require, verify-ca or verify-full, with an optional CA file. Key and CA files must be on the local disk. |
 | Schemas tab | Which schemas (PostgreSQL) or databases (MySQL) to introspect. Empty means the driver's default. |
 {: .w24}
@@ -51,6 +52,24 @@ Setting one up:
 RDS only accepts the token over TLS, so choosing this mode moves an SSL mode of *disable* to *require*; the SSH/SSL tab still owns the field. The AWS CLI is looked for in its usual install locations and then on `PATH`; `tablecloth.aws.cliPath` points somewhere else. An expired SSO session, an unknown profile, a role without `rds_iam` or a missing CLI each come back from Test Connection as a message that names the next step.
 
 A source in this mode stores the profile name and, only when you typed it, the region. Neither is a secret, so a Project source commits cleanly with the repo and each engineer's own sign-in does the rest.
+
+## Time zone
+
+Every session gets a time zone when Tablecloth connects, the way IntelliJ sets one, so values that carry a zone (`timestamptz` on PostgreSQL, `TIMESTAMP` on MySQL/MariaDB) render in it everywhere: data editors, console results, exports, and the literals you type into cells and filters. The field is on the **Options** tab and defaults to **Local**, this machine's zone. A column that reads `16:43:07+00` on a server set to UTC reads `11:43:07-05` from Jamaica, and `now()` in a console answers in local time. **Server** keeps the server's own setting, and any zone can be picked from the list, which narrows as you type. The column header tooltip names the zone in use. Plain `timestamp` and `date` columns carry no zone and are left alone.
+
+![The Options tab of the Data Sources dialog with the Time zone field open: Local (this machine: America/Jamaica), Server (as the server is set), UTC, then the zone list.]({{ site.baseurl }}/assets/images/cl-time-zone-popup.png)
+{: .fig style="max-width:700px"}
+
+*The Time zone field on the Options tab, Local by default, with the zone list open.*
+{: .figcaption}
+
+![The events table on a Local-default source from Jamaica: happened_at, a timestamptz, in -05; scheduled_at, a timestamp, unchanged.]({{ site.baseurl }}/assets/images/cl-time-zone-grid.png)
+{: .fig}
+
+*The same events table from Jamaica: `happened_at` (timestamptz) in -05, `scheduled_at` (timestamp) untouched.*
+{: .figcaption}
+
+If the server does not know this machine's zone name (an old tzdata, say), the Local default keeps the server's zone and says so once; a zone you chose yourself comes back from Test Connection as an error, so you see it. A MySQL server without time zone tables takes the zone's current UTC offset, with a one-time warning.
 
 ## Where it's stored
 

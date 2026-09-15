@@ -5,7 +5,7 @@ title: Known limits
 
 # Known limits
 
-What I know is missing or rough as of 0.2.0. Most of these have a line on the [roadmap]({{ site.baseurl }}/roadmap.html).
+What I know is missing or rough as of 0.3.0. Most of these have a line on the [roadmap]({{ site.baseurl }}/roadmap.html).
 
 - Console result grids are editable only for single-table SELECTs whose key columns are in the result. Table data editors always are.
 - Header funnels list the first 200 distinct values.
@@ -17,5 +17,8 @@ What I know is missing or rough as of 0.2.0. Most of these have a line on the [r
 - The column list hides columns but doesn't reorder them yet.
 - AWS IAM (RDS/Aurora) mints its token through the AWS CLI, which can't prompt inside the extension host. A profile that asks for an MFA code fails with a message to sign in from a terminal first.
 - A CNAME or custom DNS name in front of an RDS endpoint carries no region, so the AWS region has to be typed for it.
+- SQLite has no session time zone, so the Time zone field is hidden for SQLite sources.
+- A MySQL server without time zone tables takes the zone's current UTC offset in place of the zone name, so a daylight-saving change is only picked up on the next connect.
+- A server whose tzdata lacks this machine's zone name keeps its own zone under the Local default, with a one-time notice.
 
 Found something else? [Open an issue](https://github.com/sultanofcardio/tablecloth/issues).

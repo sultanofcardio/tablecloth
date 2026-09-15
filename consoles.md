@@ -57,6 +57,14 @@ Each console has a transaction mode, **Auto** or **Manual**, and an isolation le
 
 The **Tablecloth** panel is shaped like IntelliJ's Services window: a tree of Database → source → console on the left, and for each console its result tabs and an Output log. Result tabs take their name from a leading comment in the statement or from the table it reads. Console result grids are the same grid as the data editor, and are editable when the statement is a single-table SELECT with the key columns in the result; otherwise they open read-only and say why. Selecting a data source node shows its Information tab and action row instead.
 
+Each result tab has a close icon, shown on hover and on the active tab, and a right-click menu with **Close**, **Close Other Tabs** and **Close All Tabs**. A long name truncates before the icon.
+
+![Two result tabs named after a long table, the active one with its close icon, and its right-click menu listing Close, Close Other Tabs and Close All Tabs.]({{ site.baseurl }}/assets/images/cl-tab-menu.png)
+{: .fig}
+
+*The result tab's right-click menu, and the close icon on the active tab.*
+{: .figcaption}
+
 ## Query history
 
 **Query History** in the toolbar or the editor title menu lists what this console has run. Picking an entry inserts it at the caret.

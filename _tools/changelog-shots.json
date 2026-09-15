@@ -1,4 +1,34 @@
 {
+  "0.3.0|Added|**AWS IAM (RDS/Aurora)**": [
+    [
+      "cl-aws-iam.png",
+      "AWS IAM (RDS/Aurora) chosen: the Password row gives way to the AWS profile and a region read off the RDS host name.",
+      700
+    ]
+  ],
+  "0.3.0|Added|**Time zone** per data source": [
+    [
+      "cl-time-zone-popup.png",
+      "The Time zone field on the Options tab, Local by default, with the zone list open.",
+      700
+    ],
+    [
+      "cl-time-zone-grid.png",
+      "The same events table from Jamaica: happened_at (timestamptz) in -05, scheduled_at (timestamp) untouched."
+    ]
+  ],
+  "0.3.0|Changed|Result tabs in the Tablecloth panel": [
+    [
+      "cl-tab-menu.png",
+      "The result tab's right-click menu, and the close icon on the active tab."
+    ]
+  ],
+  "0.3.0|Fixed|Tooltips in the grids": [
+    [
+      "cl-tooltip-float.png",
+      "The column header tooltip drawn in-page in a floating window, naming the zone the column is shown in."
+    ]
+  ],
   "0.2.0|Added|**Explain Plan** and **Explain Analyse**": [
     [
       "cl-explain-plan.png",
