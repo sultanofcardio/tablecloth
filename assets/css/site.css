@@ -71,22 +71,17 @@
 
   /* site frame */
   .site { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 560px; }
-  .site.collapsed { grid-template-columns: minmax(0, 1fr); }
-  .site.collapsed nav { display: none; }
   .navrail[hidden] { display: none; }
   .site nav .brand { justify-content: space-between; }
   .site nav .brand span { flex: 1; }
-  .navhide, .navrail { background: none; border: 0; color: var(--ink-faint); width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; cursor: pointer; padding: 0; }
+  .navhide, .navrail, .site nav .navclose { background: none; border: 0; color: var(--ink-faint); width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; cursor: pointer; padding: 0; }
   .navhide:hover, .navrail:hover { background: rgba(255,255,255,.06); color: var(--ink); }
-  .navhide svg, .navrail svg { width: 16px; height: 16px; fill: currentColor; }
+  .navhide svg, .navrail svg, .navclose svg { width: 16px; height: 16px; fill: currentColor; }
   .navrail { position: absolute; left: 10px; top: 10px; z-index: 2; background: var(--card-bg); border: 1px solid var(--card-border); }
   .site { position: relative; }
-  .site.collapsed .page { padding-left: 52px; }
-
-  @media (max-width: 760px) { .site { grid-template-columns: 1fr; } .site nav { border-right: 0; border-bottom: 1px solid var(--card-border); } }
   .site nav { border-right: 1px solid var(--card-border); padding: 16px 10px; background: #16161d; }
-  .site nav .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 4px 8px 14px; }
-  .site nav .brand img { width: 24px; height: 24px; border-radius: 6px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 4px 8px 14px; color: var(--ink); text-decoration: none; }
+  .brand img { width: 24px; height: 24px; border-radius: 6px; }
   .site nav button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--ink); font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
   .site nav button:hover { background: rgba(255,255,255,.05); }
   .site nav button.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
@@ -112,10 +107,18 @@
 
   .site { min-height: 100vh; }
   /* fixed rather than sticky: under CSS zoom Chrome sizes 100vh from the unzoomed viewport, and a sticky panel taller than the window gets pushed up at the end of the page */
-  .site nav { position: fixed; top: 0; bottom: 0; left: 0; width: 220px; overflow-y: auto; }
-  .site .page { grid-column: 2; }
-  .site.collapsed .page { grid-column: 1; }
-  .navrail { position: fixed; }
+  /* The nav is a popover so phones get a drawer (top layer, backdrop, light dismiss) with no script. Desktop overrides the
+     user-agent popover box (inset/margin/border/padding/colour) and forces it visible while closed. */
+  .topbar { display: none; }
+  .site nav .navclose { display: none; }
+  @media (min-width: 761px) {
+    .site nav { display: block; position: fixed; inset: 0 auto 0 0; width: 220px; height: auto; margin: 0; padding: 16px 10px; overflow-y: auto; color: inherit; border: 0; border-right: 1px solid var(--card-border); background: #16161d; }
+    .site .page { grid-column: 2; }
+    .site.collapsed { grid-template-columns: minmax(0, 1fr); }
+    .site.collapsed nav { display: none; }
+    .site.collapsed .page { grid-column: 1; padding-left: 52px; }
+    .navrail { position: fixed; }
+  }
   /* the reviewed mock reads right at about 170%, so that is the default on desktop widths */
   @media (min-width: 1200px) { html { zoom: 1.7; } }
   @media (min-width: 800px) and (max-width: 1199px) { html { zoom: 1.35; } }
@@ -138,7 +141,22 @@
   .site .page table.w22 th:first-child { width: 22%; } .site .page table.w26 th:first-child { width: 26%; } .site .page table.w34 th:first-child { width: 34%; }
   .site .page pre { margin: 0 0 14px; }
   .site .page pre code { background: none; padding: 0; }
-  @media (max-width: 760px) { .site nav { position: static; width: auto; } .site .page { grid-column: auto; padding: 20px 16px 32px; } }
+  @media (max-width: 760px) {
+    .site { grid-template-columns: minmax(0, 1fr); }
+    .site .page { grid-column: auto; padding: 20px 16px 32px; }
+    .topbar { display: flex; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 2; padding: 8px 10px; border-bottom: 1px solid var(--card-border); background: #16161d; }
+    .topbar .brand { padding: 4px 6px; }
+    .navopen { background: none; border: 0; color: var(--ink); width: 32px; height: 32px; border-radius: 6px; display: grid; place-items: center; cursor: pointer; padding: 0; }
+    .navopen:hover { background: rgba(255,255,255,.06); }
+    .navopen svg { width: 16px; height: 16px; }
+    .site nav .navhide, .navrail { display: none; }
+    .site nav .navclose { display: grid; }
+    .site nav { inset: 0 auto 0 0; width: min(280px, 85vw); height: auto; margin: 0; padding: 16px 10px; overflow-y: auto; color: inherit; border: 0; border-right: 1px solid var(--card-border); background: #16161d; }
+    .site nav::backdrop { background: rgba(0,0,0,.55); }
+    .site nav { transition: transform .22s ease, overlay .22s allow-discrete, display .22s allow-discrete; transform: translateX(-100%); }
+    .site nav:popover-open { transform: translateX(0); }
+    @starting-style { .site nav:popover-open { transform: translateX(-100%); } }
+  }
 
   /* changelog */
   :root { --red: #c94b4f; --cream: #f3dfd4; }

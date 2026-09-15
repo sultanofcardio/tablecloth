@@ -85,9 +85,12 @@
       row.scrollIntoView({block:'center',behavior:'smooth'}); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); };
   })();
 
-  // sidebar collapse
-  (function(){ const hide=document.getElementById('navhide'), rail=document.getElementById('navrail'), site=document.querySelector('.site'); if(!hide) return;
+  // sidebar collapse (desktop only; on phones the nav is a popover drawer driven by popovertarget buttons, no script)
+  (function(){ const hide=document.getElementById('navhide'), rail=document.getElementById('navrail'), nav=document.getElementById('nav'), site=document.querySelector('.site'); if(!hide) return;
     let c=false; try { c=localStorage.getItem('tc-nav')==='collapsed'; } catch(e) {}
     function set(v){ c=v; site.classList.toggle('collapsed',c); rail.hidden=!c; try { localStorage.setItem('tc-nav',c?'collapsed':'open'); } catch(e) {} }
-    set(c); hide.addEventListener('click',()=>set(true)); rail.addEventListener('click',()=>set(false)); })();
+    set(c); hide.addEventListener('click',()=>set(true)); rail.addEventListener('click',()=>set(false));
+    // a drawer left open while the window grows past the breakpoint would stay in the top layer; close it there
+    const desktop=window.matchMedia('(min-width: 761px)');
+    desktop.addEventListener('change',e=>{ if(e.matches && nav.matches(':popover-open')) nav.hidePopover(); }); })();
 })();
